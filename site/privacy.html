@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d13">
+  <title>Privacy • Sm0ki Solo Coach</title>
+  <style>
+    body{margin:0;background:#090d13;color:#eef2f8;font-family:Segoe UI,Arial,sans-serif;line-height:1.7}
+    .wrap{width:min(820px,calc(100% - 36px));margin:auto}
+    header{border-bottom:1px solid #222c3d;background:#0c1118}
+    nav{height:68px;display:flex;align-items:center;justify-content:space-between}
+    a{color:#9f96ff;text-decoration:none} .brand{color:#fff;font-weight:800}
+    main{padding:58px 0 80px} h1{font-size:42px;letter-spacing:-.04em;margin:0 0 14px}
+    h2{margin-top:34px;font-size:20px} p,li{color:#a9b4c6}
+    .card{border:1px solid #253044;background:#101620;border-radius:16px;padding:24px}
+    .meta{font-size:12px;color:#78869b;margin-bottom:26px}
+    code{background:#171e29;padding:2px 5px;border-radius:5px}
+  </style>
+</head>
+<body>
+<header><div class="wrap"><nav><a class="brand" href="./">Sm0ki Solo Coach</a><a href="./">Back to home</a></nav></div></header>
+<main><div class="wrap">
+  <h1>Privacy</h1>
+  <div class="meta">Last updated: 2 October 2026</div>
+  <div class="card">
+    <p>Sm0ki Solo Coach is designed as a local-first Windows application. The project does not operate its own analytics, advertising, account or telemetry backend.</p>
+
+    <h2>Local data</h2>
+    <p>Your player profile, coach preferences, session history and locally saved integration settings are stored on your Windows PC under the app's local application-data folder.</p>
+
+    <h2>Local AI</h2>
+    <p>If you enable Local AI, prompts are sent to the Ollama service running on your own computer. Sm0ki Solo Coach does not require a paid cloud AI API for this feature.</p>
+
+    <h2>FACEIT</h2>
+    <p>If you choose to use FACEIT integration, the app contacts FACEIT's Data API to request supported public/profile statistics. A FACEIT API key you save is stored for the current Windows user using Windows-provided data protection. Do not share your API key publicly.</p>
+
+    <h2>GitHub and updates</h2>
+    <p>The app contacts GitHub to check the public update manifest, download releases and, in Review Lab, may load public map-radar assets. GitHub's own privacy terms apply to those requests.</p>
+
+    <h2>Phone Companion</h2>
+    <p>Phone Companion exposes a temporary token-protected HTTP page on your local network. It is intended for devices on the same trusted LAN/Wi-Fi network. It does not provide HTTPS transport.</p>
+
+    <h2>Website</h2>
+    <p>This website is a static GitHub Pages site. It does not include advertising cookies, analytics scripts or a custom tracking system.</p>
+
+    <h2>CS2 and anti-cheat boundaries</h2>
+    <p>The app uses legitimate CS2 Game State Integration and demo parsing. It is not designed to read hidden enemy memory, inject DLLs, automate aim/recoil/input, or bypass anti-cheat systems.</p>
+
+    <h2>Contact / source</h2>
+    <p>The project source and issue tracker are available on <a href="https://github.com/vfcr74psjd-dev/Smoki-coach">GitHub</a>.</p>
+  </div>
+</div></main>
+</body>
+</html>
