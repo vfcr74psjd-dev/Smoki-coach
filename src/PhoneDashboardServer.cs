@@ -13,6 +13,7 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly Func<string> _modeProvider;
     private readonly Func<string> _roleProvider;
     private readonly Func<string> _focusProvider;
+    private readonly Func<string> _nicknameProvider;
     private readonly Func<bool> _autoAiProvider;
     private readonly Func<string> _aiProvider;
     private readonly Action<string,string,string,bool> _settingsUpdater;
@@ -26,6 +27,7 @@ public sealed class PhoneDashboardServer : IDisposable
         Func<string> modeProvider,
         Func<string> roleProvider,
         Func<string> focusProvider,
+        Func<string> nicknameProvider,
         Func<bool> autoAiProvider,
         Func<string> aiProvider,
         Action<string,string,string,bool> settingsUpdater)
@@ -34,6 +36,7 @@ public sealed class PhoneDashboardServer : IDisposable
         _modeProvider = modeProvider;
         _roleProvider = roleProvider;
         _focusProvider = focusProvider;
+        _nicknameProvider = nicknameProvider;
         _autoAiProvider = autoAiProvider;
         _aiProvider = aiProvider;
         _settingsUpdater = settingsUpdater;
@@ -154,6 +157,7 @@ public sealed class PhoneDashboardServer : IDisposable
                 var modeNow = _modeProvider();
                 var roleNow = _roleProvider();
                 var focusNow = _focusProvider();
+                var nickname = _nicknameProvider();
                 var autoAiNow = _autoAiProvider();
 
                 string map = CoachEngine.PrettyMap(s.Map);
@@ -207,7 +211,7 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
 <body><div class='wrap'>
 <div class='hero'>
 <h1>Sm0ki Solo Coach <span class='badge'>LIVE PHONE</span></h1>
-<div class='sub'>PRIVATE LAN COMPANION • v{Html(AppUpdater.CurrentVersion)}</div>
+<div class='sub'>PROFILE: {Html(nickname)} • PRIVATE LAN COMPANION • v{Html(AppUpdater.CurrentVersion)}</div>
 </div>
 
 <div class='grid'>
