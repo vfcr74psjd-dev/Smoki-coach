@@ -28,7 +28,9 @@ public sealed class MainForm : Form
     private readonly Label _profileBadge = new();
     private readonly Label _gsiHealth = new();
     private readonly Label _aiHealth = new();
+    private readonly Label _faceitHealth = new();
     private readonly FlowLayoutPanel _roundTimeline = new();
+    private readonly List<Button> _presetButtons = new();
     private TableLayoutPanel? _liveLeftLayout;
     private bool _liveLayoutExpanded;
     private readonly Label _faceitElo = new();
@@ -254,12 +256,13 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 4,
             Margin = Padding.Empty
         };
         healthLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
-        healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33));
+        healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33));
+        healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 34));
         healthLayout.Controls.Add(new Label
         {
             Text = "SYSTEM HEALTH",
@@ -281,6 +284,16 @@ public sealed class MainForm : Form
         _aiHealth.ForeColor = Color.FromArgb(160, 170, 187);
         _aiHealth.TextAlign = ContentAlignment.MiddleLeft;
         healthLayout.Controls.Add(_aiHealth, 0, 2);
+
+        _faceitHealth.Text = FaceitSettingsStore.HasKey ? "● FACEIT CHECK" : "● FACEIT OFF";
+        _faceitHealth.Dock = DockStyle.Fill;
+        _faceitHealth.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        _faceitHealth.ForeColor = FaceitSettingsStore.HasKey
+            ? Color.FromArgb(160, 170, 187)
+            : Color.FromArgb(95, 106, 124);
+        _faceitHealth.TextAlign = ContentAlignment.MiddleLeft;
+        healthLayout.Controls.Add(_faceitHealth, 0, 3);
+
         health.Controls.Add(healthLayout);
         sidebar.Controls.Add(health, 0, 4);
 
@@ -568,8 +581,13 @@ public sealed class MainForm : Form
         _roundTimeline.AutoScroll = true;
         _roundTimeline.Margin = Padding.Empty;
         _roundTimeline.Padding = new Padding(0, 4, 0, 0);
+        _roundTimeline.Controls.Add(
+            MakeRoundPill("READY\n—",
+                Color.FromArgb(31, 36, 47),
+                Color.FromArgb(132, 144, 163)));
         timelineLayout.Controls.Add(_roundTimeline, 0, 1);
 
+        _sessionText.Text = SessionInsight();
         _sessionText.Dock = DockStyle.Fill;
         _sessionText.Font = new Font("Segoe UI", 8.5f);
         _sessionText.ForeColor = Color.FromArgb(137, 149, 168);
@@ -787,6 +805,7 @@ public sealed class MainForm : Form
         _history.BorderStyle = BorderStyle.None;
         _history.IntegralHeight = false;
         _history.Font = new Font("Cascadia Mono", 9);
+        _history.Items.Add("Waiting for first completed round.");
         recentLayout.Controls.Add(_history, 0, 1);
         recentCard.Controls.Add(recentLayout);
         right.Controls.Add(recentCard, 0, 3);
@@ -850,6 +869,7 @@ public sealed class MainForm : Form
         root.Controls.Add(workspace, 1, 0);
 
         Controls.Add(root);
+        UpdatePresetSelection(DetectCurrentPreset());
         _liveLayoutExpanded = true;
         SetLiveLayoutExpanded(false);
         ResumeLayout(true);
@@ -884,6 +904,7 @@ public sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
+            Tag = preset,
             Width = 116,
             Height = 36,
             FlatStyle = FlatStyle.Flat,
@@ -898,7 +919,51 @@ public sealed class MainForm : Form
         button.FlatAppearance.BorderColor = Color.FromArgb(43, 51, 66);
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(31, 36, 49);
         button.Click += (_,__) => ApplyCoachPreset(preset);
+        _presetButtons.Add(button);
         return button;
+    }
+
+    private string? DetectCurrentPreset()
+    {
+        var mode = _mode.SelectedItem?.ToString();
+        var role = _role.SelectedItem?.ToString();
+        var focus = _focus.SelectedItem?.ToString();
+
+        if (mode == "Balanced" && role == "Flex" && focus == "More kills")
+            return "More Kills";
+        if (mode == "Aggressive" && role == "Entry" && focus == "Entry impact")
+            return "Entry";
+        if (mode == "Safe" && role == "Flex" && focus == "Survive & trade")
+            return "Survival";
+        if (mode == "Balanced" && role == "Support" && focus == "Utility impact")
+            return "Utility";
+        if (mode == "Safe" && role == "Flex" && focus == "Clutch / late round")
+            return "Clutch";
+
+        return null;
+    }
+
+    private void UpdatePresetSelection(string? activePreset = null)
+    {
+        activePreset ??= DetectCurrentPreset();
+
+        foreach (var button in _presetButtons)
+        {
+            var active = string.Equals(
+                button.Tag?.ToString(),
+                activePreset,
+                StringComparison.OrdinalIgnoreCase);
+
+            button.BackColor = active
+                ? Color.FromArgb(52, 44, 104)
+                : Color.FromArgb(20, 25, 35);
+            button.ForeColor = active
+                ? Color.White
+                : Color.FromArgb(202, 210, 223);
+            button.FlatAppearance.BorderColor = active
+                ? Color.FromArgb(118, 108, 255)
+                : Color.FromArgb(43, 51, 66);
+        }
     }
 
     private Control MakeMiniMetric(string title, Label value)
@@ -994,6 +1059,7 @@ public sealed class MainForm : Form
         }
 
         PreferencesChanged();
+        UpdatePresetSelection(preset);
     }
 
     private Label MakeRoundPill(string text, Color backColor, Color foreColor)
@@ -1143,7 +1209,7 @@ public sealed class MainForm : Form
             _aiHealth.Text = "● FAST AI READY";
             _aiHealth.ForeColor = Color.FromArgb(126, 240, 174);
             if (_latestAiAdvice == "AI coach čaka na nastavitev.")
-                _latestAiAdvice = "Instant plan je pripravljen. Ko CS2 pošlje novo rundo, se pokaže takoj; Local AI ga nato v ozadju samo izboljša.";
+                _latestAiAdvice = "Coach je pripravljen. Ko CS2 pošlje novo rundo, se plan pokaže takoj; Local AI ga nato v ozadju samo izboljša.";
         }
         else
         {
@@ -1301,6 +1367,7 @@ public sealed class MainForm : Form
         _prefs.Focus = _focus.SelectedItem?.ToString() ?? "More kills";
         _prefs.AutoAi = _autoAi.Checked;
         UserSettingsStore.Save(_prefs);
+        UpdatePresetSelection(DetectCurrentPreset());
 
         if (_current.Round is int && _autoAi.Checked)
             _ = RefreshAiCoachAsync(_current, true);
@@ -1489,6 +1556,8 @@ public sealed class MainForm : Form
         if (!FaceitSettingsStore.HasKey)
         {
             _faceitSnapshot = null;
+            _faceitHealth.Text = "● FACEIT OFF";
+            _faceitHealth.ForeColor = Color.FromArgb(95, 106, 124);
             RefreshFaceitCard("Connect FACEIT to add ELO + recent form.");
             return;
         }
@@ -1497,6 +1566,8 @@ public sealed class MainForm : Form
             _faceitSnapshot != null &&
             DateTime.UtcNow - _faceitLoadedUtc < TimeSpan.FromMinutes(10))
         {
+            _faceitHealth.Text = "● FACEIT CONNECTED";
+            _faceitHealth.ForeColor = Color.FromArgb(126, 240, 174);
             RefreshFaceitCard();
             return;
         }
@@ -1509,17 +1580,23 @@ public sealed class MainForm : Form
         }
 
         _faceitLoading = true;
+        _faceitHealth.Text = "● FACEIT SYNC";
+        _faceitHealth.ForeColor = Color.FromArgb(176, 166, 255);
         RefreshFaceitCard($"Loading {nickname}…");
 
         try
         {
             _faceitSnapshot = await new FaceitService().LoadAsync(nickname);
             _faceitLoadedUtc = DateTime.UtcNow;
+            _faceitHealth.Text = "● FACEIT CONNECTED";
+            _faceitHealth.ForeColor = Color.FromArgb(126, 240, 174);
             RefreshFaceitCard();
         }
         catch (Exception ex)
         {
             _faceitSnapshot = null;
+            _faceitHealth.Text = "● FACEIT ERROR";
+            _faceitHealth.ForeColor = Color.FromArgb(255, 174, 143);
             RefreshFaceitCard("FACEIT unavailable • open FACEIT to retry");
             System.Diagnostics.Debug.WriteLine(ex);
         }
