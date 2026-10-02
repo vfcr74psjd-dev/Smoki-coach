@@ -1,6 +1,6 @@
 {
-  "sha256": "F27F187BE860C9431C06E598AFD20CC917D7617E540B2111308A5E1FD39FAC5D",
-  "url": "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v1.0.0/Sm0kiSoloCoach.exe",
-  "notes": "Samodejna posodobitev Sm0ki Solo Coach.",
-  "version": "1.0.0"
+  "version": "1.1.0",
+  "notes": "Sm0ki Solo Coach 1.1.0",
+  "url": "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v1.1.0/Sm0kiSoloCoach.exe",
+  "sha256": "CDE8DF99CD2171564289BE775B853EA23DF1978E54720A50A43B6C3F28FD3FA6"
 }
