@@ -14,7 +14,7 @@ public sealed class UpdateManifest
 
 public static class AppUpdater
 {
-    public const string CurrentVersion = "1.0.0";
+    public static string CurrentVersion => typeof(AppUpdater).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
     private const string ManifestUrl = "https://raw.githubusercontent.com/vfcr74psjd-dev/Smoki-coach/main/update.json";
 
     public static async Task<UpdateManifest?> CheckAsync()

@@ -23,10 +23,63 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Validate version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem src -Recurse -Filter Sm0kiSoloCoach.exe | Where-Object { $_.FullName -match 'publish' } | Select-Object -First 1
+          if ($null -eq $exe) { throw "Published EXE ni bil najden." }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $exe.FullName dist\Sm0kiSoloCoach.exe -Force
+
+      - name: Publish GitHub release asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $tag = "v$version"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag dist\Sm0kiSoloCoach.exe --clobber
+          } else {
+            gh release create $tag dist\Sm0kiSoloCoach.exe --title "Sm0ki Solo Coach $version" --notes "Samodejna posodobitev Sm0ki Solo Coach."
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Generate update manifest
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $sha = (Get-FileHash dist\Sm0kiSoloCoach.exe -Algorithm SHA256).Hash
+          $manifest = @{
+            version = $version
+            url = "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v$version/Sm0kiSoloCoach.exe"
+            sha256 = $sha
+            notes = 'Samodejna posodobitev Sm0ki Solo Coach.'
+          } | ConvertTo-Json
+          Set-Content update.json $manifest -Encoding UTF8
+
+      - name: Commit update manifest
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Update manifest [skip ci]"
+            git push
+          }
+) { throw "VERSION mora biti v obliki 1.2.3, trenutno: '$version'" }
+
       - name: Publish EXE
         shell: pwsh
         run: |
-          dotnet publish src/Sm0kiSoloCoach.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false
+          $version = (Get-Content VERSION -Raw).Trim()
+          dotnet publish src/Sm0kiSoloCoach.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=$version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem src -Recurse -Filter Sm0kiSoloCoach.exe | Where-Object { $_.FullName -match 'publish' } | Select-Object -First 1
           if ($null -eq $exe) { throw "Published EXE ni bil najden." }
