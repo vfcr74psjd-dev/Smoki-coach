@@ -14,6 +14,7 @@ public sealed class FaceitHistoryForm : Form
     private readonly ListView _matches = new();
     private readonly Button _sync = new();
     private readonly Button _scanLocal = new();
+    private readonly Button _openMatch = new();
     private CancellationTokenSource? _cts;
 
     public FaceitHistoryForm(string nickname, AutoDemoInboxService inbox)
@@ -111,6 +112,12 @@ public sealed class FaceitHistoryForm : Form
         };
         toolbar.Controls.Add(_scanLocal);
 
+        _openMatch.Text = "OPEN SELECTED MATCH";
+        StyleButton(_openMatch,false,168);
+        _openMatch.Enabled = false;
+        _openMatch.Click += (_,__) => OpenSelectedMatch();
+        toolbar.Controls.Add(_openMatch);
+
         root.Controls.Add(toolbar,0,1);
 
         _summary.Dock = DockStyle.Fill;
@@ -133,6 +140,23 @@ public sealed class FaceitHistoryForm : Form
         _matches.Columns.Add("Local heatmap",110);
         _matches.Columns.Add("Status",100);
         _matches.Columns.Add("Match ID",360);
+        _matches.SelectedIndexChanged += (_,__) =>
+        {
+            var hasSelection =
+                _matches.SelectedItems.Count > 0 &&
+                _matches.SelectedItems[0].Tag is FaceitHistoryMatch selected &&
+                selected.DemoReady &&
+                !string.IsNullOrWhiteSpace(selected.FaceitUrl);
+
+            _openMatch.Enabled = hasSelection;
+
+            if (hasSelection)
+            {
+                _status.Text =
+                    "READY demo selected → OPEN SELECTED MATCH → download demo on FACEIT. " +
+                    "Leave it in Downloads; Sm0ki Solo Coach will auto-import it.";
+            }
+        };
         _matches.DoubleClick += (_,__) => OpenSelectedMatch();
         root.Controls.Add(_matches,0,3);
 
@@ -232,8 +256,16 @@ public sealed class FaceitHistoryForm : Form
                 ? "—"
                 : CoachEngine.PrettyMap(match.Map));
             item.SubItems.Add(match.DemoReady ? "READY" : match.DetailsChecked ? "—" : "?");
-            item.SubItems.Add(localMatch ? "ANALYZED" : "MISSING");
+            item.SubItems.Add(localMatch ? "ANALYZED" : match.DemoReady ? "NEEDS DOWNLOAD" : "—");
             item.SubItems.Add(string.IsNullOrWhiteSpace(match.Status) ? "—" : match.Status);
+
+            item.UseItemStyleForSubItems = false;
+            if (match.DemoReady)
+                item.SubItems[2].ForeColor = Color.FromArgb(126,240,174);
+            if (localMatch)
+                item.SubItems[3].ForeColor = Color.FromArgb(126,240,174);
+            else if (match.DemoReady)
+                item.SubItems[3].ForeColor = Color.FromArgb(255,190,132);
             item.SubItems.Add(match.MatchId);
             item.Tag = match;
             _matches.Items.Add(item);
@@ -254,6 +286,9 @@ public sealed class FaceitHistoryForm : Form
                 .Replace("{lang}", "en", StringComparison.OrdinalIgnoreCase);
 
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            _status.Text =
+                "FACEIT match opened. Download the demo and leave the file in Downloads. " +
+                "The app scans Downloads automatically; no manual import is needed.";
         }
     }
 
