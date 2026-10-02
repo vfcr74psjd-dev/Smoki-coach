@@ -91,6 +91,70 @@ public static class CoachEngine
         return $"{map}: " + string.Join(" ", parts);
     }
 
+    public static string InstantRoundPlan(
+        GameSnapshot s,
+        string mode,
+        string role,
+        string focus,
+        IReadOnlyList<RoundRecord> rounds)
+    {
+        var roundType = ClassifyRound(s);
+        var map = PrettyMap(s.Map);
+        var mapPlan = MapRoundPlan(s.Map, s.Team);
+
+        var opening = roundType switch
+        {
+            "Pistol" => "Pistol: drži trade razdaljo in vzemi samo en čist prvi duel.",
+            "Eco" => "Eco: izogni se dolgim dry duelom; igraj close/stack za en kill in pobiranje orožja.",
+            "Force / light" => "Light buy: izberi kratko razdaljo ali utility-assisted duel; ne razdeli ekipe.",
+            _ => "Gun round: utility pred prvim peekanjem, nato en kontroliran opening/trade duel."
+        };
+
+        var rolePlan = role switch
+        {
+            "Entry" => "Entry: commitaj šele, ko je teammate dovolj blizu za trade.",
+            "Lurk" => "Lurk: vzemi info/prostor, ampak ne zamudi glavnega kontakta ekipe.",
+            "Support" => "Support: odpri prostor z utilityjem in takoj sledi za trade.",
+            "Anchor" => "Anchor: prvi kontakt vzemi iz kota z varnim umikom.",
+            _ => "Flex: izberi nalogo glede na spawn in ostani tradeable."
+        };
+
+        var afterKill = mode switch
+        {
+            "Aggressive" => "Po killu zamenjaj kot; drugi duel vzemi samo z jasnim timingom ali tradeom.",
+            "Safe" => "Po killu se umakni v crossfire in prisili nasprotnika, da pride k tebi.",
+            _ => "Po killu reposition; ne repeekaj iste linije brez novega razloga."
+        };
+
+        var focusPlan = focus switch
+        {
+            "Survive & trade" => "Preživi prvi kontakt in ostani v trade razdalji.",
+            "Entry impact" => "Ustvari prostor, vendar brez solo chain-peekanja.",
+            "Utility impact" => "Vsaj en kos utilityja uporabi pred glavnim duelom.",
+            "Clutch / late round" => "Ohrani HP in utility za zadnjih 40 sekund.",
+            _ => "Išči en kakovosten kill, nato zaščiti številčno prednost."
+        };
+
+        var recent = rounds.TakeLast(3).ToList();
+        string trend = "";
+        if (recent.Count >= 2)
+        {
+            var deathRounds = recent.Count(x => x.DeathsRound > 0);
+            var zeroRounds = recent.Count(x => x.KillsRound == 0);
+
+            if (deathRounds >= 2 && zeroRounds >= 2)
+                trend = " Zadnji trend: znižaj early risk.";
+            else if (recent.Count(x => x.KillsRound >= 2) >= 2)
+                trend = " Zadnji trend: output je dober — ne podari ga z nepotrebnim repeekom.";
+        }
+
+        return
+            $"PLAN: {map} {s.Team} • {roundType}. {mapPlan}\n" +
+            $"OPENING: {opening} {rolePlan}\n" +
+            $"AFTER KILL: {afterKill}\n" +
+            $"FOCUS: {focusPlan}{trend}";
+    }
+
     private static string MapRoundPlan(string map, string side)
     {
         bool t = string.Equals(side, "T", StringComparison.OrdinalIgnoreCase);
