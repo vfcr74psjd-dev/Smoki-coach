@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         Text = "Sm0ki Solo Coach";
         Width = 1280;
-        Height = 820;
+        Height = 850;
         MinimumSize = new Size(1020, 720);
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -98,7 +98,7 @@ public sealed class MainForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));

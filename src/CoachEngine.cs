@@ -74,25 +74,68 @@ public static class CoachEngine
         var d = s.Deaths ?? 0;
         var parts = new List<string>();
 
-        if (s.Team == "T")
-            parts.Add($"{map} T: išči tradeable duel in ne dry-peekaj brez plana.");
-        else if (s.Team == "CT")
-            parts.Add($"{map} CT: igraj pozicijo za prvi kill + reposition.");
-        else
-            parts.Add("Čakam mapo in side za specifičen nasvet.");
+        parts.Add(MapRoundPlan(s.Map, s.Team));
 
         if (d >= Math.Max(3, k + 2))
-            parts.Add("Umiraš hitreje kot nabiraš kills — naslednjo rundo znižaj early risk.");
+            parts.Add("Trend: preveč early deaths — naslednjo rundo znižaj prvi risk in ostani tradeable.");
         else if (k >= d + 3 && d > 0)
-            parts.Add("Kill output je dober — ne sili hero duela.");
+            parts.Add("Trend: kill output je dober — po prvem killu zaščiti prednost in zamenjaj pozicijo.");
 
         parts.Add(mode switch
         {
-            "Aggressive" => "Aggressive: izberi en kvaliteten opening duel, ne več zapored.",
-            "Safe" => "Safe: survival po prvem killu in reposition.",
-            _ => "Balanced: en kontroliran duel, nato trade/reposition."
+            "Aggressive" => "Mode Aggressive: en kvaliteten opening duel z utilityjem ali tradeom; ne chain-peekaj.",
+            "Safe" => "Mode Safe: prioriteta je survival po prvem kontaktu, crossfire in reposition.",
+            _ => "Mode Balanced: kontroliran prvi duel, nato trade ali reposition."
         });
 
-        return string.Join(" ", parts);
+        return $"{map}: " + string.Join(" ", parts);
+    }
+
+    private static string MapRoundPlan(string map, string side)
+    {
+        bool t = string.Equals(side, "T", StringComparison.OrdinalIgnoreCase);
+
+        return map switch
+        {
+            "de_mirage" => t
+                ? "T plan: vzemi info/control na midu ali rampi; ko dobiš prvi duel, ne ostani na istem kotu in se priključi trade liniji."
+                : "CT plan: ne podari mida brez info; po prvem kontaktu igraj connector/jungle/site crossfire in ne repeekaj sam.",
+
+            "de_inferno" => t
+                ? "T plan: banana ali apps control z utilityjem, nato počakaj reakcijo; entry naj ima igralca dovolj blizu za trade."
+                : "CT plan: zgodaj zadrži banana/apps info z utilityjem, nato se umakni v pozicijo, kjer lahko dobiš kill in preživiš.",
+
+            "de_nuke" => t
+                ? "T plan: uporabi lobby/yard pritisk za rotacije; ne teci sam skozi ramp ali door brez trade podpore."
+                : "CT plan: čuvaj yard/ramp info in ne lovi killov po prvem kontaktu; Nuke nagrajuje hitro repositionanje med nivoji.",
+
+            "de_ancient" => t
+                ? "T plan: mid ali cave control naj odpre prostor za split; po prvem killu takoj zamenjaj kot in ostani ob teammateu."
+                : "CT plan: cave/mid info je dragocen; uporabi utility za delay in igraj drugi kontakt iz drugačnega kota.",
+
+            "de_anubis" => t
+                ? "T plan: kontrola mida/vode naj pripravi split; ne sili site entryja brez prostora za trade."
+                : "CT plan: igraj za info na mid/water in imej pot za umik; po killu se umakni iz pre-aimane linije.",
+
+            "de_dust2" => t
+                ? "T plan: long/mid/B info vzemi disciplinirano; izogibaj se solo dry peeku in iz prvega picka naredi številčno prednost."
+                : "CT plan: long/mid info vzemi z utilityjem in ne ostajaj izpostavljen; po prvem killu zaščiti crossfire.",
+
+            "de_train" => t
+                ? "T plan: najprej ustvari pritisk in info na yard/inner, nato napadi šibkejšo stran; entry mora biti tradeable."
+                : "CT plan: uporabi dolge linije za prvi kontakt, vendar po strelu/killu zamenjaj vagon ali globino kota.",
+
+            "de_overpass" => t
+                ? "T plan: map control fountain/connector ali short naj pride pred executeom; izogibaj se izoliranim duelom daleč od ekipe."
+                : "CT plan: zgodnji info je dober samo, če imaš umik; po kontaktu se vrni v crossfire na site/connector.",
+
+            "de_vertigo" => t
+                ? "T plan: ramp/mid prostor vzemi z utilityjem; ne stoj po prvem picku na istem ozkem kotu."
+                : "CT plan: delay utility na rampi in kratek prvi kontakt; nato reposition, da te naslednji igralec ne pre-aim-a.",
+
+            _ => t
+                ? "T plan: vzemi en kos map controla, ostani tradeable in šele nato commitaj site."
+                : "CT plan: prvi kontakt vzemi iz pozicije z umikom; po killu zamenjaj kot in ohrani crossfire."
+        };
     }
 }
