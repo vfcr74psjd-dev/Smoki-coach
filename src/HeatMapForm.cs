@@ -34,8 +34,12 @@ public sealed class HeatMapForm : Form
         BackColor = Color.FromArgb(9,13,19);
         ForeColor = Color.White;
         Font = new Font("Segoe UI",10);
+        AllowDrop = true;
 
         BuildUi();
+
+        DragEnter += OnDemoDragEnter;
+        DragDrop += async (_, e) => await OnDemoDropAsync(e);
 
         _inbox.DemoImported += OnDemoImported;
         _inbox.StatusChanged += OnInboxStatus;
@@ -73,7 +77,7 @@ public sealed class HeatMapForm : Form
 
         root.Controls.Add(new Label
         {
-            Text = "HEAT MAP • AUTO DEMO INBOX",
+            Text = "HEAT MAP • DROP DEMO TO IMPORT",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI",20,FontStyle.Bold)
         },0,0);
@@ -90,7 +94,7 @@ public sealed class HeatMapForm : Form
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,22));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,58));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,320));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,430));
 
         controls.Controls.Add(FilterLabel("MAP"),0,0);
         ConfigureCombo(_map);
@@ -112,6 +116,7 @@ public sealed class HeatMapForm : Form
         controls.Controls.Add(_window,5,0);
 
         var syncFaceit = MakeButton("FACEIT HISTORY",112,true);
+        var import = MakeButton("IMPORT DEMO",104,true);
         var scan = MakeButton("SCAN NOW",82,false);
         var open = MakeButton("INBOX",76,false);
 
@@ -120,6 +125,21 @@ public sealed class HeatMapForm : Form
             using var dialog = new FaceitHistoryForm(_nickname, _inbox);
             dialog.ShowDialog(this);
             ReloadData();
+        };
+
+        import.Click += async (_,__) =>
+        {
+            using var picker = new OpenFileDialog
+            {
+                Title = "Import CS2 / FACEIT demo",
+                Filter = "CS2 demos|*.dem;*.dem.gz;*.zip|All files|*.*",
+                Multiselect = false
+            };
+
+            if (picker.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            await ImportAndBackfillAsync(new[] { picker.FileName });
         };
 
         scan.Click += async (_,__) =>
@@ -150,6 +170,7 @@ public sealed class HeatMapForm : Form
             Padding = new Padding(0,6,0,0)
         };
         actions.Controls.Add(syncFaceit);
+        actions.Controls.Add(import);
         actions.Controls.Add(scan);
         actions.Controls.Add(open);
         controls.Controls.Add(actions,6,0);
@@ -231,7 +252,7 @@ public sealed class HeatMapForm : Form
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
 
         _status.Text =
-            "FACEIT HISTORY = remote index • SCAN NOW = local .dem analysis • no demo upload.";
+            "DROP .dem / .dem.gz / .zip HERE • one demo can trigger automatic FACEIT backfill.";
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = Color.FromArgb(105,118,138);
         _status.Font = new Font("Segoe UI",8.5f);
@@ -244,6 +265,135 @@ public sealed class HeatMapForm : Form
 
         root.Controls.Add(footer,0,3);
         Controls.Add(root);
+    }
+
+    private void OnDemoDragEnter(object? sender, DragEventArgs e)
+    {
+        if (!e.Data!.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effect = DragDropEffects.None;
+            return;
+        }
+
+        var paths = (string[]?)e.Data.GetData(DataFormats.FileDrop) ?? Array.Empty<string>();
+        var supported = ExpandDroppedPaths(paths).Any();
+        e.Effect = supported ? DragDropEffects.Copy : DragDropEffects.None;
+
+        if (supported)
+            _status.Text = "Release to import demo(s) and start FACEIT backfill…";
+    }
+
+    private async Task OnDemoDropAsync(DragEventArgs e)
+    {
+        if (!e.Data!.GetDataPresent(DataFormats.FileDrop))
+            return;
+
+        var paths = (string[]?)e.Data.GetData(DataFormats.FileDrop) ?? Array.Empty<string>();
+        var files = ExpandDroppedPaths(paths).ToArray();
+
+        if (files.Length == 0)
+        {
+            _status.Text = "No supported .dem / .dem.gz / .zip files found.";
+            return;
+        }
+
+        await ImportAndBackfillAsync(files);
+    }
+
+    private static IEnumerable<string> ExpandDroppedPaths(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            if (File.Exists(path) && IsDemoPath(path))
+            {
+                yield return path;
+                continue;
+            }
+
+            if (!Directory.Exists(path))
+                continue;
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly)
+                    .Where(IsDemoPath)
+                    .ToList();
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+                yield return file;
+        }
+    }
+
+    private static bool IsDemoPath(string path)
+        => path.EndsWith(".dem", StringComparison.OrdinalIgnoreCase) ||
+           path.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase) ||
+           path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+
+    private async Task ImportAndBackfillAsync(IEnumerable<string> files)
+    {
+        var list = files
+            .Where(File.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (list.Count == 0)
+            return;
+
+        Enabled = false;
+
+        try
+        {
+            int imported = 0;
+            int failed = 0;
+
+            foreach (var file in list)
+            {
+                try
+                {
+                    _status.Text = $"Importing {Path.GetFileName(file)}…";
+                    var record = await _inbox.ImportFileAsync(file);
+                    if (record != null)
+                        imported++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    _status.Text = $"Import failed: {Path.GetFileName(file)} • {ex.Message}";
+                }
+            }
+
+            ReloadData();
+            await RefreshViewAsync();
+
+            _status.Text =
+                $"Imported {imported}/{list.Count}. Checking FACEIT history for remaining READY demos…";
+
+            try
+            {
+                var downloaded = await _inbox.DownloadReadyFaceitDemosAsync();
+                ReloadData();
+                await RefreshViewAsync();
+
+                _status.Text =
+                    $"HEATMAP READY • imported {imported} dropped • auto-downloaded {downloaded}" +
+                    (failed > 0 ? $" • failed {failed}" : "");
+            }
+            catch (Exception ex)
+            {
+                _status.Text =
+                    $"Dropped demo imported. FACEIT auto-backfill could not finish: {ex.Message}";
+            }
+        }
+        finally
+        {
+            Enabled = true;
+        }
     }
 
     private void ReloadData()
