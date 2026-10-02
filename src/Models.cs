@@ -1,0 +1,31 @@
+namespace Sm0kiSoloCoach;
+
+public sealed class GameSnapshot
+{
+    public string PlayerName { get; set; } = "Sm0ki_72";
+    public string Team { get; set; } = "";
+    public string Map { get; set; } = "";
+    public int? Round { get; set; }
+    public string RoundPhase { get; set; } = "";
+    public string RoundWinTeam { get; set; } = "";
+    public int? CtScore { get; set; }
+    public int? TScore { get; set; }
+    public int? Health { get; set; }
+    public int? Armor { get; set; }
+    public bool? Helmet { get; set; }
+    public int? Money { get; set; }
+    public int? Kills { get; set; }
+    public int? Deaths { get; set; }
+    public int? Assists { get; set; }
+    public string Weapon { get; set; } = "";
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class RoundRecord
+{
+    public int Round { get; set; }
+    public string Side { get; set; } = "";
+    public int KillsTotal { get; set; }
+    public int DeathsTotal { get; set; }
+    public int MoneyEnd { get; set; }
+}
