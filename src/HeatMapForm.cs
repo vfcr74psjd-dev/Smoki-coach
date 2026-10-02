@@ -532,6 +532,18 @@ public sealed class HeatMapForm : Form
         box.Margin = new Padding(0,8,10,8);
     }
 
+    private static void StyleButton(Button button, bool primary, int width)
+    {
+        button.Width = width;
+        button.Height = 34;
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = 0;
+        button.BackColor = primary ? Color.FromArgb(104,92,255) : Color.FromArgb(27,33,44);
+        button.ForeColor = Color.White;
+        button.Font = new Font("Segoe UI",8.5f,FontStyle.Bold);
+        button.Cursor = Cursors.Hand;
+    }
+
     private static Button MakeButton(string text,int width,bool primary)
     {
         var b = new Button
