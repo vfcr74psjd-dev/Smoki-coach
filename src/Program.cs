@@ -21,7 +21,9 @@ namespace Sm0kiSoloCoach
                         return;
                 }
 
-                Application.Run(new MainForm());
+                var main = new MainForm();
+                LayoutPolish.Apply(main);
+                Application.Run(main);
             }
             catch (Exception ex)
             {
