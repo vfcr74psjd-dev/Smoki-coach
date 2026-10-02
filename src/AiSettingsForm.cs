@@ -25,7 +25,7 @@ public sealed class AiSettingsForm : Form
 
         var title = new Label
         {
-            Text = "FREE LOCAL AI ROUND COACH",
+            Text = "FAST LOCAL AI ROUND COACH",
             Left = 24,
             Top = 22,
             Width = 490,
@@ -36,8 +36,8 @@ public sealed class AiSettingsForm : Form
         var info = new Label
         {
             Text =
-                "AI teče lokalno na tvojem računalniku prek Ollama. Ni API ključa, ni plačila na klic in podatki o tekmi ostanejo na tvojem PC-ju.\n\n" +
-                $"Model: {AiCoachService.ModelName}",
+                "Round plan se pokaže TAKOJ brez čakanja. Ollama ga nato v ozadju samo izboljša. Ni API ključa in ni plačila na klic.\n\n" +
+                $"Fast model: {AiCoachService.ModelName}",
             Left = 24,
             Top = 60,
             Width = 490,
@@ -50,7 +50,7 @@ public sealed class AiSettingsForm : Form
         _status.Width = 490;
         _status.Height = 30;
         _status.Text = AiCoachService.FindOllamaExe() != null
-            ? "Status: Ollama zaznan — klikni Prepare Local AI."
+            ? "Status: Ollama zaznan — Fast Plan je aktiven. Prepare Fast AI za hitrejši refine."
             : "Status: Ollama še ni nameščen.";
         _status.ForeColor = AiCoachService.FindOllamaExe() != null
             ? Color.FromArgb(126, 240, 174)
@@ -65,7 +65,7 @@ public sealed class AiSettingsForm : Form
             });
         };
 
-        _prepare.Text = "Prepare Local AI";
+        _prepare.Text = "Prepare Fast AI";
         StyleButton(_prepare, 156, 196, 145, true);
         _prepare.Click += async (_,__) => await PrepareAsync();
 
@@ -82,7 +82,7 @@ public sealed class AiSettingsForm : Form
 
         var note = new Label
         {
-            Text = "Prepare Local AI prvič prenese model na računalnik. To je enkraten prenos in lahko traja nekaj minut.",
+            Text = "Prepare Fast AI enkrat prenese lažji model. Če AI v 7 sekundah ne odgovori, ostane instant plan in igra ni nikoli blokirana.",
             Left = 24,
             Top = 246,
             Width = 490,
@@ -100,12 +100,12 @@ public sealed class AiSettingsForm : Form
         {
             _prepare.Enabled = false;
             _test.Enabled = false;
-            _status.Text = "Pripravljam lokalni AI model…";
+            _status.Text = "Pripravljam Fast AI model…";
             _status.ForeColor = Color.FromArgb(176, 166, 255);
 
             await AiCoachService.PrepareLocalAiAsync();
 
-            _status.Text = "LOCAL AI READY — brez API stroškov.";
+            _status.Text = "FAST AI READY — instant plan + hiter AI refine.";
             _status.ForeColor = Color.FromArgb(126, 240, 174);
         }
         catch (Exception ex)
