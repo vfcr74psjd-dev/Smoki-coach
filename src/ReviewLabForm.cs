@@ -11,6 +11,7 @@ public sealed class ReviewLabForm : Form
     private readonly Label _summary = new();
     private readonly ListView _deaths = new();
     private readonly DeathRadarCanvas _radar = new();
+    private readonly UtilityImpactPanel _utility = new();
     private CancellationTokenSource? _cts;
 
     public ReviewLabForm(string nickname)
@@ -23,7 +24,7 @@ public sealed class ReviewLabForm : Form
         MinimumSize = new Size(900, 650);
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
-        BackColor = Color.FromArgb(9,13,19);
+        BackColor = Color.FromArgb(9,11,13);
         ForeColor = Color.White;
         Font = new Font("Segoe UI",10);
 
@@ -85,7 +86,9 @@ public sealed class ReviewLabForm : Form
             Padding=new Padding(14),
             BackColor=Color.FromArgb(16,21,29)
         };
+        side.RowCount = 3;
         side.RowStyles.Add(new RowStyle(SizeType.Absolute,88));
+        side.RowStyles.Add(new RowStyle(SizeType.Absolute,150));
         side.RowStyles.Add(new RowStyle(SizeType.Percent,100));
 
         _summary.Text = $"PROFILE: {_nickname}\nNo demo loaded yet.";
@@ -93,6 +96,10 @@ public sealed class ReviewLabForm : Form
         _summary.ForeColor = Color.FromArgb(211,219,231);
         _summary.Font = new Font("Segoe UI",10,FontStyle.Bold);
         side.Controls.Add(_summary,0,0);
+
+        _utility.Dock = DockStyle.Fill;
+        _utility.Margin = new Padding(0, 0, 0, 10);
+        side.Controls.Add(_utility,0,1);
 
         _deaths.Dock = DockStyle.Fill;
         _deaths.View = View.Details;
@@ -111,7 +118,7 @@ public sealed class ReviewLabForm : Form
             if (_deaths.SelectedItems[0].Tag is DemoDeathPoint point)
                 _radar.Highlight(point);
         };
-        side.Controls.Add(_deaths,0,1);
+        side.Controls.Add(_deaths,0,2);
 
         body.Controls.Add(side,1,0);
         root.Controls.Add(body,0,2);
@@ -193,8 +200,9 @@ public sealed class ReviewLabForm : Form
 
             _summary.Text =
                 $"MAP: {CoachEngine.PrettyMap(result.Map)}\n" +
-                $"PROFILE: {_nickname} • DEATHS: {result.Deaths.Count}";
-            _status.Text = "Demo analiziran. Klikni smrt na desni, da jo označiš na mapi.";
+                $"PROFILE: {_nickname} • DEATHS: {result.Deaths.Count} • UTILITY DMG: {result.UtilityDamage}";
+            _utility.SetData(result);
+            _status.Text = "Demo analiziran. Death map + utility impact sta pripravljena.";
 
             _radar.SetData(result.Map,result.Deaths);
             await _radar.LoadRadarAsync(result.Map,_cts.Token);
@@ -217,13 +225,92 @@ public sealed class ReviewLabForm : Form
         {
             Text=text, Width=width, Height=34,
             FlatStyle=FlatStyle.Flat,
-            BackColor=primary ? Color.FromArgb(104,92,255) : Color.FromArgb(27,33,44),
+            BackColor=primary ? Color.FromArgb(255,156,44) : Color.FromArgb(28,30,32),
             ForeColor=Color.White,
             Font=new Font("Segoe UI",9,FontStyle.Bold),
             Cursor=Cursors.Hand
         };
         b.FlatAppearance.BorderSize=0;
         return b;
+    }
+
+
+    private sealed class UtilityImpactPanel : Panel
+    {
+        private DemoReviewResult? _data;
+
+        public UtilityImpactPanel()
+        {
+            DoubleBuffered = true;
+            BackColor = Color.FromArgb(15, 17, 19);
+            ForeColor = Color.White;
+            Padding = new Padding(12);
+        }
+
+        public void SetData(DemoReviewResult result)
+        {
+            _data = result;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            using var titleFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+            using var valueFont = new Font("Segoe UI", 8f, FontStyle.Bold);
+            using var mutedFont = new Font("Segoe UI", 7.2f);
+            using var titleBrush = new SolidBrush(Color.FromArgb(255,156,44));
+            using var textBrush = new SolidBrush(Color.FromArgb(229,232,236));
+            using var mutedBrush = new SolidBrush(Color.FromArgb(139,147,157));
+            using var trackBrush = new SolidBrush(Color.FromArgb(35,38,41));
+            using var fillBrush = new SolidBrush(Color.FromArgb(255,156,44));
+
+            g.DrawString("UTILITY IMPACT", titleFont, titleBrush, 10, 8);
+
+            if (_data == null)
+            {
+                g.DrawString("Load a demo to see real utility data.", mutedFont, mutedBrush, 10, 36);
+                return;
+            }
+
+            var rows = new (string Label, double Value, string Suffix)[]
+            {
+                ("HE damage", _data.UtilityDamage, ""),
+                ("Enemies flashed", _data.EnemiesFlashed, ""),
+                ("Flash time", _data.EnemyFlashSeconds, "s"),
+                ("Utility thrown", _data.TotalUtilityThrown, "")
+            };
+
+            double max = Math.Max(1, rows.Max(x => x.Value));
+            int y = 34;
+            int barLeft = 112;
+            int barRight = Math.Max(barLeft + 40, Width - 54);
+            int barWidth = Math.Max(20, barRight - barLeft);
+
+            foreach (var row in rows)
+            {
+                g.DrawString(row.Label, mutedFont, mutedBrush, 10, y + 1);
+                var val = row.Suffix == "s"
+                    ? row.Value.ToString("0.0") + row.Suffix
+                    : row.Value.ToString("0") + row.Suffix;
+                g.DrawString(val, valueFont, textBrush, Math.Max(barRight + 6, Width - 48), y);
+
+                var track = new Rectangle(barLeft, y + 3, barWidth, 8);
+                g.FillRectangle(trackBrush, track);
+                int fill = (int)Math.Round(barWidth * Math.Clamp(row.Value / max, 0, 1));
+                if (fill > 0)
+                    g.FillRectangle(fillBrush, new Rectangle(barLeft, y + 3, fill, 8));
+
+                y += 24;
+            }
+
+            var grenadeLine =
+                $"HE {_data.HeGrenades}  •  FLASH {_data.Flashbangs}  •  SMOKE {_data.Smokes}  •  MOLOTOV {_data.Molotovs}";
+            g.DrawString(grenadeLine, mutedFont, mutedBrush, 10, Math.Max(112, Height - 24));
+        }
     }
 
     private sealed class DeathRadarCanvas : Panel
