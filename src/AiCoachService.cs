@@ -6,12 +6,13 @@ namespace Sm0kiSoloCoach;
 
 public sealed class AiCoachService
 {
-    public const string ModelName = "qwen3:4b-instruct";
+    public const string ModelName = "qwen3:1.7b";
+    public const string LegacyModelName = "qwen3:4b-instruct";
     private const string BaseUrl = "http://127.0.0.1:11434";
 
     private static readonly HttpClient Http = new()
     {
-        Timeout = TimeSpan.FromSeconds(45)
+        Timeout = TimeSpan.FromSeconds(15)
     };
 
     public bool IsConfigured => FindOllamaExe() != null;
@@ -91,6 +92,54 @@ public sealed class AiCoachService
             "Ollama je nameščen, vendar lokalnega AI strežnika ni bilo mogoče zagnati.");
     }
 
+    private static async Task<HashSet<string>> GetInstalledModelsAsync(
+        CancellationToken cancellationToken)
+    {
+        var models = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var response = await Http.GetAsync(BaseUrl + "/api/tags", cancellationToken);
+            if (!response.IsSuccessStatusCode) return models;
+
+            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(raw);
+
+            if (!doc.RootElement.TryGetProperty("models", out var list) ||
+                list.ValueKind != JsonValueKind.Array)
+                return models;
+
+            foreach (var item in list.EnumerateArray())
+            {
+                if (item.TryGetProperty("name", out var name) &&
+                    name.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(name.GetString()))
+                    models.Add(name.GetString()!);
+
+                if (item.TryGetProperty("model", out var model) &&
+                    model.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(model.GetString()))
+                    models.Add(model.GetString()!);
+            }
+        }
+        catch { }
+
+        return models;
+    }
+
+    private static async Task<string> ResolveModelAsync(CancellationToken cancellationToken)
+    {
+        await EnsureServerAsync(cancellationToken);
+        var models = await GetInstalledModelsAsync(cancellationToken);
+
+        if (models.Contains(ModelName)) return ModelName;
+        if (models.Contains(LegacyModelName)) return LegacyModelName;
+
+        // Returning the fast model gives the normal Ollama "model not found" message,
+        // which our error handler converts into a clear Prepare Fast AI instruction.
+        return ModelName;
+    }
+
     public static async Task PrepareLocalAiAsync(CancellationToken cancellationToken = default)
     {
         var exe = FindOllamaExe();
@@ -110,34 +159,76 @@ public sealed class AiCoachService
         });
 
         if (process == null)
-            throw new InvalidOperationException("Prenosa lokalnega AI modela ni bilo mogoče zagnati.");
+            throw new InvalidOperationException("Prenosa Fast AI modela ni bilo mogoče zagnati.");
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
         await process.WaitForExitAsync(cancellationToken);
+        var stderr = await stderrTask;
+        _ = await stdoutTask;
+
         if (process.ExitCode != 0)
-        {
-            var err = await process.StandardError.ReadToEndAsync(cancellationToken);
             throw new InvalidOperationException(
-                string.IsNullOrWhiteSpace(err) ? "Prenos lokalnega AI modela ni uspel." : err.Trim());
+                string.IsNullOrWhiteSpace(stderr)
+                    ? "Prenos Fast AI modela ni uspel."
+                    : stderr.Trim());
+    }
+
+    public static async Task WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        if (FindOllamaExe() == null) return;
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+
+            var model = await ResolveModelAsync(timeout.Token);
+            var payload = new
+            {
+                model,
+                prompt = "/no_think\nOdgovori samo: OK",
+                stream = false,
+                keep_alive = "30m",
+                options = new
+                {
+                    temperature = 0.0,
+                    num_ctx = 512,
+                    num_predict = 4
+                }
+            };
+
+            using var response = await Http.PostAsJsonAsync(
+                BaseUrl + "/api/generate", payload, timeout.Token);
+            _ = await response.Content.ReadAsStringAsync(timeout.Token);
+        }
+        catch
+        {
+            // Warm-up is best-effort. The instant coach works even if Local AI is unavailable.
         }
     }
 
     public static async Task<string> TestLocalAiAsync(CancellationToken cancellationToken = default)
     {
-        await EnsureServerAsync(cancellationToken);
+        var model = await ResolveModelAsync(cancellationToken);
 
         var payload = new
         {
-            model = ModelName,
-            prompt = "Odgovori samo: LOCAL AI OK",
+            model,
+            prompt = "/no_think\nOdgovori samo: LOCAL AI OK",
             stream = false,
+            keep_alive = "30m",
             options = new
             {
                 temperature = 0.0,
+                num_ctx = 512,
                 num_predict = 16
             }
         };
 
-        using var response = await Http.PostAsJsonAsync(BaseUrl + "/api/generate", payload, cancellationToken);
+        using var response = await Http.PostAsJsonAsync(
+            BaseUrl + "/api/generate", payload, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -148,7 +239,7 @@ public sealed class AiCoachService
             ? value.GetString()
             : null;
 
-        return string.IsNullOrWhiteSpace(text) ? "LOCAL AI OK" : text.Trim();
+        return string.IsNullOrWhiteSpace(text) ? "LOCAL AI OK" : StripThinking(text).Trim();
     }
 
     public async Task<string> GenerateRoundAdviceAsync(
@@ -158,49 +249,45 @@ public sealed class AiCoachService
         string playerName,
         CancellationToken cancellationToken = default)
     {
-        await EnsureServerAsync(cancellationToken);
+        var model = await ResolveModelAsync(cancellationToken);
 
-        var recent = rounds.TakeLast(6)
-            .Select(r => $"R{r.Round + 1}: {r.Side}, +{r.KillsRound}K/+{r.DeathsRound}D, end USD {r.MoneyEnd}")
+        var recent = rounds.TakeLast(3)
+            .Select(r => $"R{r.Round + 1}:{r.KillsRound}K/{r.DeathsRound}D")
             .ToArray();
 
-        var state =
-            $"Map: {CoachEngine.PrettyMap(s.Map)} ({s.Map})\n" +
-            $"Side: {s.Team}\n" +
-            $"Round: {(s.Round is int roundNo ? roundNo + 1 : 0)}\n" +
-            $"Score CT:T: {s.CtScore ?? 0}:{s.TScore ?? 0}\n" +
-            $"Money: USD {s.Money ?? 0}\n" +
-            $"Weapon: {s.Weapon}\n" +
-            $"Armor: {s.Armor ?? 0}, helmet: {s.Helmet == true}\n" +
-            $"Match K/D/A: {s.Kills ?? 0}/{s.Deaths ?? 0}/{s.Assists ?? 0}\n" +
-            $"Round type: {CoachEngine.ClassifyRound(s)}\n" +
-            $"Coach mode: {mode}\n" +
-            $"Recent rounds: {(recent.Length == 0 ? "none tracked yet" : string.Join(" | ", recent))}";
+        var safePlayerName = string.IsNullOrWhiteSpace(playerName)
+            ? "player"
+            : playerName.Trim();
 
-        var safePlayerName = string.IsNullOrWhiteSpace(playerName) ? "igralca" : playerName.Trim();
-        var instructions =
-            $"Ti si kratek CS2 solo-queue performance coach za igralca {safePlayerName}. " +
-            "Uporabi SAMO podatke, ki so podani v stanju igre. Ne ugibaj lokacij ali informacij o nasprotnikih. " +
-            "Ne predlagaj cheatov, memory readanja, avtomatizacije inputa ali skritih podatkov. " +
-            "Cilj je izboljšati odločitve, trade timing, survival po prvem killu in dolgoročni kill output. " +
-            "Odgovori v slovenščini, zelo kratko in praktično, največ 5 vrstic. " +
-            "Uporabi točno format PLAN:, OPENING:, AFTER KILL:, AVOID:, FOCUS:. " +
-            "Brez uvoda, brez dolge razlage. Če je podatkov premalo, uporabi varen splošen plan glede na mapo, side in economy.";
+        var prompt =
+            "/no_think\n" +
+            $"CS2 solo coach for {safePlayerName}. Slovenian. Be immediate and practical. " +
+            "Use ONLY supplied state; no enemy-location guesses or hidden data. " +
+            "Exactly 4 short lines: PLAN:, OPENING:, AFTER KILL:, AVOID:. " +
+            "No intro. Max 65 words.\n" +
+            $"STATE map={CoachEngine.PrettyMap(s.Map)}({s.Map}); side={s.Team}; " +
+            $"round={(s.Round is int r ? r + 1 : 0)}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
+            $"money={s.Money ?? 0}; weapon={s.Weapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; " +
+            $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; " +
+            $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}.";
 
         var payload = new
         {
-            model = ModelName,
-            prompt = instructions + "\n\nSTANJE TEKME:\n" + state,
+            model,
+            prompt,
             stream = false,
-            keep_alive = "15m",
+            keep_alive = "30m",
             options = new
             {
-                temperature = 0.35,
-                num_predict = 220
+                temperature = 0.18,
+                top_p = 0.80,
+                num_ctx = 1024,
+                num_predict = 96
             }
         };
 
-        using var response = await Http.PostAsJsonAsync(BaseUrl + "/api/generate", payload, cancellationToken);
+        using var response = await Http.PostAsJsonAsync(
+            BaseUrl + "/api/generate", payload, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -210,9 +297,15 @@ public sealed class AiCoachService
         if (doc.RootElement.TryGetProperty("response", out var output) &&
             output.ValueKind == JsonValueKind.String &&
             !string.IsNullOrWhiteSpace(output.GetString()))
-            return output.GetString()!.Trim();
+            return StripThinking(output.GetString()!).Trim();
 
         throw new InvalidOperationException("Local AI odgovor ni vseboval besedila.");
+    }
+
+    private static string StripThinking(string text)
+    {
+        var end = text.LastIndexOf("</think>", StringComparison.OrdinalIgnoreCase);
+        return end >= 0 ? text[(end + "</think>".Length)..] : text;
     }
 
     private static Exception BuildLocalError(System.Net.HttpStatusCode status, string raw)
@@ -222,7 +315,7 @@ public sealed class AiCoachService
              raw.Contains("pull", StringComparison.OrdinalIgnoreCase)))
         {
             return new InvalidOperationException(
-                $"Model {ModelName} še ni pripravljen. Odpri AI Settings in klikni Prepare Local AI.");
+                $"Fast model {ModelName} še ni pripravljen. Odpri Local AI in klikni Prepare Fast AI.");
         }
 
         var shortError = raw.Length > 240 ? raw[..240] + "…" : raw;
