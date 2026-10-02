@@ -21,6 +21,7 @@ public sealed class MainForm : Form
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
     private AutoDemoInboxService? _demoInbox;
+    private GameOverlayForm? _gameOverlay;
     private readonly Label _phoneUrl = new();
     private readonly Button _updateButton = new();
     private readonly Label _aiText = new();
@@ -74,6 +75,8 @@ public sealed class MainForm : Form
 
         BuildUi();
 
+        _gameOverlay = new GameOverlayForm();
+
         _server.SnapshotReceived += OnSnapshot;
         _server.Start();
         Text = $"Sm0ki Solo Coach • {_profile.Nickname} • GSI {_server.BoundPort}";
@@ -106,6 +109,9 @@ public sealed class MainForm : Form
 
         Shown += async (_,__) =>
         {
+            _gameOverlay?.ApplyMode(_prefs.OverlayMode);
+            UpdateGameOverlay();
+
             await CheckForUpdatesSilentAsync();
             _ = AiCoachService.WarmUpAsync();
             _ = LoadFaceitSnapshotAsync();
@@ -119,6 +125,8 @@ public sealed class MainForm : Form
             _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
             _demoInbox?.Dispose();
+            _gameOverlay?.Close();
+            _gameOverlay?.Dispose();
             _server.Dispose();
         };
     }
@@ -901,8 +909,8 @@ public sealed class MainForm : Form
         {
             Text = "Sm0ki Solo Coach • Tools",
             Width = 620,
-            Height = 490,
-            MinimumSize = new Size(560, 450),
+            Height = 570,
+            MinimumSize = new Size(560, 520),
             StartPosition = FormStartPosition.CenterParent,
             AutoScaleMode = AutoScaleMode.Dpi,
             BackColor = Color.FromArgb(9, 13, 19),
@@ -933,13 +941,13 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 3,
+            RowCount = 4,
             Margin = Padding.Empty
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        for (int i = 0; i < 3; i++)
-            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33f));
+        for (int i = 0; i < 4; i++)
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
 
         Button ToolButton(string title, string subtitle, EventHandler click)
         {
@@ -1010,6 +1018,16 @@ public sealed class MainForm : Form
             }
         }), 1, 2);
 
+        grid.Controls.Add(ToolButton("GAME OVERLAY", "Click-through CS2 HUD • F8 toggle", (_,__) =>
+        {
+            ShowOverlaySettings(dialog);
+        }), 0, 3);
+
+        grid.Controls.Add(ToolButton("OVERLAY MODE", $"Current: {_prefs.OverlayMode}", (_,__) =>
+        {
+            ShowOverlaySettings(dialog);
+        }), 1, 3);
+
         root.Controls.Add(grid, 0, 1);
 
         var close = MakeButton("CLOSE", 90, false);
@@ -1019,6 +1037,36 @@ public sealed class MainForm : Form
 
         dialog.Controls.Add(root);
         dialog.ShowDialog(this);
+    }
+
+    private void ShowOverlaySettings(Form owner)
+    {
+        if (_gameOverlay == null)
+            return;
+
+        using var settings = new OverlaySettingsForm(
+            _prefs.OverlayMode,
+            _gameOverlay.HotkeyRegistered);
+
+        if (settings.ShowDialog(owner) != DialogResult.OK)
+            return;
+
+        _prefs.OverlayMode = settings.SelectedMode;
+        UserSettingsStore.Save(_prefs);
+
+        _gameOverlay.ApplyMode(_prefs.OverlayMode);
+        UpdateGameOverlay();
+    }
+
+    private void UpdateGameOverlay()
+    {
+        if (_gameOverlay == null)
+            return;
+
+        _gameOverlay.UpdateData(
+            _current,
+            _latestAiAdvice,
+            _aiStatus.Text);
     }
 
     private Button MakeNavButton(string text, bool active, EventHandler click)
@@ -1416,6 +1464,7 @@ public sealed class MainForm : Form
         _aiStatus.ForeColor = _aiCoach.IsConfigured
             ? Color.FromArgb(255, 178, 91)
             : Color.FromArgb(126, 240, 174);
+        UpdateGameOverlay();
 
         if (!_aiCoach.IsConfigured)
             return;
@@ -1448,6 +1497,7 @@ public sealed class MainForm : Form
             _aiText.Text = advice;
             _aiStatus.Text = "AI REFINED";
             _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+            UpdateGameOverlay();
         }
         catch (OperationCanceledException)
         {
@@ -1926,5 +1976,6 @@ public sealed class MainForm : Form
                     Color.FromArgb(132, 144, 163)));
 
         _roundTimeline.ResumeLayout(true);
+        UpdateGameOverlay();
     }
 }
