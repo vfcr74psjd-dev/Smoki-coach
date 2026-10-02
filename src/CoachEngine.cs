@@ -98,60 +98,134 @@ public static class CoachEngine
         string focus,
         IReadOnlyList<RoundRecord> rounds)
     {
-        var roundType = ClassifyRound(s);
-        var map = PrettyMap(s.Map);
-        var displayRound = (s.Round ?? 0) + 1;
         var variant = Math.Abs((s.Round ?? 0) % 3);
+        var buy = CompactBuyPlan(s);
+        var action = CompactActionPlan(s, role, focus, variant);
+        var adapt = CompactAdaptPlan(rounds, mode);
 
-        var scoreContext = ScoreContext(s);
-        var mapPlan = MapRoundPlanVariant(s.Map, s.Team, variant);
-        var recentAdjustment = RecentRoundAdjustment(rounds);
-        var opening = OpeningPlan(roundType, variant);
+        return $"BUY: {buy}\nDO: {action}\nADAPT: {adapt}";
+    }
 
-        var rolePlan = role switch
+    private static string CompactBuyPlan(GameSnapshot s)
+    {
+        var money = s.Money ?? 0;
+        var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+        var pistol = s.Round is 0 or 12;
+
+        if (pistol)
+            return ct
+                ? (money >= 800 ? "kevlar • ali kit + flash, če igraš support" : "brez force-a")
+                : (money >= 800 ? "kevlar • ali smoke + flash + P250 za utility plan" : "brez force-a");
+
+        if (money < 1500)
+            return "eco • P250 samo, če ne pokvari naslednjega full buyja";
+
+        if (money < 3000)
+            return ct
+                ? "MP9/FAMAS + kevlar samo ob team force-u • sicer save"
+                : "MAC-10/Galil + kevlar samo ob team force-u • sicer save";
+
+        if (ct)
         {
-            "Entry" => "Entry: commitaj šele, ko je teammate dovolj blizu za trade.",
-            "Lurk" => "Lurk: vzemi info/prostor, potem se pravočasno priključi glavnemu kontaktu.",
-            "Support" => "Support: odpri prostor z utilityjem in takoj sledi za trade.",
-            "Anchor" => "Anchor: prvi kontakt vzemi iz kota z varnim umikom.",
-            _ => variant switch
-            {
-                0 => "Flex: igraj najmočnejši spawn, ampak ostani tradeable.",
-                1 => "Flex: začni za info, nato se priključi strani, kjer ima ekipa kontakt.",
-                _ => "Flex: ne sili prvega duela; bodi drugi kontakt in pobiraj trade."
-            }
+            if (money >= 4200)
+                return "M4 + kevlar/helmet + smoke • nato flash/kit";
+            return "FAMAS/MP9 + kevlar + smoke • ne uniči naslednjega buyja";
+        }
+
+        if (money >= 4100)
+            return "AK + kevlar/helmet + smoke + molly";
+        return "Galil + kevlar + smoke • ostanek za flash";
+    }
+
+    private static string CompactActionPlan(
+        GameSnapshot s,
+        string role,
+        string focus,
+        int variant)
+    {
+        var mapStep = CompactMapStep(s.Map, s.Team, variant);
+
+        var roleStep = role switch
+        {
+            "Entry" => "entry samo s tradeom",
+            "Lurk" => "vzemi info, nato pravočasno joinaj",
+            "Support" => "utility pred kontaktom, nato takoj za trade",
+            "Anchor" => "prvi kontakt + varen umik",
+            _ => "ostani tradeable"
         };
 
-        var afterKill = mode switch
+        var focusStep = focus switch
         {
-            "Aggressive" => variant == 1
-                ? "Po prvem killu vzemi prostor samo, če imaš teammate trade; sicer zamenjaj kot."
-                : "Po killu takoj spremeni kot; drugega duela ne jemlji iz iste linije.",
-            "Safe" => variant == 2
-                ? "Po killu zadrži številčno prednost in prisili nasprotnika v retake/entry."
-                : "Po killu se umakni v crossfire in ohrani HP.",
-            _ => variant switch
-            {
-                0 => "Po killu reposition; ne repeekaj iste linije brez novega razloga.",
-                1 => "Po killu za 2–3 sekunde prekini kontakt, nato pomagaj najbližjemu teammateu.",
-                _ => "Po killu zaščiti trade linijo in pusti nasprotniku, da naredi naslednjo napako."
-            }
+            "Survive & trade" => "po prvem kontaktu ne repeekaj",
+            "Entry impact" => "ustvari prostor, brez chain-peeka",
+            "Utility impact" => "1 uporaben nade pred duelom",
+            "Clutch / late round" => "prihrani HP + utility za late",
+            _ => "po killu zamenjaj kot"
         };
 
-        var focusPlan = focus switch
-        {
-            "Survive & trade" => "Prioriteta: preživi prvi kontakt in ostani v trade razdalji.",
-            "Entry impact" => "Prioriteta: ustvari prostor brez solo chain-peekanja.",
-            "Utility impact" => "Prioriteta: vsaj en uporaben utility pred glavnim duelom.",
-            "Clutch / late round" => "Prioriteta: ohrani HP in utility za zadnjih 40 sekund.",
-            _ => "Prioriteta: en kakovosten kill, potem zaščiti številčno prednost."
-        };
+        return $"{mapStep} → {roleStep} → {focusStep}";
+    }
 
-        return
-            $"PLAN R{displayRound}: {map} {s.Team} • {roundType} • {scoreContext}. {mapPlan}\n" +
-            $"OPENING: {opening} {rolePlan}\n" +
-            $"ADAPT: {recentAdjustment}\n" +
-            $"AFTER KILL: {afterKill} {focusPlan}";
+    private static string CompactAdaptPlan(
+        IReadOnlyList<RoundRecord> rounds,
+        string mode)
+    {
+        var last = rounds.LastOrDefault();
+        if (last == null)
+            return mode == "Aggressive"
+                ? "1 kontroliran opening duel • brez drugega dry peeka"
+                : "prvi duel naj bo tradeable • oceni kontakt";
+
+        if (last.KillsRound == 0 && last.DeathsRound > 0)
+            return "prejšnja 0K/1D → manj early riska • igraj drugi kontakt";
+
+        if (last.KillsRound >= 2 && last.DeathsRound == 0)
+            return $"prejšnja {last.KillsRound}K/0D → ohrani tempo • spremeni opening timing";
+
+        if (last.KillsRound >= 2)
+            return $"prejšnja {last.KillsRound}K/{last.DeathsRound}D → impact dober • po killu hitreje ven";
+
+        if (last.KillsRound == 0 && last.DeathsRound == 0)
+            return "prejšnja 0K/0D → bodi bližje prvemu tradeu";
+
+        return $"prejšnja {last.KillsRound}K/{last.DeathsRound}D → isti plan • drugačen timing";
+    }
+
+    private static string CompactMapStep(string map, string side, int variant)
+    {
+        var t = string.Equals(side, "T", StringComparison.OrdinalIgnoreCase);
+
+        return map switch
+        {
+            "de_mirage" when t => variant == 0 ? "mid control" : variant == 1 ? "ramp/apps info" : "pozni mid split",
+            "de_mirage" => variant == 0 ? "mid info + connector trade" : variant == 1 ? "site crossfire" : "delay utility + reposition",
+
+            "de_inferno" when t => variant == 0 ? "banana control" : variant == 1 ? "apps/mid info" : "pozni execute",
+            "de_inferno" => variant == 0 ? "banana/apps info" : variant == 1 ? "pasiven crossfire" : "delay utility",
+
+            "de_nuke" when t => variant == 0 ? "lobby/yard info" : variant == 1 ? "ramp kontakt" : "spremeni nivo",
+            "de_nuke" => variant == 0 ? "yard/ramp info" : variant == 1 ? "site setup" : "kontakt + change level",
+
+            "de_ancient" when t => variant == 0 ? "mid/cave control" : variant == 1 ? "info + join main" : "pozni split",
+            "de_ancient" => variant == 0 ? "cave/mid info" : variant == 1 ? "site crossfire" : "delay utility",
+
+            "de_anubis" when t => variant == 0 ? "mid/water control" : variant == 1 ? "info brez commita" : "pozni split",
+            "de_anubis" => variant == 0 ? "mid/water info" : variant == 1 ? "pasiven drugi kontakt" : "delay utility",
+
+            "de_dust2" when t => variant == 0 ? "long/mid info" : variant == 1 ? "B prostor + trade" : "spremeni tempo",
+            "de_dust2" => variant == 0 ? "long/mid info" : variant == 1 ? "site crossfire" : "druga opening linija",
+
+            "de_train" when t => variant == 0 ? "yard/inner info" : variant == 1 ? "trade entry" : "napadi šibkejšo stran",
+            "de_train" => variant == 0 ? "dolga linija + reposition" : variant == 1 ? "pasiven crossfire" : "drugačen peek",
+
+            "de_overpass" when t => variant == 0 ? "fountain/connector control" : variant == 1 ? "short info" : "pozni map control",
+            "de_overpass" => variant == 0 ? "info + varen umik" : variant == 1 ? "site crossfire" : "connector/short timing",
+
+            "de_vertigo" when t => variant == 0 ? "ramp/mid prostor" : variant == 1 ? "info brez dolgega stanja" : "pozni commit",
+            "de_vertigo" => variant == 0 ? "ramp delay" : variant == 1 ? "pasiven crossfire" : "drugačen timing",
+
+            _ => t ? "1 kos map controla" : "prvi kontakt z umikom"
+        };
     }
 
     private static string ScoreContext(GameSnapshot s)
