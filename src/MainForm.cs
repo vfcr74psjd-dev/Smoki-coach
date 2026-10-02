@@ -399,9 +399,6 @@ public sealed class MainForm : Form
         }
     }
 
-    private Panel MakeCard() => new() { BackColor = Color.FromArgb(23,27,35), Margin = new Padding(4), Dock = DockStyle.Fill };
-    private Label Header(string t) => new() { Text=t, ForeColor=Color.FromArgb(145,155,170), AutoSize=true, Font=new Font("Segoe UI",9,FontStyle.Bold) };
-
     private void OnSnapshot(GameSnapshot s)
     {
         BeginInvoke(() =>
