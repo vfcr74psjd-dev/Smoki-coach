@@ -280,17 +280,23 @@ public sealed class AiCoachService
             ? "player"
             : playerName.Trim();
 
+        var roundNumber = s.Round is int currentRound ? currentRound + 1 : 0;
+        var variationSeed =
+            $"{roundNumber}:{s.CtScore ?? 0}:{s.TScore ?? 0}:{rounds.LastOrDefault()?.KillsRound ?? -1}:{rounds.LastOrDefault()?.DeathsRound ?? -1}";
+
         var prompt =
             "/no_think\n" +
             $"CS2 solo coach for {safePlayerName}. Slovenian. Be immediate and practical. " +
             "Use ONLY supplied state; no enemy-location guesses or hidden data. " +
+            "Adapt to the PREVIOUS round and current score. Do not give a generic repeated plan: " +
+            "change the opening emphasis/timing when the round number or recent outcome changes. " +
             "Exactly 4 short lines: PLAN:, OPENING:, AFTER KILL:, AVOID:. " +
             "No intro. Max 65 words.\n" +
             $"STATE map={CoachEngine.PrettyMap(s.Map)}({s.Map}); side={s.Team}; " +
-            $"round={(s.Round is int r ? r + 1 : 0)}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
+            $"round={roundNumber}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
             $"money={s.Money ?? 0}; weapon={s.Weapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; " +
             $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; " +
-            $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}.";
+            $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}; variation={variationSeed}.";
 
         var payload = new
         {
@@ -300,7 +306,7 @@ public sealed class AiCoachService
             keep_alive = "30m",
             options = new
             {
-                temperature = 0.18,
+                temperature = 0.24,
                 top_p = 0.80,
                 num_ctx = 1024,
                 num_predict = 96
