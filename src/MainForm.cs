@@ -102,7 +102,7 @@ public sealed class MainForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
@@ -278,6 +278,15 @@ public sealed class MainForm : Form
             dialog.ShowDialog(this);
         };
         toolbar.Controls.Add(analyticsButton);
+
+        var reviewButton = MakeButton("Review Lab", 108, true);
+        reviewButton.Margin = new Padding(5, 22, 5, 0);
+        reviewButton.Click += (_,__) =>
+        {
+            using var dialog = new ReviewLabForm(_profile.Nickname);
+            dialog.ShowDialog(this);
+        };
+        toolbar.Controls.Add(reviewButton);
 
         var faceitButton = MakeButton("FACEIT", 92, false);
         faceitButton.Margin = new Padding(5, 22, 5, 0);

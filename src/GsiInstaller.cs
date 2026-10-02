@@ -26,8 +26,14 @@ public static class GsiInstaller
         "  \"player_state\" \"1\"\n" +
         "  \"player_weapons\" \"1\"\n" +
         "  \"player_match_stats\" \"1\"\n" +
+        "  \"player_position\" \"1\"\n" +
         "  \"phase_countdowns\" \"1\"\n" +
         "  \"bomb\" \"1\"\n" +
+        " }\n" +
+        " \"output\"\n" +
+        " {\n" +
+        "  \"precision_position\" \"2\"\n" +
+        "  \"precision_vector\" \"3\"\n" +
         " }\n" +
         "}\n";
 

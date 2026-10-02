@@ -18,6 +18,10 @@ public sealed class GameSnapshot
     public int? Deaths { get; set; }
     public int? Assists { get; set; }
     public string Weapon { get; set; } = "";
+    public float? PositionX { get; set; }
+    public float? PositionY { get; set; }
+    public float? PositionZ { get; set; }
+    public bool HasPosition => PositionX.HasValue && PositionY.HasValue && PositionZ.HasValue;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 
