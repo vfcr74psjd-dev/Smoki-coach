@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Sm0ki Solo Coach — a local-first CS2 solo performance companion with live GSI coaching, round plans, review tools, FACEIT stats and a phone companion.">
+  <meta name="theme-color" content="#090d13">
+  <title>Sm0ki Solo Coach</title>
+  <style>
+    :root{
+      --bg:#080b11;--panel:#0f141d;--panel2:#141b26;--line:#253044;
+      --text:#f4f7fb;--muted:#94a0b5;--accent:#7568ff;--accent2:#8b81ff;
+      --good:#7ef0ae;--warn:#ffbd82;--max:1160px
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;background:
+      radial-gradient(circle at 15% 0%,rgba(117,104,255,.17),transparent 34rem),
+      radial-gradient(circle at 90% 18%,rgba(71,114,255,.08),transparent 30rem),
+      var(--bg);
+      color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.55
+    }
+    a{color:inherit;text-decoration:none}
+    .wrap{width:min(var(--max),calc(100% - 36px));margin:auto}
+    header{
+      position:sticky;top:0;z-index:10;background:rgba(8,11,17,.78);
+      backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.05)
+    }
+    nav{height:72px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+    .brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:-.02em}
+    .mark{
+      width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,var(--accent2),#5849ef);
+      box-shadow:0 0 30px rgba(117,104,255,.35);display:grid;place-items:center;font-size:15px
+    }
+    .navlinks{display:flex;align-items:center;gap:22px;color:#b8c1d1;font-size:14px;font-weight:650}
+    .navlinks a:hover{color:#fff}
+    .button{
+      display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid transparent;
+      border-radius:12px;padding:11px 16px;font-weight:800;font-size:14px;transition:.18s ease
+    }
+    .button.primary{background:linear-gradient(135deg,var(--accent2),#6658f5);box-shadow:0 12px 34px rgba(94,78,241,.22)}
+    .button.primary:hover{transform:translateY(-1px);filter:brightness(1.07)}
+    .button.secondary{background:#121823;border-color:#2a3447;color:#dce3ee}
+    .button.secondary:hover{background:#18202d}
+    .hero{padding:92px 0 62px;text-align:center}
+    .eyebrow{
+      display:inline-flex;gap:8px;align-items:center;border:1px solid #2d3550;background:rgba(22,27,40,.72);
+      color:#bbb5ff;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:850;letter-spacing:.1em
+    }
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 14px var(--good)}
+    h1{font-size:clamp(44px,7vw,82px);line-height:.98;letter-spacing:-.055em;margin:22px auto 24px;max-width:980px}
+    h1 span{color:#8b81ff}
+    .hero p{max-width:780px;margin:0 auto;color:#aab5c8;font-size:18px}
+    .hero-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:30px}
+    .micro{margin-top:13px;color:#718096;font-size:12px}
+    .app-shell{
+      margin:52px auto 0;max-width:1080px;border:1px solid #283246;border-radius:22px;padding:12px;
+      background:linear-gradient(180deg,#111720,#0c1118);box-shadow:0 35px 100px rgba(0,0,0,.45)
+    }
+    .app{
+      display:grid;grid-template-columns:184px 1fr;min-height:510px;border:1px solid #222c3d;
+      background:#090d13;border-radius:16px;overflow:hidden;text-align:left
+    }
+    .side{background:#0d121a;padding:18px 13px;border-right:1px solid #202938}
+    .side .logo{font-weight:900;font-size:19px;margin:3px 7px 22px}
+    .side .logo span{color:var(--accent2)}
+    .navitem{padding:10px 11px;border-radius:9px;color:#8d9ab0;font-size:12px;font-weight:800;margin:3px 0}
+    .navitem.active{background:#24203e;color:#fff;border:1px solid #403777}
+    .main{padding:18px}
+    .toprow{display:flex;align-items:center;justify-content:space-between;gap:20px}
+    .toprow h3{font-size:21px;margin:0}
+    .status{font-size:10px;font-weight:850;background:#143322;color:#85efb3;border-radius:8px;padding:7px 10px}
+    .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+    .stat,.coach,.buy{border:1px solid #222c3c;background:#101620;border-radius:12px}
+    .stat{padding:11px}
+    .label{font-size:8px;letter-spacing:.12em;color:#6e7d95;font-weight:850}
+    .stat strong{display:block;font-size:18px;margin-top:5px}
+    .livegrid{display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-top:10px}
+    .coach,.buy{padding:16px}
+    .coach{border-left:3px solid var(--accent)}
+    .coach h4,.buy h4{margin:4px 0 12px;font-size:18px}
+    .plan{color:#d4dbea;font-size:12px;line-height:1.75}
+    .plan b{color:#fff}
+    .pillrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+    .pill{padding:5px 8px;border-radius:7px;font-size:9px;font-weight:850;background:#1b2330;color:#9eacc0}
+    .pill.live{background:#493f91;color:white}
+    section{padding:78px 0}
+    .section-title{max-width:720px;margin:0 auto 34px;text-align:center}
+    .section-title h2{font-size:38px;letter-spacing:-.04em;margin:0 0 12px}
+    .section-title p{color:#95a2b6;margin:0}
+    .features{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .feature{
+      background:linear-gradient(180deg,#111720,#0d1219);border:1px solid #222c3c;border-radius:16px;padding:22px
+    }
+    .feature .icon{
+      width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:#211d3e;
+      color:#9f96ff;font-weight:900;margin-bottom:16px
+    }
+    .feature h3{margin:0 0 8px;font-size:17px}
+    .feature p{margin:0;color:#8f9cb0;font-size:14px}
+    .trust{
+      display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px
+    }
+    .trust .item{padding:16px;border:1px solid #222c3c;background:#0f151e;border-radius:13px;text-align:center}
+    .trust strong{display:block;font-size:13px}.trust span{font-size:11px;color:#7f8ca1}
+    .cta{
+      margin:26px 0 80px;padding:34px;border-radius:20px;border:1px solid #312b59;
+      background:linear-gradient(135deg,rgba(117,104,255,.14),rgba(18,23,34,.88));
+      display:flex;align-items:center;justify-content:space-between;gap:22px
+    }
+    .cta h3{margin:0 0 6px;font-size:27px}.cta p{margin:0;color:#96a3b7}
+    footer{border-top:1px solid #202938;padding:26px 0 38px;color:#728096;font-size:12px}
+    .foot{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+    .footlinks{display:flex;gap:18px}
+    @media(max-width:900px){
+      .navlinks a:not(.button){display:none}
+      .features{grid-template-columns:1fr 1fr}
+      .trust{grid-template-columns:1fr 1fr}
+      .app{grid-template-columns:1fr}.side{display:none}
+      .statgrid{grid-template-columns:1fr 1fr}.livegrid{grid-template-columns:1fr}
+    }
+    @media(max-width:600px){
+      .hero{padding-top:68px}.hero p{font-size:16px}
+      .features{grid-template-columns:1fr}.cta{align-items:flex-start;flex-direction:column}
+      .navlinks .button{padding:9px 12px;font-size:12px}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="./"><span class="mark">S</span><span>Sm0ki Solo Coach</span></a>
+      <div class="navlinks">
+        <a href="#features">Features</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://github.com/vfcr74psjd-dev/Smoki-coach" rel="noopener">GitHub</a>
+        <a class="button primary" href="https://github.com/vfcr74psjd-dev/Smoki-coach/releases/latest/download/Sm0kiSoloCoach-Setup.exe">Download for Windows</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div class="eyebrow"><span class="dot"></span> LOCAL-FIRST CS2 SOLO COACH</div>
+      <h1>Play the next round with a <span>clear plan.</span></h1>
+      <p>Sm0ki Solo Coach is a Windows companion for CS2 players who queue solo. It turns legitimate Game State Integration data into fast round plans, review tools and personal performance context.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="https://github.com/vfcr74psjd-dev/Smoki-coach/releases/latest/download/Sm0kiSoloCoach-Setup.exe">Download latest setup</a>
+        <a class="button secondary" href="https://github.com/vfcr74psjd-dev/Smoki-coach/releases/latest" rel="noopener">View latest release</a>
+      </div>
+      <div class="micro">Windows 10/11 • Free • Local AI optional • No memory reading • No DLL injection</div>
+
+      <div class="app-shell" aria-label="Product preview">
+        <div class="app">
+          <aside class="side">
+            <div class="logo">SM0KI <span>PRO</span></div>
+            <div class="navitem active">LIVE COACH</div>
+            <div class="navitem">REVIEW LAB</div>
+            <div class="navitem">PROGRESS</div>
+            <div class="navitem">FACEIT</div>
+            <div class="navitem">PHONE COMPANION</div>
+          </aside>
+          <div class="main">
+            <div class="toprow">
+              <div><div class="label">LIVE COACH</div><h3>Mirage • T • R8 • Full buy</h3></div>
+              <div class="status">GSI LIVE</div>
+            </div>
+            <div class="statgrid">
+              <div class="stat"><div class="label">KILLS</div><strong>11</strong></div>
+              <div class="stat"><div class="label">DEATHS</div><strong>6</strong></div>
+              <div class="stat"><div class="label">K / D</div><strong>1.83</strong></div>
+              <div class="stat"><div class="label">MONEY</div><strong>$5,200</strong></div>
+            </div>
+            <div class="livegrid">
+              <div class="coach">
+                <div class="label">NEXT ROUND PLAN • FAST AI READY</div>
+                <h4>Win the next round</h4>
+                <div class="plan"><b>PLAN:</b> contest mid with utility, stay tradeable.<br><b>OPENING:</b> smoke window and take one controlled duel.<br><b>AFTER KILL:</b> reposition instead of repeating the same peek.<br><b>AVOID:</b> dry solo contact into multiple angles.</div>
+                <div class="pillrow">
+                  <span class="pill">R5 • 1K</span><span class="pill">R6 • 0K</span>
+                  <span class="pill">R7 • 2K</span><span class="pill live">R8 • LIVE</span>
+                </div>
+              </div>
+              <div class="buy">
+                <div class="label">BUY RECOMMENDATION</div>
+                <h4>FULL BUY</h4>
+                <div class="plan">Rifle + armor + utility. Keep enough utility for the first contact and late-round reposition.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-title">
+        <h2>Built for solo queue decisions.</h2>
+        <p>The app focuses on information you can actually use between rounds instead of flooding the screen while you are playing.</p>
+      </div>
+
+      <div class="features">
+        <article class="feature"><div class="icon">01</div><h3>Instant round plans</h3><p>Get an immediate plan at the start of a round. Optional local AI can refine it without blocking the useful first answer.</p></article>
+        <article class="feature"><div class="icon">02</div><h3>CS2 GSI integration</h3><p>Uses supported Game State Integration for map, round, score, economy, health and player-match state.</p></article>
+        <article class="feature"><div class="icon">03</div><h3>Review Lab</h3><p>Import CS2 demos to review your deaths, exact demo positions and recurring problem areas after the match.</p></article>
+        <article class="feature"><div class="icon">04</div><h3>Session progress</h3><p>Track K/R, survival, zero-kill rounds, multi-kills and recent sessions for your local player profile.</p></article>
+        <article class="feature"><div class="icon">05</div><h3>FACEIT context</h3><p>Optionally connect a FACEIT Data API key to show profile, ELO and supported performance statistics.</p></article>
+        <article class="feature"><div class="icon">06</div><h3>Phone companion</h3><p>Open a private LAN dashboard from a QR code on a phone connected to the same network.</p></article>
+      </div>
+
+      <div class="trust">
+        <div class="item"><strong>Local-first</strong><span>Personal settings and coaching history stay on your PC.</span></div>
+        <div class="item"><strong>No hidden data</strong><span>No enemy-position memory reading or anti-cheat bypasses.</span></div>
+        <div class="item"><strong>No paid AI API</strong><span>Optional AI runs locally through Ollama.</span></div>
+        <div class="item"><strong>Free hosting</strong><span>This product site is served through GitHub Pages.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="cta">
+      <div><h3>Ready to try Sm0ki Solo Coach?</h3><p>Install the latest Windows build and start with the local profile setup.</p></div>
+      <a class="button primary" href="https://github.com/vfcr74psjd-dev/Smoki-coach/releases/latest/download/Sm0kiSoloCoach-Setup.exe">Download latest setup</a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>© 2026 Sm0ki Solo Coach. Independent CS2 companion project. Not affiliated with Valve or FACEIT.</div>
+    <div class="footlinks"><a href="privacy.html">Privacy</a><a href="https://github.com/vfcr74psjd-dev/Smoki-coach" rel="noopener">Source</a></div>
+  </div>
+</footer>
+</body>
+</html>
