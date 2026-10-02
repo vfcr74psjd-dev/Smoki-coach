@@ -100,59 +100,272 @@ public static class CoachEngine
     {
         var roundType = ClassifyRound(s);
         var map = PrettyMap(s.Map);
-        var mapPlan = MapRoundPlan(s.Map, s.Team);
+        var displayRound = (s.Round ?? 0) + 1;
+        var variant = Math.Abs((s.Round ?? 0) % 3);
 
-        var opening = roundType switch
-        {
-            "Pistol" => "Pistol: drži trade razdaljo in vzemi samo en čist prvi duel.",
-            "Eco" => "Eco: izogni se dolgim dry duelom; igraj close/stack za en kill in pobiranje orožja.",
-            "Force / light" => "Light buy: izberi kratko razdaljo ali utility-assisted duel; ne razdeli ekipe.",
-            _ => "Gun round: utility pred prvim peekanjem, nato en kontroliran opening/trade duel."
-        };
+        var scoreContext = ScoreContext(s);
+        var mapPlan = MapRoundPlanVariant(s.Map, s.Team, variant);
+        var recentAdjustment = RecentRoundAdjustment(rounds);
+        var opening = OpeningPlan(roundType, variant);
 
         var rolePlan = role switch
         {
             "Entry" => "Entry: commitaj šele, ko je teammate dovolj blizu za trade.",
-            "Lurk" => "Lurk: vzemi info/prostor, ampak ne zamudi glavnega kontakta ekipe.",
+            "Lurk" => "Lurk: vzemi info/prostor, potem se pravočasno priključi glavnemu kontaktu.",
             "Support" => "Support: odpri prostor z utilityjem in takoj sledi za trade.",
             "Anchor" => "Anchor: prvi kontakt vzemi iz kota z varnim umikom.",
-            _ => "Flex: izberi nalogo glede na spawn in ostani tradeable."
+            _ => variant switch
+            {
+                0 => "Flex: igraj najmočnejši spawn, ampak ostani tradeable.",
+                1 => "Flex: začni za info, nato se priključi strani, kjer ima ekipa kontakt.",
+                _ => "Flex: ne sili prvega duela; bodi drugi kontakt in pobiraj trade."
+            }
         };
 
         var afterKill = mode switch
         {
-            "Aggressive" => "Po killu zamenjaj kot; drugi duel vzemi samo z jasnim timingom ali tradeom.",
-            "Safe" => "Po killu se umakni v crossfire in prisili nasprotnika, da pride k tebi.",
-            _ => "Po killu reposition; ne repeekaj iste linije brez novega razloga."
+            "Aggressive" => variant == 1
+                ? "Po prvem killu vzemi prostor samo, če imaš teammate trade; sicer zamenjaj kot."
+                : "Po killu takoj spremeni kot; drugega duela ne jemlji iz iste linije.",
+            "Safe" => variant == 2
+                ? "Po killu zadrži številčno prednost in prisili nasprotnika v retake/entry."
+                : "Po killu se umakni v crossfire in ohrani HP.",
+            _ => variant switch
+            {
+                0 => "Po killu reposition; ne repeekaj iste linije brez novega razloga.",
+                1 => "Po killu za 2–3 sekunde prekini kontakt, nato pomagaj najbližjemu teammateu.",
+                _ => "Po killu zaščiti trade linijo in pusti nasprotniku, da naredi naslednjo napako."
+            }
         };
 
         var focusPlan = focus switch
         {
-            "Survive & trade" => "Preživi prvi kontakt in ostani v trade razdalji.",
-            "Entry impact" => "Ustvari prostor, vendar brez solo chain-peekanja.",
-            "Utility impact" => "Vsaj en kos utilityja uporabi pred glavnim duelom.",
-            "Clutch / late round" => "Ohrani HP in utility za zadnjih 40 sekund.",
-            _ => "Išči en kakovosten kill, nato zaščiti številčno prednost."
+            "Survive & trade" => "Prioriteta: preživi prvi kontakt in ostani v trade razdalji.",
+            "Entry impact" => "Prioriteta: ustvari prostor brez solo chain-peekanja.",
+            "Utility impact" => "Prioriteta: vsaj en uporaben utility pred glavnim duelom.",
+            "Clutch / late round" => "Prioriteta: ohrani HP in utility za zadnjih 40 sekund.",
+            _ => "Prioriteta: en kakovosten kill, potem zaščiti številčno prednost."
         };
 
-        var recent = rounds.TakeLast(3).ToList();
-        string trend = "";
-        if (recent.Count >= 2)
-        {
-            var deathRounds = recent.Count(x => x.DeathsRound > 0);
-            var zeroRounds = recent.Count(x => x.KillsRound == 0);
-
-            if (deathRounds >= 2 && zeroRounds >= 2)
-                trend = " Zadnji trend: znižaj early risk.";
-            else if (recent.Count(x => x.KillsRound >= 2) >= 2)
-                trend = " Zadnji trend: output je dober — ne podari ga z nepotrebnim repeekom.";
-        }
-
         return
-            $"PLAN: {map} {s.Team} • {roundType}. {mapPlan}\n" +
+            $"PLAN R{displayRound}: {map} {s.Team} • {roundType} • {scoreContext}. {mapPlan}\n" +
             $"OPENING: {opening} {rolePlan}\n" +
-            $"AFTER KILL: {afterKill}\n" +
-            $"FOCUS: {focusPlan}{trend}";
+            $"ADAPT: {recentAdjustment}\n" +
+            $"AFTER KILL: {afterKill} {focusPlan}";
+    }
+
+    private static string ScoreContext(GameSnapshot s)
+    {
+        var ct = s.CtScore ?? 0;
+        var t = s.TScore ?? 0;
+        var isCt = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+        var own = isCt ? ct : t;
+        var enemy = isCt ? t : ct;
+        var diff = own - enemy;
+
+        if (diff >= 3)
+            return $"vodiš {own}:{enemy} — ne podari openinga";
+        if (diff <= -3)
+            return $"zaostajaš {own}:{enemy} — vzemi kontrolirano iniciativo";
+        if (diff == 0)
+            return $"izenačeno {own}:{enemy} — disciplina pred riskom";
+
+        return diff > 0
+            ? $"tesno vodiš {own}:{enemy}"
+            : $"tesno zaostajaš {own}:{enemy}";
+    }
+
+    private static string OpeningPlan(string roundType, int variant)
+    {
+        if (roundType == "Pistol")
+            return variant switch
+            {
+                0 => "Pistol: drži trade razdaljo in vzemi samo en čist prvi duel.",
+                1 => "Pistol: ne loči se od ekipe; prvi kontakt naj bo takoj tradeable.",
+                _ => "Pistol: igraj za info in crossfire, ne za hero peek."
+            };
+
+        if (roundType == "Eco")
+            return variant switch
+            {
+                0 => "Eco: igraj close/stack za en kill in možnost pobiranja orožja.",
+                1 => "Eco: izogni se dolgim dry duelom; išči dvojni peek ali crossfire.",
+                _ => "Eco: ne razprši ekipe; skoncentriraj možnost za upgrade orožja."
+            };
+
+        if (roundType == "Force / light")
+            return variant switch
+            {
+                0 => "Light buy: išči krajšo razdaljo in utility-assisted prvi duel.",
+                1 => "Light buy: ne tekmuj z rifle-i na njihovih idealnih linijah; spremeni razdaljo.",
+                _ => "Light buy: igraj za trade in pobiranje boljšega orožja, ne za solo opening."
+            };
+
+        return variant switch
+        {
+            0 => "Gun round: utility pred prvim peekanjem, nato en kontroliran opening/trade duel.",
+            1 => "Gun round: začni za info; prvi resen duel vzemi šele, ko imaš trade ali utility.",
+            _ => "Gun round: ne odpri z istim timingom kot prejšnjo rundo; najprej spremeni tempo."
+        };
+    }
+
+    private static string RecentRoundAdjustment(IReadOnlyList<RoundRecord> rounds)
+    {
+        var last = rounds.LastOrDefault();
+        if (last == null)
+            return "Ni še dovolj podatkov — začni disciplinirano in oceni prvi kontakt.";
+
+        if (last.DeathsRound > 0 && last.KillsRound == 0)
+            return $"Prejšnja runda: 0K/{last.DeathsRound}D. Znižaj early risk in naj bo prvi duel tradeable.";
+
+        if (last.DeathsRound > 0 && last.KillsRound >= 2)
+            return $"Prejšnja runda: {last.KillsRound}K/{last.DeathsRound}D. Impact je bil dober, a ne ponovi istega izpostavljenega zaključka.";
+
+        if (last.DeathsRound == 0 && last.KillsRound >= 2)
+            return $"Prejšnja runda: {last.KillsRound}K in preživel. Ohraniva formo, ampak spremeni opening kot/timing.";
+
+        if (last.DeathsRound == 0 && last.KillsRound == 0)
+            return "Prejšnjo rundo si preživel brez killa. Bodi malo bližje prvemu trade kontaktu.";
+
+        return $"Prejšnja runda: {last.KillsRound}K/{last.DeathsRound}D. Ohraniva strukturo, spremeni pa prvi timing.";
+    }
+
+    private static string MapRoundPlanVariant(string map, string side, int variant)
+    {
+        bool t = string.Equals(side, "T", StringComparison.OrdinalIgnoreCase);
+
+        return map switch
+        {
+            "de_mirage" when !t => variant switch
+            {
+                0 => "Začni z mid info/supportom; če ni kontakta, hitro se vrni v site crossfire.",
+                1 => "Ne podari openinga na midu; pripravi connector/jungle trade in reagiraj na prvi info.",
+                _ => "Spremeni začetni timing: manj early repeeka, več utilityja za delay in varen drugi kontakt."
+            },
+            "de_mirage" => variant switch
+            {
+                0 => "Vzemi mid info/control, nato se priključi strani z najboljšim tradeom.",
+                1 => "Začni ramp/apps za info; brez picka ne sili site entryja.",
+                _ => "Spremeni tempo: utility za space, nato pozni mid ali split namesto istega dry openinga."
+            },
+
+            "de_inferno" when !t => variant switch
+            {
+                0 => "Banana/apps info vzemi z utilityjem in ohrani varen umik.",
+                1 => "Igraj bolj pasiven prvi kontakt in pripravi drugi kot za trade/crossfire.",
+                _ => "Ne ponovi istega early peeka; delay utility in rotacija naj ustvarita naslednji duel."
+            },
+            "de_inferno" => variant switch
+            {
+                0 => "Banana control z utilityjem, potem počakaj reakcijo.",
+                1 => "Apps/mid info naj odpre možnost za split; entry naj bo tradeable.",
+                _ => "Spremeni tempo in zadrži utility za kasnejši site commit."
+            },
+
+            "de_nuke" when !t => variant switch
+            {
+                0 => "Čuvaj yard/ramp info in imej jasen umik po prvem kontaktu.",
+                1 => "Začni bolj site-oriented; ne lovi killov skozi yard brez podpore.",
+                _ => "Spremeni nivo po prvem kontaktu in prisili nasprotnika, da ponovno išče tvoj kot."
+            },
+            "de_nuke" => variant switch
+            {
+                0 => "Lobby/yard pritisk naj najprej pridobi info o rotacijah.",
+                1 => "Ramp/door kontakt vzemi samo s trade podporo.",
+                _ => "Spremeni nivo in tempo; ne commitaj prvega sitea brez info."
+            },
+
+            "de_ancient" when !t => variant switch
+            {
+                0 => "Cave/mid info z utilityjem, nato varen drugi kontakt.",
+                1 => "Ne overfightaj mida; pripravi site crossfire in rotacijo na prvi info.",
+                _ => "Spremeni opening kot in uporabi delay utility pred ponovnim kontaktom."
+            },
+            "de_ancient" => variant switch
+            {
+                0 => "Mid/cave control naj odpre split in trade linije.",
+                1 => "Vzemi info na drugi strani mape, potem se priključi glavnemu kontaktu.",
+                _ => "Spremeni tempo; brez prostora ne sili site entryja."
+            },
+
+            "de_anubis" when !t => variant switch
+            {
+                0 => "Igraj za varen mid/water info in ohrani pot za umik.",
+                1 => "Začni bolj pasivno in pripravi drugi kontakt iz crossfirea.",
+                _ => "Delay utility naj zamenja dry early duel; nato reposition."
+            },
+            "de_anubis" => variant switch
+            {
+                0 => "Mid/water control naj pripravi split.",
+                1 => "Začni za info brez commit-a; entry šele s trade prostorom.",
+                _ => "Spremeni tempo in zadrži utility za poznejši execute."
+            },
+
+            "de_dust2" when !t => variant switch
+            {
+                0 => "Long/mid info vzemi z utilityjem in ne ostajaj izpostavljen.",
+                1 => "Začni z varnejšim site setupom in reagiraj na prvi info.",
+                _ => "Spremeni opening linijo; po kontaktu takoj zaščiti crossfire."
+            },
+            "de_dust2" => variant switch
+            {
+                0 => "Long/mid info vzemi disciplinirano in brez solo dry peeka.",
+                1 => "B info naj bo samo za prostor; glavni duel vzemi s tradeom.",
+                _ => "Spremeni tempo in iz prvega picka naredi številčno prednost."
+            },
+
+            "de_train" when !t => variant switch
+            {
+                0 => "Prvi kontakt vzemi z dolgo linijo in takoj spremeni vagon/globino.",
+                1 => "Začni bolj passivno; drugi duel naj pride iz crossfirea.",
+                _ => "Ne ponavljaj istega peeka med vagoni; utility naj ustvari nov timing."
+            },
+            "de_train" => variant switch
+            {
+                0 => "Yard/inner pritisk naj najprej pridobi info.",
+                1 => "Entry commit šele, ko je trade linija pripravljena.",
+                _ => "Spremeni tempo in napadi šibkejšo stran po prvi reakciji."
+            },
+
+            "de_overpass" when !t => variant switch
+            {
+                0 => "Zgodnji info vzemi samo z jasno potjo za umik.",
+                1 => "Začni bližje site crossfireu in prisili T-je v prvi commit.",
+                _ => "Spremeni timing na connector/short in ne ostajaj po prvem kontaktu."
+            },
+            "de_overpass" => variant switch
+            {
+                0 => "Fountain/connector control naj pride pred executeom.",
+                1 => "Short info vzemi s teammateom in ostani tradeable.",
+                _ => "Spremeni tempo; poznejši map control naj odpre boljši site commit."
+            },
+
+            "de_vertigo" when !t => variant switch
+            {
+                0 => "Delay utility na rampi, nato kratek prvi kontakt in reposition.",
+                1 => "Začni bolj pasivno in pripravi crossfire namesto drugega early peeka.",
+                _ => "Spremeni timing na ramp/mid in ne ostajaj v pre-aimani liniji."
+            },
+            "de_vertigo" => variant switch
+            {
+                0 => "Ramp/mid prostor vzemi z utilityjem in trade podporo.",
+                1 => "Začni za info brez dolgega stanja na istem ozkem kotu.",
+                _ => "Spremeni tempo in commitaj šele, ko je odprt trade prostor."
+            },
+
+            _ when t => variant switch
+            {
+                0 => "Vzemi en kos map controla in ostani tradeable.",
+                1 => "Začni za info brez zgodnjega commita; reagiraj na prvi kontakt ekipe.",
+                _ => "Spremeni tempo in prvi pravi duel vzemi s podporo."
+            },
+            _ => variant switch
+            {
+                0 => "Prvi kontakt vzemi iz pozicije z umikom.",
+                1 => "Začni bolj pasivno in pripravi drugi kontakt iz crossfirea.",
+                _ => "Spremeni opening timing in ne ponavljaj iste linije."
+            }
+        };
     }
 
     private static string MapRoundPlan(string map, string side)
