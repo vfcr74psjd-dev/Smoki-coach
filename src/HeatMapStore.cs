@@ -90,8 +90,8 @@ public static class HeatMapStore
             };
 
             all.Insert(0, record);
-            if (all.Count > 100)
-                all = all.Take(100).ToList();
+            if (all.Count > 1500)
+                all = all.Take(1500).ToList();
 
             SaveUnlocked(all);
             return record;
