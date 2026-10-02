@@ -56,6 +56,11 @@ jobs:
       - name: Build portable installer
         shell: pwsh
         run: |
+          $versionText = (Get-Content VERSION -Raw).Trim()
+          $issText = Get-Content installer\Sm0kiSoloCoach.iss -Raw
+          $issText = $issText -replace '#define MyAppVersion "[^"]+"', ('#define MyAppVersion "' + $versionText + '"')
+          Set-Content installer\Sm0kiSoloCoach.iss $issText -Encoding UTF8
+
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) {
             choco install innosetup --no-progress -y

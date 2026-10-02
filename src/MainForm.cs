@@ -32,6 +32,7 @@ public sealed class MainForm : Form
     private int? _trackedRound;
     private int _roundStartKills;
     private int _roundStartDeaths;
+    private DateTime _sessionStartedUtc = DateTime.UtcNow;
 
     private GameSnapshot _current = new();
     private GameSnapshot? _previous;
@@ -77,6 +78,7 @@ public sealed class MainForm : Form
 
         FormClosing += (_,__) =>
         {
+            ArchiveCurrentSession(_current.Map, _current);
             _aiCts?.Cancel();
             _aiCts?.Dispose();
             _phoneServer?.Dispose();
@@ -263,6 +265,28 @@ public sealed class MainForm : Form
         profileButton.Margin = new Padding(5, 22, 5, 0);
         profileButton.Click += (_,__) => EditProfile();
         toolbar.Controls.Add(profileButton);
+
+        var analyticsButton = MakeButton("Analytics", 100, false);
+        analyticsButton.Margin = new Padding(5, 22, 5, 0);
+        analyticsButton.Click += (_,__) =>
+        {
+            using var dialog = new SessionAnalyticsForm(
+                _profile.Nickname,
+                _current.Map,
+                _rounds.ToList()
+            );
+            dialog.ShowDialog(this);
+        };
+        toolbar.Controls.Add(analyticsButton);
+
+        var faceitButton = MakeButton("FACEIT", 92, false);
+        faceitButton.Margin = new Padding(5, 22, 5, 0);
+        faceitButton.Click += (_,__) =>
+        {
+            using var dialog = new FaceitForm(_profile.Nickname);
+            dialog.ShowDialog(this);
+        };
+        toolbar.Controls.Add(faceitButton);
 
         var autoAiHost = new Panel
         {
@@ -663,6 +687,32 @@ public sealed class MainForm : Form
         }
     }
 
+    private void ArchiveCurrentSession(string map, GameSnapshot snapshot)
+    {
+        if (_rounds.Count < 4 || string.IsNullOrWhiteSpace(map))
+            return;
+
+        try
+        {
+            SessionHistoryStore.Save(new SessionSummary
+            {
+                StartedUtc = _sessionStartedUtc,
+                EndedUtc = DateTime.UtcNow,
+                Nickname = _profile.Nickname,
+                Map = map,
+                Rounds = _rounds.Count,
+                Kills = _rounds.Sum(r => r.KillsRound),
+                Deaths = _rounds.Sum(r => r.DeathsRound),
+                ZeroKillRounds = _rounds.Count(r => r.KillsRound == 0),
+                MultiKillRounds = _rounds.Count(r => r.KillsRound >= 2),
+                SurvivalRounds = _rounds.Count(r => r.DeathsRound == 0),
+                CtScore = snapshot.CtScore ?? 0,
+                TScore = snapshot.TScore ?? 0
+            });
+        }
+        catch { }
+    }
+
     private void EditProfile()
     {
         using var dialog = new FirstRunSetupForm(_profile, _prefs, false);
@@ -831,6 +881,8 @@ public sealed class MainForm : Form
 
             if (mapChanged)
             {
+                ArchiveCurrentSession(_previous.Map, _previous);
+                _sessionStartedUtc = DateTime.UtcNow;
                 _rounds.Clear();
                 _trackedRound = s.Round;
                 _roundStartKills = s.Kills ?? 0;
@@ -847,6 +899,8 @@ public sealed class MainForm : Form
             {
                 if (cr < pr)
                 {
+                    ArchiveCurrentSession(_previous.Map, _previous);
+                    _sessionStartedUtc = DateTime.UtcNow;
                     _rounds.Clear();
                 }
                 else
@@ -861,7 +915,7 @@ public sealed class MainForm : Form
                         KillsRound = Math.Max(0, (_previous.Kills ?? 0) - _roundStartKills),
                         DeathsRound = Math.Max(0, (_previous.Deaths ?? 0) - _roundStartDeaths)
                     });
-                    while (_rounds.Count > 12) _rounds.RemoveAt(0);
+                    while (_rounds.Count > 40) _rounds.RemoveAt(0);
                 }
 
                 _trackedRound = cr;
