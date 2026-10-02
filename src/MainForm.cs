@@ -1341,25 +1341,53 @@ public sealed class MainForm : Form
 
     private void UpdateAiStatus()
     {
-        if (_aiCoach.IsConfigured)
-        {
-            _aiStatus.Text = "FAST AI READY";
-            _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
-            _aiHealth.Text = "● FAST AI READY";
-            _aiHealth.ForeColor = Color.FromArgb(126, 240, 174);
-            if (_latestAiAdvice == "AI coach čaka na nastavitev.")
-                _latestAiAdvice = "Coach je pripravljen. Ko CS2 pošlje novo rundo, se plan pokaže takoj; Local AI ga nato v ozadju samo izboljša.";
-        }
-        else
+        if (!_aiCoach.IsConfigured)
         {
             _aiStatus.Text = "INSTANT PLAN";
             _aiStatus.ForeColor = Color.FromArgb(255, 190, 132);
             _aiHealth.Text = "● AI OPTIONAL";
             _aiHealth.ForeColor = Color.FromArgb(255, 190, 132);
             _latestAiAdvice = "Instant coach dela brez AI. Za AI refine odpri Tools → Local AI.";
+            _aiText.Text = _latestAiAdvice;
+            return;
         }
 
-        _aiText.Text = _latestAiAdvice;
+        _aiStatus.Text = "AI CHECK";
+        _aiStatus.ForeColor = Color.FromArgb(176, 166, 255);
+        _aiHealth.Text = "● AI CHECKING";
+        _aiHealth.ForeColor = Color.FromArgb(176, 166, 255);
+        _ = RefreshAiReadinessAsync();
+    }
+
+    private async Task RefreshAiReadinessAsync()
+    {
+        var ready = await AiCoachService.IsFastModelReadyAsync();
+        if (IsDisposed) return;
+
+        if (ready)
+        {
+            _aiStatus.Text = "FAST AI READY";
+            _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+            _aiHealth.Text = "● FAST AI READY";
+            _aiHealth.ForeColor = Color.FromArgb(126, 240, 174);
+
+            if (_latestAiAdvice == "AI coach čaka na nastavitev." ||
+                _latestAiAdvice.StartsWith("Instant coach dela", StringComparison.Ordinal))
+            {
+                _latestAiAdvice =
+                    "Coach je pripravljen. Nova runda dobi instant plan takoj; Local AI ga v ozadju samo izboljša.";
+                _aiText.Text = _latestAiAdvice;
+            }
+        }
+        else
+        {
+            _aiStatus.Text = "INSTANT PLAN";
+            _aiStatus.ForeColor = Color.FromArgb(255, 190, 132);
+            _aiHealth.Text = "● AI NEEDS PREP";
+            _aiHealth.ForeColor = Color.FromArgb(255, 190, 132);
+            _latestAiAdvice = "Instant coach je aktiven. Za AI refine odpri Tools → Local AI → Prepare Fast AI.";
+            _aiText.Text = _latestAiAdvice;
+        }
     }
 
     private async Task RefreshAiCoachAsync(GameSnapshot snapshot, bool force = false)
