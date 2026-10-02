@@ -432,7 +432,8 @@ public sealed class MainForm : Form
             _phoneUrl.Text = "Phone: " + _phoneServer.GetLocalUrl();
 
         _status.Text = "LIVE";
-        _status.ForeColor = Color.FromArgb(126, 240, 174);\n        _status.BackColor = Color.FromArgb(20, 56, 39);
+        _status.ForeColor = Color.FromArgb(126, 240, 174);
+        _status.BackColor = Color.FromArgb(20, 56, 39);
 
         int k = _current.Kills ?? 0;
         int d = _current.Deaths ?? 0;
