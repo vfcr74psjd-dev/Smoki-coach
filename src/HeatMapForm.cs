@@ -107,7 +107,7 @@ public sealed class HeatMapForm : Form
 
         controls.Controls.Add(FilterLabel("RANGE"),4,0);
         ConfigureCombo(_window);
-        _window.Items.AddRange(new object[] { "Last match", "Last 10", "Last 20", "Last 50" });
+        _window.Items.AddRange(new object[] { "Last match", "Last 10", "Last 20", "Last 50", "All matches" });
         _window.SelectedItem = "Last 20";
         _window.SelectedIndexChanged += async (_,__) => await RefreshViewAsync();
         controls.Controls.Add(_window,5,0);
@@ -400,6 +400,7 @@ public sealed class HeatMapForm : Form
             "Last match" => 1,
             "Last 10" => 10,
             "Last 50" => 50,
+            "All matches" => int.MaxValue,
             _ => 20
         };
     }
