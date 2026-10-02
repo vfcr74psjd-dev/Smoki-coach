@@ -750,11 +750,10 @@ public sealed class MainForm : Form
         var setupFooter = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 1,
             Margin = Padding.Empty
         };
         setupFooter.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        setupFooter.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
 
         _autoAi.Text = " Auto AI refine";
         _autoAi.Checked = _prefs.AutoAi;
@@ -763,21 +762,6 @@ public sealed class MainForm : Form
         _autoAi.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
         _autoAi.CheckedChanged += (_,__) => PreferencesChanged();
         setupFooter.Controls.Add(_autoAi, 0, 0);
-
-        var localAi = MakeButton("LOCAL AI", 96, false);
-        localAi.Dock = DockStyle.Fill;
-        localAi.Margin = new Padding(5, 4, 0, 4);
-        localAi.Click += (_,__) =>
-        {
-            using var dialog = new AiSettingsForm();
-            if (dialog.ShowDialog(this) == DialogResult.OK)
-            {
-                UpdateAiStatus();
-                if (_current.Round is int && _autoAi.Checked)
-                    _ = RefreshAiCoachAsync(_current, true);
-            }
-        };
-        setupFooter.Controls.Add(localAi, 1, 0);
         setupLayout.Controls.Add(setupFooter, 0, 4);
         setupCard.Controls.Add(setupLayout);
         right.Controls.Add(setupCard, 0, 2);
@@ -1385,7 +1369,7 @@ public sealed class MainForm : Form
             _aiStatus.ForeColor = Color.FromArgb(255, 190, 132);
             _aiHealth.Text = "● AI OPTIONAL";
             _aiHealth.ForeColor = Color.FromArgb(255, 190, 132);
-            _latestAiAdvice = "Klikni Local AI in namesti brezplačni lokalni AI.";
+            _latestAiAdvice = "Instant coach dela brez AI. Za AI refine odpri Tools → Local AI.";
         }
 
         _aiText.Text = _latestAiAdvice;
