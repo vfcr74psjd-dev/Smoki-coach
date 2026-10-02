@@ -17,6 +17,7 @@ public sealed class MainForm : Form
     private readonly CheckBox _autoAi = new();
     private readonly Label _sessionText = new();
     private readonly CoachPreferences _prefs = UserSettingsStore.Load();
+    private UserProfile _profile = UserProfileStore.Load();
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
     private readonly Label _phoneUrl = new();
@@ -53,13 +54,14 @@ public sealed class MainForm : Form
 
         _server.SnapshotReceived += OnSnapshot;
         _server.Start();
-        Text = $"Sm0ki Solo Coach • GSI {_server.BoundPort}";
+        Text = $"Sm0ki Solo Coach • {_profile.Nickname} • GSI {_server.BoundPort}";
 
         _phoneServer = new PhoneDashboardServer(
             () => _current,
             () => _mode.SelectedItem?.ToString() ?? "Balanced",
             () => _role.SelectedItem?.ToString() ?? "Flex",
             () => _focus.SelectedItem?.ToString() ?? "More kills",
+            () => _profile.Nickname,
             () => _autoAi.Checked,
             () => _latestAiAdvice,
             ApplyPhoneSettings
@@ -149,7 +151,7 @@ public sealed class MainForm : Form
 
         var subtitle = new Label
         {
-            Text = "LIVE CS2 • SOLO PERFORMANCE COMPANION",
+            Text = $"LIVE CS2 • SOLO PERFORMANCE COMPANION • PROFILE: {_profile.Nickname}",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopLeft,
             ForeColor = Color.FromArgb(126,137,156),
@@ -256,6 +258,11 @@ public sealed class MainForm : Form
             }
         };
         toolbar.Controls.Add(aiSettings);
+
+        var profileButton = MakeButton("Profile", 92, false);
+        profileButton.Margin = new Padding(5, 22, 5, 0);
+        profileButton.Click += (_,__) => EditProfile();
+        toolbar.Controls.Add(profileButton);
 
         var autoAiHost = new Panel
         {
@@ -634,6 +641,7 @@ public sealed class MainForm : Form
                 snapshot,
                 _rounds.ToList(),
                 $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"}",
+                _profile.Nickname,
                 _aiCts.Token
             );
 
@@ -653,6 +661,21 @@ public sealed class MainForm : Form
             _aiStatus.Text = "AI ERROR";
             _aiStatus.ForeColor = Color.FromArgb(255, 150, 130);
         }
+    }
+
+    private void EditProfile()
+    {
+        using var dialog = new FirstRunSetupForm(_profile, _prefs, false);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _profile = UserProfileStore.Load();
+        Text = $"Sm0ki Solo Coach • {_profile.Nickname} • GSI {_server.BoundPort}";
+        MessageBox.Show(
+            $"Profil je shranjen za {_profile.Nickname}.\nCoach in Local AI bosta uporabljala ta profil.",
+            "Profile updated",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information
+        );
     }
 
     private void ApplyPhoneSettings(string mode, string role, string focus, bool autoAi)

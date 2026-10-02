@@ -12,6 +12,15 @@ namespace Sm0kiSoloCoach
 
             try
             {
+                var profile = UserProfileStore.Load();
+                if (!profile.SetupComplete)
+                {
+                    var prefs = UserSettingsStore.Load();
+                    using var setup = new FirstRunSetupForm(profile, prefs, true);
+                    if (setup.ShowDialog() != DialogResult.OK)
+                        return;
+                }
+
                 Application.Run(new MainForm());
             }
             catch (Exception ex)

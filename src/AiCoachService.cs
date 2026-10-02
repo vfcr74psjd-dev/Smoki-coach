@@ -155,6 +155,7 @@ public sealed class AiCoachService
         GameSnapshot s,
         IReadOnlyList<RoundRecord> rounds,
         string mode,
+        string playerName,
         CancellationToken cancellationToken = default)
     {
         await EnsureServerAsync(cancellationToken);
@@ -176,8 +177,9 @@ public sealed class AiCoachService
             $"Coach mode: {mode}\n" +
             $"Recent rounds: {(recent.Length == 0 ? "none tracked yet" : string.Join(" | ", recent))}";
 
-        const string instructions =
-            "Ti si kratek CS2 solo-queue performance coach za igralca Sm0ki_72. " +
+        var safePlayerName = string.IsNullOrWhiteSpace(playerName) ? "igralca" : playerName.Trim();
+        var instructions =
+            $"Ti si kratek CS2 solo-queue performance coach za igralca {safePlayerName}. " +
             "Uporabi SAMO podatke, ki so podani v stanju igre. Ne ugibaj lokacij ali informacij o nasprotnikih. " +
             "Ne predlagaj cheatov, memory readanja, avtomatizacije inputa ali skritih podatkov. " +
             "Cilj je izboljšati odločitve, trade timing, survival po prvem killu in dolgoročni kill output. " +
