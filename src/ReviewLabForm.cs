@@ -6,8 +6,6 @@ namespace Sm0kiSoloCoach;
 
 public sealed class ReviewLabForm : Form
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
-
     private readonly string _nickname;
     private readonly Label _status = new();
     private readonly Label _summary = new();
@@ -270,7 +268,7 @@ public sealed class ReviewLabForm : Form
                 ? _definition.LowerRadarUrl!
                 : _definition.RadarUrl;
 
-            var bytes = await Http.GetByteArrayAsync(url,ct);
+            var bytes = await RadarImageCache.GetAsync(url,ct);
             using var ms = new MemoryStream(bytes);
             using var temp = Image.FromStream(ms);
             _image = new Bitmap(temp);
