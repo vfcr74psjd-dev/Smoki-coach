@@ -25,9 +25,22 @@ public sealed class DemoReviewResult
 
 public static class DemoReviewService
 {
+    public static Task<DemoReviewResult> AnalyzeAsync(
+        string demoPath,
+        string playerNickname,
+        CancellationToken cancellationToken = default)
+    {
+        return AnalyzeAsync(
+            demoPath,
+            playerNickname,
+            FaceitSettingsStore.LoadSteamId64(),
+            cancellationToken);
+    }
+
     public static async Task<DemoReviewResult> AnalyzeAsync(
         string demoPath,
         string playerNickname,
+        string? playerSteamId64,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(demoPath))
@@ -37,6 +50,7 @@ public static class DemoReviewService
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var demo = new CsDemoParser();
         int round = 0;
+        var hasSteamId = ulong.TryParse(playerSteamId64, out var targetSteamId);
 
         demo.PacketEvents.SvcServerInfo += e =>
         {
@@ -63,7 +77,15 @@ public static class DemoReviewService
             if (!string.IsNullOrWhiteSpace(victim)) names.Add(victim);
             if (!string.IsNullOrWhiteSpace(killer)) names.Add(killer);
 
-            if (!victim.Equals(playerNickname, StringComparison.OrdinalIgnoreCase))
+            var steamMatches =
+                hasSteamId &&
+                e.Player != null &&
+                e.Player.SteamID == targetSteamId;
+
+            var nicknameMatches =
+                victim.Equals(playerNickname, StringComparison.OrdinalIgnoreCase);
+
+            if (!steamMatches && !nicknameMatches)
                 return;
 
             var pawn = e.PlayerPawn;
