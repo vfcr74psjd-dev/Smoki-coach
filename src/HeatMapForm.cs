@@ -17,6 +17,7 @@ public sealed class HeatMapForm : Form
     private readonly Label _summary = new();
     private readonly ListView _hotspots = new();
     private readonly HeatCanvas _canvas = new();
+    private readonly Button _openFaceitMatch = new();
     private CancellationTokenSource? _radarCts;
 
     public HeatMapForm(string nickname, AutoDemoInboxService inbox)
@@ -178,13 +179,14 @@ public sealed class HeatMapForm : Form
         var side = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 3,
+            RowCount = 4,
             ColumnCount = 1,
             Margin = new Padding(8,6,0,6),
             Padding = new Padding(14),
             BackColor = Color.FromArgb(16,21,29)
         };
         side.RowStyles.Add(new RowStyle(SizeType.Absolute,96));
+        side.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
         side.RowStyles.Add(new RowStyle(SizeType.Absolute,28));
         side.RowStyles.Add(new RowStyle(SizeType.Percent,100));
 
@@ -194,13 +196,20 @@ public sealed class HeatMapForm : Form
         _summary.Font = new Font("Segoe UI",10,FontStyle.Bold);
         side.Controls.Add(_summary,0,0);
 
+        _openFaceitMatch.Text = "OPEN FACEIT MATCH";
+        StyleButton(_openFaceitMatch, true, 174);
+        _openFaceitMatch.Anchor = AnchorStyles.Left;
+        _openFaceitMatch.Visible = false;
+        _openFaceitMatch.Click += (_,__) => OpenLatestReadyMatch();
+        side.Controls.Add(_openFaceitMatch,0,1);
+
         side.Controls.Add(new Label
         {
             Text = "TOP HOTSPOTS",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI",8,FontStyle.Bold),
             ForeColor = Color.FromArgb(111,123,144)
-        },0,1);
+        },0,2);
 
         _hotspots.Dock = DockStyle.Fill;
         _hotspots.View = View.Details;
@@ -212,7 +221,7 @@ public sealed class HeatMapForm : Form
         _hotspots.Columns.Add("Area",132);
         _hotspots.Columns.Add("Deaths",62);
         _hotspots.Columns.Add("Side",55);
-        side.Controls.Add(_hotspots,0,2);
+        side.Controls.Add(_hotspots,0,3);
 
         body.Controls.Add(side,1,0);
         root.Controls.Add(body,0,2);
@@ -270,6 +279,7 @@ public sealed class HeatMapForm : Form
                 $"PROFILE: {_nickname}\n" +
                 "No FACEIT demo history yet. Run FACEIT HISTORY first.";
             _hotspots.Items.Clear();
+            _openFaceitMatch.Visible = false;
             _canvas.SetData(
                 "",
                 Array.Empty<DemoDeathPoint>(),
@@ -324,16 +334,22 @@ public sealed class HeatMapForm : Form
 
         if (remoteReady.Count > 0 && localMatches.Count == 0)
         {
+            _openFaceitMatch.Visible = true;
+            _openFaceitMatch.Enabled = remoteReady.Any(x => !string.IsNullOrWhiteSpace(x.FaceitUrl));
             _status.Text =
-                $"FACEIT has {remoteReady.Count} demo resource(s) for {CoachEngine.PrettyMap(map)}, " +
-                "but private demo download needs FACEIT Downloads API access. " +
-                "SCAN NOW analyzes any .dem/.dem.gz already on this PC.";
+                "NEXT STEP: odpri FACEIT match, prenesi demo in pusti .dem/.dem.gz v Downloads. " +
+                "Sm0ki Solo Coach ga bo sam zaznal in heatmap se bo zapolnil.";
         }
         else if (localMatches.Count > 0)
         {
+            _openFaceitMatch.Visible = false;
             _status.Text =
                 $"Local heatmap ready • {localMatches.Count} analyzed match(es) • " +
                 $"{points.Count} death point(s) in current filter.";
+        }
+        else
+        {
+            _openFaceitMatch.Visible = false;
         }
 
         _radarCts?.Cancel();
@@ -349,6 +365,45 @@ public sealed class HeatMapForm : Form
         {
             _status.Text = "Radar image ni dosegljiv; heatmap podatki so vseeno shranjeni lokalno.";
         }
+    }
+
+    private void OpenLatestReadyMatch()
+    {
+        var map = _map.SelectedItem?.ToString();
+        if (string.IsNullOrWhiteSpace(map))
+            return;
+
+        var match = FaceitHistoryStore.LoadForPlayer(_nickname)
+            .Where(x =>
+                x.DemoReady &&
+                x.Map.Equals(map, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(x.FaceitUrl))
+            .OrderByDescending(x => x.FinishedUtc)
+            .FirstOrDefault();
+
+        if (match == null)
+        {
+            MessageBox.Show(
+                "Za izbrano mapo FACEIT match link ni na voljo. Odpri FACEIT History in izberi drug READY match.",
+                "Heat Map",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        var url = match.FaceitUrl.Replace(
+            "{lang}",
+            "en",
+            StringComparison.OrdinalIgnoreCase);
+
+        Process.Start(new ProcessStartInfo(url)
+        {
+            UseShellExecute = true
+        });
+
+        _status.Text =
+            "FACEIT match odprt. Prenesi demo; datoteko pusti v Downloads. " +
+            "App jo spremlja v ozadju in jo po končanem prenosu sam analizira.";
     }
 
     private void FillHotspots(string map, IReadOnlyList<DemoDeathPoint> points)
