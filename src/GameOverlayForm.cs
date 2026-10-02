@@ -27,6 +27,7 @@ public sealed class GameOverlayForm : Form
     private string _aiStatus = "FAST PLAN";
     private string _mode = "Minimal";
     private bool _temporarilyHidden;
+    private bool _gameActive;
     private DateTime _roundPulseStarted = DateTime.MinValue;
     private int? _lastRound;
     private string _lastMap = "";
@@ -127,10 +128,43 @@ public sealed class GameOverlayForm : Form
         }
 
         _temporarilyHidden = false;
+        RefreshVisibility();
+        Invalidate();
+    }
+
+    public void SetGameActive(bool active)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => SetGameActive(active));
+            return;
+        }
+
+        if (_gameActive == active)
+            return;
+
+        _gameActive = active;
+        RefreshVisibility();
+    }
+
+    private void RefreshVisibility()
+    {
+        var shouldShow =
+            _mode != "Off" &&
+            !_temporarilyHidden &&
+            _gameActive;
+
+        if (!shouldShow)
+        {
+            Hide();
+            return;
+        }
+
+        PositionTopRight();
         if (!Visible)
             Show();
 
-        Invalidate();
+        TopMost = true;
     }
 
     public void UpdateData(GameSnapshot snapshot, string advice, string aiStatus)
@@ -171,17 +205,8 @@ public sealed class GameOverlayForm : Form
             return;
 
         _temporarilyHidden = !_temporarilyHidden;
-        if (_temporarilyHidden)
-        {
-            Hide();
-        }
-        else
-        {
-            PositionTopRight();
-            Show();
-            TopMost = true;
-            Invalidate();
-        }
+        RefreshVisibility();
+        Invalidate();
     }
 
     public void PositionTopRight()
