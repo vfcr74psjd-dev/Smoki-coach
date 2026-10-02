@@ -218,10 +218,11 @@ public sealed class FaceitHistoryForm : Form
 
         foreach (var match in history.Take(1000))
         {
-            var localMatch = !string.IsNullOrWhiteSpace(match.Map) &&
+            var localMatch =
+                !string.IsNullOrWhiteSpace(match.MatchId) &&
                 local.Any(x =>
-                    x.Map.Equals(match.Map, StringComparison.OrdinalIgnoreCase) &&
-                    Math.Abs((x.ImportedUtc - match.FinishedUtc).TotalDays) < 3);
+                    !string.IsNullOrWhiteSpace(x.SourceFileName) &&
+                    x.SourceFileName.Contains(match.MatchId, StringComparison.OrdinalIgnoreCase));
 
             var item = new ListViewItem(
                 match.FinishedUtc == default
