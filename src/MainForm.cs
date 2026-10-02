@@ -12,6 +12,11 @@ public sealed class MainForm : Form
     private readonly Label _tip = new();
     private readonly ListBox _history = new();
     private readonly ComboBox _mode = new();
+    private readonly ComboBox _role = new();
+    private readonly ComboBox _focus = new();
+    private readonly CheckBox _autoAi = new();
+    private readonly Label _sessionText = new();
+    private readonly CoachPreferences _prefs = UserSettingsStore.Load();
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
     private readonly Label _phoneUrl = new();
@@ -34,9 +39,9 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "Sm0ki Solo Coach";
-        Width = 1080;
-        Height = 720;
-        MinimumSize = new Size(940, 640);
+        Width = 1280;
+        Height = 780;
+        MinimumSize = new Size(1100, 680);
         BackColor = Color.FromArgb(14,17,23);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -50,6 +55,8 @@ public sealed class MainForm : Form
         _phoneServer = new PhoneDashboardServer(
             () => _current,
             () => _mode.SelectedItem?.ToString() ?? "Balanced",
+            () => _role.SelectedItem?.ToString() ?? "Flex",
+            () => _focus.SelectedItem?.ToString() ?? "More kills",
             () => _latestAiAdvice
         );
         _phoneServer.Start();
@@ -58,6 +65,8 @@ public sealed class MainForm : Form
         var path = GsiInstaller.TryInstall();
         if (path == null)
             _status.Text = "OFFLINE • GSI NOT INSTALLED";
+
+        Shown += async (_,__) => await CheckForUpdatesSilentAsync();
 
         FormClosing += (_,__) =>
         {
@@ -128,7 +137,7 @@ public sealed class MainForm : Form
         var toolbar = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 60,
+            Height = 78,
             BackColor = Color.FromArgb(11,15,22),
             Padding = new Padding(24,10,24,10)
         };
@@ -144,24 +153,66 @@ public sealed class MainForm : Form
         });
 
         _mode.Items.AddRange(new object[] { "Balanced", "Aggressive", "Safe" });
-        _mode.SelectedIndex = 0;
+        _mode.SelectedItem = _prefs.Mode;
+        if (_mode.SelectedIndex < 0) _mode.SelectedIndex = 0;
         _mode.DropDownStyle = ComboBoxStyle.DropDownList;
         _mode.Left = 24;
-        _mode.Top = 26;
+        _mode.Top = 28;
         _mode.Width = 150;
         _mode.FlatStyle = FlatStyle.Flat;
         _mode.BackColor = Color.FromArgb(24,29,39);
         _mode.ForeColor = Color.White;
-        _mode.SelectedIndexChanged += (_,__) =>
-        {
-            if (_current.Round is int && _aiCoach.IsConfigured)
-                _ = RefreshAiCoachAsync(_current, true);
-        };
+        _mode.SelectedIndexChanged += (_,__) => PreferencesChanged();
         toolbar.Controls.Add(_mode);
 
+        toolbar.Controls.Add(new Label
+        {
+            Text = "ROLE",
+            AutoSize = true,
+            Left = 184,
+            Top = 9,
+            ForeColor = Color.FromArgb(126,137,156),
+            Font = new Font("Segoe UI", 8, FontStyle.Bold)
+        });
+        _role.Items.AddRange(new object[] { "Flex", "Entry", "Lurk", "Support", "Anchor" });
+        _role.SelectedItem = _prefs.Role;
+        if (_role.SelectedIndex < 0) _role.SelectedIndex = 0;
+        _role.DropDownStyle = ComboBoxStyle.DropDownList;
+        _role.Left = 184;
+        _role.Top = 28;
+        _role.Width = 120;
+        _role.FlatStyle = FlatStyle.Flat;
+        _role.BackColor = Color.FromArgb(24,29,39);
+        _role.ForeColor = Color.White;
+        _role.SelectedIndexChanged += (_,__) => PreferencesChanged();
+        toolbar.Controls.Add(_role);
+
+        toolbar.Controls.Add(new Label
+        {
+            Text = "FOCUS",
+            AutoSize = true,
+            Left = 318,
+            Top = 9,
+            ForeColor = Color.FromArgb(126,137,156),
+            Font = new Font("Segoe UI", 8, FontStyle.Bold)
+        });
+        _focus.Items.AddRange(new object[] { "More kills", "Survive & trade", "Entry impact", "Utility impact", "Clutch / late round" });
+        _focus.SelectedItem = _prefs.Focus;
+        if (_focus.SelectedIndex < 0) _focus.SelectedIndex = 0;
+        _focus.DropDownStyle = ComboBoxStyle.DropDownList;
+        _focus.Left = 318;
+        _focus.Top = 28;
+        _focus.Width = 170;
+        _focus.FlatStyle = FlatStyle.Flat;
+        _focus.BackColor = Color.FromArgb(24,29,39);
+        _focus.ForeColor = Color.White;
+        _focus.SelectedIndexChanged += (_,__) => PreferencesChanged();
+        toolbar.Controls.Add(_focus);
+
         _phoneUrl.AutoSize = true;
-        _phoneUrl.Left = 684;
-        _phoneUrl.Top = 30;
+        _phoneUrl.Visible = false;
+        _phoneUrl.Left = 0;
+        _phoneUrl.Top = 0;
         _phoneUrl.ForeColor = Color.FromArgb(112,124,145);
         _phoneUrl.Font = new Font("Segoe UI", 8.5f);
         toolbar.Controls.Add(_phoneUrl);
@@ -184,14 +235,14 @@ public sealed class MainForm : Form
         _updateButton.Text = "Update";
         StyleButton(_updateButton, true);
         _updateButton.Width = 92;
-        _updateButton.Left = 190;
-        _updateButton.Top = 15;
+        _updateButton.Left = 504;
+        _updateButton.Top = 27;
         _updateButton.Click += async (_,__) => await CheckForUpdatesAsync();
         toolbar.Controls.Add(_updateButton);
 
         var install = MakeButton("Refresh GSI", 118, false);
-        install.Left = 424;
-        install.Top = 15;
+        install.Left = 730;
+        install.Top = 27;
         install.Click += (_,__) =>
         {
             var p = GsiInstaller.TryInstall();
@@ -201,8 +252,8 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(install);
 
         var aiSettings = MakeButton("Local AI", 118, false);
-        aiSettings.Left = 552;
-        aiSettings.Top = 15;
+        aiSettings.Left = 858;
+        aiSettings.Top = 27;
         aiSettings.Click += (_,__) =>
         {
             using var dialog = new AiSettingsForm();
@@ -214,6 +265,17 @@ public sealed class MainForm : Form
             }
         };
         toolbar.Controls.Add(aiSettings);
+
+        _autoAi.Text = "Auto AI";
+        _autoAi.Left = 986;
+        _autoAi.Top = 32;
+        _autoAi.Width = 92;
+        _autoAi.Height = 28;
+        _autoAi.Checked = _prefs.AutoAi;
+        _autoAi.ForeColor = Color.FromArgb(205,211,221);
+        _autoAi.BackColor = Color.Transparent;
+        _autoAi.CheckedChanged += (_,__) => PreferencesChanged();
+        toolbar.Controls.Add(_autoAi);
 
         Controls.Add(toolbar);
 
@@ -323,7 +385,7 @@ public sealed class MainForm : Form
 
         var histSub = new Label
         {
-            Text = "Recent round deltas",
+            Text = "Session insight + recent round deltas",
             AutoSize = true,
             Left = 20,
             Top = 47,
@@ -333,11 +395,16 @@ public sealed class MainForm : Form
         right.Controls.Add(histHdr);
         right.Controls.Add(histSub);
 
-        _history.Left=20; _history.Top=78; _history.Width=405; _history.Height=380;
+        _sessionText.Left=20; _sessionText.Top=76; _sessionText.Width=405; _sessionText.Height=62;
+        _sessionText.ForeColor=Color.FromArgb(170,180,195);
+        _sessionText.Font=new Font("Segoe UI",9);
+
+        _history.Left=20; _history.Top=146; _history.Width=405; _history.Height=310;
         _history.BackColor=Color.FromArgb(17,22,30);
         _history.ForeColor=Color.FromArgb(206,213,223);
         _history.BorderStyle=BorderStyle.None;
         _history.Font=new Font("Cascadia Mono",10);
+        right.Controls.Add(_sessionText);
         right.Controls.Add(_history);
 
         body.Controls.Add(left,0,0);
@@ -452,7 +519,7 @@ public sealed class MainForm : Form
             var advice = await _aiCoach.GenerateRoundAdviceAsync(
                 snapshot,
                 _rounds.ToList(),
-                _mode.SelectedItem?.ToString() ?? "Balanced",
+                $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"}",
                 _aiCts.Token
             );
 
@@ -472,6 +539,87 @@ public sealed class MainForm : Form
             _aiStatus.Text = "AI ERROR";
             _aiStatus.ForeColor = Color.FromArgb(255, 150, 130);
         }
+    }
+
+    private void PreferencesChanged()
+    {
+        _prefs.Mode = _mode.SelectedItem?.ToString() ?? "Balanced";
+        _prefs.Role = _role.SelectedItem?.ToString() ?? "Flex";
+        _prefs.Focus = _focus.SelectedItem?.ToString() ?? "More kills";
+        _prefs.AutoAi = _autoAi.Checked;
+        UserSettingsStore.Save(_prefs);
+
+        if (_current.Round is int && _aiCoach.IsConfigured && _autoAi.Checked)
+            _ = RefreshAiCoachAsync(_current, true);
+
+        if (!string.IsNullOrWhiteSpace(_current.Map))
+            RefreshUi();
+    }
+
+    private string RoleFocusTip()
+    {
+        var role = _role.SelectedItem?.ToString() ?? "Flex";
+        var focus = _focus.SelectedItem?.ToString() ?? "More kills";
+
+        var roleTip = role switch
+        {
+            "Entry" => "Entry: prvi kontakt vzemi samo, ko si tradeable; po entry killu ne sili drugega duela.",
+            "Lurk" => "Lurk: drži rotacijo/info, vendar se pravočasno priključi ekipi.",
+            "Support" => "Support: utility naj odpre duel, nato takoj sledi za trade.",
+            "Anchor" => "Anchor: igraj pozicijo z možnostjo umika in kupi čas pred smrtjo.",
+            _ => "Flex: izberi nalogo glede na spawn in teammate pozicije."
+        };
+
+        var focusTip = focus switch
+        {
+            "Survive & trade" => "Focus: survival po prvem kontaktu in trade distance.",
+            "Entry impact" => "Focus: ustvari prostor zgodaj, vendar z utilityjem ali trade podporo.",
+            "Utility impact" => "Focus: utility uporabi pred izpostavitvijo, ne po izgubljenem duelu.",
+            "Clutch / late round" => "Focus: ohrani HP, info in utility za pozno rundo.",
+            _ => "Focus: en kakovosten opening/trade kill, nato varna druga pozicija."
+        };
+
+        return roleTip + " " + focusTip;
+    }
+
+    private string SessionInsight()
+    {
+        var sample = _rounds.TakeLast(10).ToList();
+        if (sample.Count == 0)
+            return "Po nekaj zaključenih rundah bom tukaj prikazal kill output, 0-kill runde in multi-kill trend.";
+
+        int previousKills = 0;
+        int previousDeaths = 0;
+        int totalRoundKills = 0;
+        int zero = 0;
+        int multi = 0;
+        int deathRounds = 0;
+
+        foreach (var r in sample)
+        {
+            int rk = Math.Max(0, r.KillsTotal - previousKills);
+            int rd = Math.Max(0, r.DeathsTotal - previousDeaths);
+            totalRoundKills += rk;
+            if (rk == 0) zero++;
+            if (rk >= 2) multi++;
+            if (rd > 0) deathRounds++;
+            previousKills = r.KillsTotal;
+            previousDeaths = r.DeathsTotal;
+        }
+
+        double kr = sample.Count > 0 ? (double)totalRoundKills / sample.Count : 0;
+        return $"Last {sample.Count} rounds • approx {kr:0.00} K/R • {zero} zero-kill • {multi} multi-kill • deaths in {deathRounds}/{sample.Count}.";
+    }
+
+    private async Task CheckForUpdatesSilentAsync()
+    {
+        try
+        {
+            var manifest = await AppUpdater.CheckAsync();
+            if (manifest != null && AppUpdater.IsNewer(manifest.Version))
+                _updateButton.Text = "Update " + manifest.Version;
+        }
+        catch { }
     }
 
     private async Task CheckForUpdatesAsync()
@@ -576,7 +724,7 @@ public sealed class MainForm : Form
 
             RefreshUi();
 
-            if (requestAi)
+            if (requestAi && _autoAi.Checked)
             {
                 _lastAiRound = s.Round;
                 _lastAiMap = s.Map;
@@ -610,7 +758,9 @@ public sealed class MainForm : Form
         var (title, advice) = CoachEngine.BuyAdvice(_current);
         _buyTitle.Text = title;
         _buyText.Text = advice;
-        _tip.Text = CoachEngine.SoloTip(_current, _mode.SelectedItem?.ToString() ?? "Balanced");
+        _tip.Text = CoachEngine.SoloTip(_current, _mode.SelectedItem?.ToString() ?? "Balanced")
+            + " " + RoleFocusTip();
+        _sessionText.Text = SessionInsight();
 
         _history.Items.Clear();
         foreach (var rr in _rounds.TakeLast(10))

@@ -10,15 +10,24 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Func<GameSnapshot> _snapshotProvider;
     private readonly Func<string> _modeProvider;
+    private readonly Func<string> _roleProvider;
+    private readonly Func<string> _focusProvider;
     private readonly Func<string> _aiProvider;
     private Task? _loopTask;
 
     public int Port { get; private set; } = 31990;
 
-    public PhoneDashboardServer(Func<GameSnapshot> snapshotProvider, Func<string> modeProvider, Func<string> aiProvider)
+    public PhoneDashboardServer(
+        Func<GameSnapshot> snapshotProvider,
+        Func<string> modeProvider,
+        Func<string> roleProvider,
+        Func<string> focusProvider,
+        Func<string> aiProvider)
     {
         _snapshotProvider = snapshotProvider;
         _modeProvider = modeProvider;
+        _roleProvider = roleProvider;
+        _focusProvider = focusProvider;
         _aiProvider = aiProvider;
     }
 
@@ -94,6 +103,8 @@ public sealed class PhoneDashboardServer : IDisposable
 
                 var s = _snapshotProvider();
                 var mode = _modeProvider();
+                var role = _roleProvider();
+                var focus = _focusProvider();
 
                 string map = CoachEngine.PrettyMap(s.Map);
                 string round = s.Round is int r ? $"R{r+1}" : "—";
@@ -102,7 +113,7 @@ public sealed class PhoneDashboardServer : IDisposable
                 int d = s.Deaths ?? 0;
                 string kd = d > 0 ? ((double)k/d).ToString("0.00") : k.ToString("0.00");
                 var (buyTitle, buyAdvice) = CoachEngine.BuyAdvice(s);
-                string tip = CoachEngine.SoloTip(s, mode);
+                string tip = CoachEngine.SoloTip(s, mode) + $" Role: {role}. Focus: {focus}.";
                 string aiTip = _aiProvider();
 
                 string html = $@"<!doctype html>
@@ -142,6 +153,7 @@ h1:after{{content:'LIVE PERFORMANCE DASHBOARD';display:block;font-size:10px;lett
 <div class='section'><h2>NEXT BUY</h2><div class='big'>{Html(buyTitle)}</div><div class='text'>{Html(buyAdvice)}</div></div>
 <div class='section'><h2>AI ROUND COACH</h2><div class='text' style='white-space:pre-line'>{Html(aiTip)}</div></div>
 <div class='section'><h2>SOLO AVG-KILLS COACH</h2><div class='text'>{Html(tip)}</div></div>
+<div class='section'><h2>COACH SETTINGS</h2><div class='text'>Mode: <b>{Html(mode)}</b> &nbsp; • &nbsp; Role: <b>{Html(role)}</b> &nbsp; • &nbsp; Focus: <b>{Html(focus)}</b></div></div>
 <div class='section'><h2>PHONE MODE</h2><div class='text'>Ta stran se osveži na 2 sekundi. PC in telefon morata biti na istem Wi‑Fi/LAN omrežju.</div></div>
 </div></body></html>";
 
