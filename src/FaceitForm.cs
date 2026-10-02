@@ -6,7 +6,8 @@ namespace Sm0kiSoloCoach;
 
 public sealed class FaceitForm : Form
 {
-    private readonly string _nickname;
+    private readonly string _coachNickname;
+    private readonly TextBox _faceitNickname = new();
     private readonly TextBox _key = new();
     private readonly Label _status = new();
     private readonly Label _stats = new();
@@ -14,11 +15,12 @@ public sealed class FaceitForm : Form
 
     public FaceitForm(string nickname)
     {
-        _nickname = nickname;
+        _coachNickname = nickname;
 
         Text = "Sm0ki Solo Coach • FACEIT";
-        Width = 650;
-        Height = 560;
+        Width = 680;
+        Height = 640;
+        MinimumSize = new Size(620, 580);
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(10,13,19);
@@ -29,11 +31,12 @@ public sealed class FaceitForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 7,
+            RowCount = 8,
             Padding = new Padding(26,20,26,22)
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute,76));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute,76));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute,46));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
@@ -49,12 +52,53 @@ public sealed class FaceitForm : Form
 
         root.Controls.Add(new Label
         {
-            Text = $"Profile: {_nickname} • uradni FACEIT Data API",
+            Text = $"Coach profile: {_coachNickname} • official FACEIT Data API",
             Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(155,167,186)
         },0,1);
 
-        var keyPanel = new TableLayoutPanel { Dock=DockStyle.Fill, ColumnCount=2, RowCount=2 };
+        var nicknamePanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Margin = Padding.Empty
+        };
+        nicknamePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        nicknamePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,110));
+        nicknamePanel.RowStyles.Add(new RowStyle(SizeType.Absolute,22));
+        nicknamePanel.RowStyles.Add(new RowStyle(SizeType.Absolute,36));
+
+        nicknamePanel.Controls.Add(new Label
+        {
+            Text="FACEIT NICKNAME",
+            Dock=DockStyle.Fill,
+            ForeColor=Color.FromArgb(126,137,156),
+            Font=new Font("Segoe UI",8,FontStyle.Bold)
+        },0,0);
+        nicknamePanel.SetColumnSpan(nicknamePanel.Controls[0],2);
+
+        _faceitNickname.Dock = DockStyle.Fill;
+        _faceitNickname.Text = FaceitSettingsStore.LoadNickname() ?? _coachNickname;
+        _faceitNickname.BackColor = Color.FromArgb(24,29,39);
+        _faceitNickname.ForeColor = Color.White;
+        _faceitNickname.BorderStyle = BorderStyle.FixedSingle;
+        nicknamePanel.Controls.Add(_faceitNickname,0,1);
+
+        var saveProfile = Button("Save profile",100,false);
+        saveProfile.Dock = DockStyle.Fill;
+        saveProfile.Margin = new Padding(10,0,0,0);
+        saveProfile.Click += (_,__) => SaveFaceitNickname();
+        nicknamePanel.Controls.Add(saveProfile,1,1);
+        root.Controls.Add(nicknamePanel,0,2);
+
+        var keyPanel = new TableLayoutPanel
+        {
+            Dock=DockStyle.Fill,
+            ColumnCount=2,
+            RowCount=2,
+            Margin = Padding.Empty
+        };
         keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,110));
         keyPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,22));
@@ -81,12 +125,19 @@ public sealed class FaceitForm : Form
         save.Margin=new Padding(10,0,0,0);
         save.Click += (_,__) => SaveKey();
         keyPanel.Controls.Add(save,1,1);
-        root.Controls.Add(keyPanel,0,2);
+        root.Controls.Add(keyPanel,0,3);
 
-        var links=new FlowLayoutPanel { Dock=DockStyle.Fill, FlowDirection=FlowDirection.LeftToRight };
+        var links=new FlowLayoutPanel
+        {
+            Dock=DockStyle.Fill,
+            FlowDirection=FlowDirection.LeftToRight,
+            WrapContents=false
+        };
         var docs=Button("API key help",112,false);
         docs.Click += (_,__) => Process.Start(new ProcessStartInfo(
-            "https://docs.faceit.com/getting-started/authentication/api-keys/") { UseShellExecute=true });
+            "https://docs.faceit.com/getting-started/authentication/api-keys/")
+        { UseShellExecute=true });
+
         var remove=Button("Remove key",112,false);
         remove.Click += (_,__) =>
         {
@@ -97,21 +148,21 @@ public sealed class FaceitForm : Form
         };
         links.Controls.Add(docs);
         links.Controls.Add(remove);
-        root.Controls.Add(links,0,3);
+        root.Controls.Add(links,0,4);
 
         _status.Text = FaceitSettingsStore.HasKey
-            ? "API key je shranjen lokalno. Klikni Refresh FACEIT."
+            ? "API key je shranjen. Preveri FACEIT nickname in klikni Refresh FACEIT."
             : "Dodaj FACEIT API key. Tvoj FACEIT password ni potreben.";
         _status.Dock=DockStyle.Fill;
         _status.ForeColor=Color.FromArgb(150,164,184);
-        root.Controls.Add(_status,0,4);
+        root.Controls.Add(_status,0,5);
 
         _stats.Dock=DockStyle.Fill;
         _stats.Font=new Font("Segoe UI",11);
         _stats.ForeColor=Color.FromArgb(220,225,234);
         _stats.Padding=new Padding(16);
         _stats.BackColor=Color.FromArgb(17,22,30);
-        root.Controls.Add(_stats,0,5);
+        root.Controls.Add(_stats,0,6);
 
         var bottom=new FlowLayoutPanel
         {
@@ -125,9 +176,22 @@ public sealed class FaceitForm : Form
         close.Click += (_,__) => Close();
         bottom.Controls.Add(_refresh);
         bottom.Controls.Add(close);
-        root.Controls.Add(bottom,0,6);
+        root.Controls.Add(bottom,0,7);
 
         Controls.Add(root);
+    }
+
+    private void SaveFaceitNickname()
+    {
+        try
+        {
+            FaceitSettingsStore.SaveNickname(_faceitNickname.Text);
+            _status.Text = $"FACEIT profile saved: {_faceitNickname.Text.Trim()}";
+        }
+        catch(Exception ex)
+        {
+            MessageBox.Show(ex.Message,"FACEIT",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+        }
     }
 
     private void SaveKey()
@@ -155,13 +219,20 @@ public sealed class FaceitForm : Form
     {
         try
         {
+            var nickname = _faceitNickname.Text.Trim();
+            FaceitSettingsStore.SaveNickname(nickname);
+
             _refresh.Enabled=false;
             _refresh.Text="Loading…";
-            _status.Text="Berem javne FACEIT podatke…";
+            _status.Text=$"Iščem FACEIT profil {nickname}…";
+            _stats.Text="";
 
-            var s=await new FaceitService().LoadAsync(_nickname);
+            var s=await new FaceitService().LoadAsync(nickname);
 
-            _status.Text=$"{s.Nickname} • {s.GameId.ToUpperInvariant()} • connected";
+            _faceitNickname.Text = s.Nickname;
+            FaceitSettingsStore.SaveNickname(s.Nickname);
+
+            _status.Text=$"{s.Nickname} • {s.GameId.ToUpperInvariant()} • CONNECTED";
             _stats.Text=
                 $"ELO: {s.Elo}\n" +
                 $"Level: {s.SkillLevel}\n" +
@@ -177,7 +248,9 @@ public sealed class FaceitForm : Form
         catch(Exception ex)
         {
             _status.Text="FACEIT connection error";
-            _stats.Text=ex.Message;
+            _stats.Text=ex.Message +
+                "\n\nCheck that FACEIT NICKNAME exactly matches your FACEIT profile. " +
+                "The coach profile name and FACEIT nickname can be different.";
         }
         finally
         {
@@ -190,7 +263,9 @@ public sealed class FaceitForm : Form
     {
         var b=new Button
         {
-            Text=text, Width=width, Height=34,
+            Text=text,
+            Width=width,
+            Height=34,
             FlatStyle=FlatStyle.Flat,
             BackColor=primary ? Color.FromArgb(104,92,255) : Color.FromArgb(27,33,44),
             ForeColor=Color.White,
