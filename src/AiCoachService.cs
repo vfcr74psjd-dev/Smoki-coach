@@ -286,12 +286,12 @@ public sealed class AiCoachService
 
         var prompt =
             "/no_think\n" +
-            $"CS2 solo coach for {safePlayerName}. Slovenian. Be immediate and practical. " +
-            "Use ONLY supplied state; no enemy-location guesses or hidden data. " +
-            "Adapt to the PREVIOUS round and current score. Do not give a generic repeated plan: " +
-            "change the opening emphasis/timing when the round number or recent outcome changes. " +
-            "Exactly 4 short lines: PLAN:, OPENING:, AFTER KILL:, AVOID:. " +
-            "No intro. Max 65 words.\n" +
+            $"CS2 solo coach for {safePlayerName}. Slovenian. Give ONLY minimal commands for the NEXT round. " +
+            "Use ONLY supplied state; never guess enemy positions. Adapt strongly to the previous round outcome, score, side and money. " +
+            "Exactly 3 lines and nothing else: BUY:, DO:, ADAPT:. " +
+            "BUY must be a realistic short purchase/save recommendation from current money. " +
+            "DO must be one short sequence using arrows, e.g. mid control → trade → reposition. " +
+            "ADAPT must explicitly react to the recent round result. Max 35 words total. No explanations.\n" +
             $"STATE map={CoachEngine.PrettyMap(s.Map)}({s.Map}); side={s.Team}; " +
             $"round={roundNumber}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
             $"money={s.Money ?? 0}; weapon={s.Weapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; " +
@@ -309,7 +309,7 @@ public sealed class AiCoachService
                 temperature = 0.24,
                 top_p = 0.80,
                 num_ctx = 1024,
-                num_predict = 96
+                num_predict = 64
             }
         };
 
@@ -324,9 +324,33 @@ public sealed class AiCoachService
         if (doc.RootElement.TryGetProperty("response", out var output) &&
             output.ValueKind == JsonValueKind.String &&
             !string.IsNullOrWhiteSpace(output.GetString()))
-            return StripThinking(output.GetString()!).Trim();
+            return NormalizeRoundAdvice(StripThinking(output.GetString()!));
 
         throw new InvalidOperationException("Local AI odgovor ni vseboval besedila.");
+    }
+
+    private static string NormalizeRoundAdvice(string text)
+    {
+        var lines = text
+            .Replace("\r", "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x =>
+                x.StartsWith("BUY:", StringComparison.OrdinalIgnoreCase) ||
+                x.StartsWith("DO:", StringComparison.OrdinalIgnoreCase) ||
+                x.StartsWith("ADAPT:", StringComparison.OrdinalIgnoreCase))
+            .Take(3)
+            .ToList();
+
+        if (lines.Count == 3)
+            return string.Join("\n", lines);
+
+        // Small local models occasionally ignore formatting. Keep the UI compact
+        // instead of showing a paragraph in the live-round card.
+        var compact = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        if (compact.Length > 180)
+            compact = compact[..180].TrimEnd() + "…";
+
+        return compact;
     }
 
     private static string StripThinking(string text)
