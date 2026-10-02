@@ -210,7 +210,7 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
 </head>
 <body><div class='wrap'>
 <div class='hero'>
-<h1>Sm0ki Solo Coach <span class='badge'>LIVE PHONE</span></h1>
+<h1>Sm0ki <span style='color:#8176ff'>Solo Coach</span> <span class='badge'>LIVE</span></h1>
 <div class='sub'>PROFILE: {Html(nickname)} • PRIVATE LAN COMPANION • v{Html(AppUpdater.CurrentVersion)}</div>
 </div>
 
@@ -230,8 +230,8 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
 </div>
 
 <div class='section'><h2>NEXT BUY</h2><div class='big'>{Html(buyTitle)}</div><div class='text'>{Html(buyAdvice)}</div></div>
-<div class='section ai'><h2>AI ROUND COACH</h2><div class='text'>{Html(aiTip)}</div></div>
-<div class='section'><h2>SOLO AVG-KILLS COACH</h2><div class='text'>{Html(tip)}</div></div>
+<div class='section ai'><h2>NEXT ROUND PLAN</h2><div class='text'>{Html(aiTip)}</div></div>
+<div class='section'><h2>COACH NOTE</h2><div class='text'>{Html(tip)}</div></div>
 
 <div class='section'>
 <h2>COACH CONTROLS</h2>
