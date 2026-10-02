@@ -98,7 +98,24 @@ public sealed class FaceitHistoryService
             if (!cached.TryGetValue(match.MatchId, out var old))
                 continue;
 
+            var matchAge = old.FinishedUtc == default
+                ? TimeSpan.MaxValue
+                : DateTime.UtcNow - old.FinishedUtc;
+
+            var checkAge = old.DetailsCheckedUtc == default
+                ? TimeSpan.MaxValue
+                : DateTime.UtcNow - old.DetailsCheckedUtc;
+
+            var cacheIsFresh =
+                old.DemoReady ||
+                matchAge >= TimeSpan.FromHours(24) ||
+                checkAge < TimeSpan.FromMinutes(10);
+
+            if (!cacheIsFresh)
+                continue;
+
             match.DetailsChecked = true;
+            match.DetailsCheckedUtc = old.DetailsCheckedUtc;
             match.DemoReady = old.DemoReady;
             match.DemoResources = old.DemoResources.ToList();
             if (!string.IsNullOrWhiteSpace(old.Map)) match.Map = old.Map;
@@ -142,7 +159,7 @@ public sealed class FaceitHistoryService
             {
                 lock (matches)
                 {
-                    match.DetailsChecked = true;
+                    match.DetailsChecked = false;
                     completed++;
                     errors++;
                 }
@@ -203,6 +220,7 @@ public sealed class FaceitHistoryService
         target.DemoReady = source.DemoReady;
         target.DemoResources = source.DemoResources;
         target.DetailsChecked = true;
+        target.DetailsCheckedUtc = DateTime.UtcNow;
     }
 
     private static FaceitHistoryMatch ParseMatch(
@@ -259,6 +277,7 @@ public sealed class FaceitHistoryService
             Status = GetString(root, "status") ?? "",
             DemoReady = demos.Count > 0,
             DetailsChecked = detailsChecked,
+            DetailsCheckedUtc = detailsChecked ? DateTime.UtcNow : default,
             DemoResources = demos.Distinct().ToList(),
             SyncedUtc = DateTime.UtcNow
         };
