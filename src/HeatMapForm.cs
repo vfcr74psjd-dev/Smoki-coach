@@ -211,7 +211,7 @@ public sealed class HeatMapForm : Form
         _hotspots.BackColor = Color.FromArgb(12,17,24);
         _hotspots.ForeColor = Color.FromArgb(211,219,231);
         _hotspots.Columns.Add("#",34);
-        _hotspots.Columns.Add("Sector",92);
+        _hotspots.Columns.Add("Area",132);
         _hotspots.Columns.Add("Deaths",62);
         _hotspots.Columns.Add("Side",55);
         side.Controls.Add(_hotspots,0,2);
@@ -320,12 +320,44 @@ public sealed class HeatMapForm : Form
     {
         _hotspots.Items.Clear();
         var def = RadarCatalog.Get(map);
+
         if (def == null || points.Count == 0)
         {
             _hotspots.Items.Add(new ListViewItem(new[] { "—", "No data", "0", "—" }));
             return;
         }
 
+        var named = points
+            .Where(p => !string.IsNullOrWhiteSpace(p.PlaceName))
+            .GroupBy(p => p.PlaceName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Name = g.Key,
+                Deaths = g.Count(),
+                Ct = g.Count(x => x.Side.Equals("CT", StringComparison.OrdinalIgnoreCase)),
+                T = g.Count(x => x.Side.Equals("T", StringComparison.OrdinalIgnoreCase))
+            })
+            .OrderByDescending(x => x.Deaths)
+            .Take(6)
+            .ToList();
+
+        if (named.Count > 0)
+        {
+            int rank = 1;
+            foreach (var h in named)
+            {
+                var dominant = h.Ct == h.T ? "Mix" : h.Ct > h.T ? "CT" : "T";
+                var item = new ListViewItem(rank.ToString());
+                item.SubItems.Add(h.Name);
+                item.SubItems.Add(h.Deaths.ToString());
+                item.SubItems.Add(dominant);
+                _hotspots.Items.Add(item);
+                rank++;
+            }
+            return;
+        }
+
+        // Older records may not contain place names. Keep a coordinate sector fallback.
         const int grid = 6;
         var clusters = points
             .Select(p =>
@@ -348,16 +380,16 @@ public sealed class HeatMapForm : Form
             .Take(6)
             .ToList();
 
-        int rank = 1;
+        int sectorRank = 1;
         foreach (var h in clusters)
         {
             var dominant = h.Ct == h.T ? "Mix" : h.Ct > h.T ? "CT" : "T";
-            var item = new ListViewItem(rank.ToString());
+            var item = new ListViewItem(sectorRank.ToString());
             item.SubItems.Add($"S{h.Col + 1}-{h.Row + 1}");
             item.SubItems.Add(h.Deaths.ToString());
             item.SubItems.Add(dominant);
             _hotspots.Items.Add(item);
-            rank++;
+            sectorRank++;
         }
     }
 
@@ -432,6 +464,7 @@ public sealed class HeatMapForm : Form
         private string _map = "";
         private IReadOnlyList<DemoDeathPoint> _points = Array.Empty<DemoDeathPoint>();
         private RadarDefinition? _definition;
+        private string _loadedRadarUrl = "";
 
         public HeatCanvas()
         {
@@ -449,27 +482,44 @@ public sealed class HeatMapForm : Form
 
         public async Task LoadRadarAsync(string map, CancellationToken ct)
         {
-            if (_map.Equals(map, StringComparison.OrdinalIgnoreCase) && _image != null)
-            {
-                Invalidate();
-                return;
-            }
-
             _definition = RadarCatalog.Get(map);
-            _image?.Dispose();
-            _image = null;
-
             if (_definition == null)
             {
+                _image?.Dispose();
+                _image = null;
+                _loadedRadarUrl = "";
                 Invalidate();
                 return;
             }
 
-            var url = _definition.RadarUrl;
+            var lowerCount = _definition.LowerBelowZ.HasValue
+                ? _points.Count(p => p.Z < _definition.LowerBelowZ.Value)
+                : 0;
+
+            var useLower =
+                lowerCount > (_points.Count / 2) &&
+                !string.IsNullOrWhiteSpace(_definition.LowerRadarUrl);
+
+            var url = useLower
+                ? _definition.LowerRadarUrl!
+                : _definition.RadarUrl;
+
+            if (_image != null &&
+                _loadedRadarUrl.Equals(url, StringComparison.OrdinalIgnoreCase))
+            {
+                _map = map;
+                Invalidate();
+                return;
+            }
+
             var bytes = await Http.GetByteArrayAsync(url, ct);
             using var ms = new MemoryStream(bytes);
             using var temp = Image.FromStream(ms);
-            _image = new Bitmap(temp);
+            var next = new Bitmap(temp);
+
+            _image?.Dispose();
+            _image = next;
+            _loadedRadarUrl = url;
             _map = map;
             Invalidate();
         }
@@ -560,6 +610,7 @@ public sealed class HeatMapForm : Form
         {
             _image?.Dispose();
             _image = null;
+            _loadedRadarUrl = "";
         }
     }
 }
