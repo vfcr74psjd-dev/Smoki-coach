@@ -14,6 +14,7 @@ public sealed class FaceitHistoryMatch
     public string Status { get; set; } = "";
     public bool DemoReady { get; set; }
     public bool DetailsChecked { get; set; }
+    public DateTime DetailsCheckedUtc { get; set; }
     public List<string> DemoResources { get; set; } = new();
     public DateTime SyncedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -69,6 +70,8 @@ public static class FaceitHistoryStore
                     if (!string.IsNullOrWhiteSpace(incoming.Status)) existing.Status = incoming.Status;
                     existing.DemoReady = incoming.DemoReady || existing.DemoReady;
                     existing.DetailsChecked = incoming.DetailsChecked || existing.DetailsChecked;
+                    if (incoming.DetailsCheckedUtc != default)
+                        existing.DetailsCheckedUtc = incoming.DetailsCheckedUtc;
                     if (incoming.DemoResources.Count > 0)
                         existing.DemoResources = incoming.DemoResources.Distinct().ToList();
                     existing.SyncedUtc = incoming.SyncedUtc;
