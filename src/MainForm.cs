@@ -200,7 +200,7 @@ public sealed class MainForm : Form
         };
         toolbar.Controls.Add(install);
 
-        var aiSettings = MakeButton("AI Settings", 118, false);
+        var aiSettings = MakeButton("Local AI", 118, false);
         aiSettings.Left = 552;
         aiSettings.Top = 15;
         aiSettings.Click += (_,__) =>
@@ -410,16 +410,16 @@ public sealed class MainForm : Form
     {
         if (_aiCoach.IsConfigured)
         {
-            _aiStatus.Text = "AI READY";
+            _aiStatus.Text = "LOCAL AI";
             _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
             if (_latestAiAdvice == "AI coach čaka na nastavitev.")
-                _latestAiAdvice = "AI je pripravljen. Nov plan se ustvari ob začetku runde.";
+                _latestAiAdvice = "Local AI je na voljo. V Local AI meniju klikni Prepare Local AI, nato se plan ustvari ob začetku runde.";
         }
         else
         {
             _aiStatus.Text = "AI OFF";
             _aiStatus.ForeColor = Color.FromArgb(255, 170, 140);
-            _latestAiAdvice = "Klikni AI Settings in dodaj svoj OpenAI API key.";
+            _latestAiAdvice = "Klikni Local AI in namesti brezplačni lokalni AI.";
         }
 
         _aiText.Text = _latestAiAdvice;
@@ -467,16 +467,10 @@ public sealed class MainForm : Form
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _latestAiAdvice = "AI trenutno ni dosegljiv. Lokalni coach spodaj ostaja aktiven.";
+            _latestAiAdvice = ex.Message;
             _aiText.Text = _latestAiAdvice;
             _aiStatus.Text = "AI ERROR";
             _aiStatus.ForeColor = Color.FromArgb(255, 150, 130);
-
-            var msg = ex.Message;
-            if (msg.Contains("401"))
-                _latestAiAdvice = _aiText.Text = "API key ni sprejet. Odpri AI Settings in preveri ključ.";
-            else if (msg.Contains("429"))
-                _latestAiAdvice = _aiText.Text = "OpenAI API limit je trenutno dosežen. Lokalni coach ostaja aktiven.";
         }
     }
 

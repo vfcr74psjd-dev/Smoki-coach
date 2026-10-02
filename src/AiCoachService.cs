@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -6,12 +6,150 @@ namespace Sm0kiSoloCoach;
 
 public sealed class AiCoachService
 {
+    public const string ModelName = "qwen3:4b-instruct";
+    private const string BaseUrl = "http://127.0.0.1:11434";
+
     private static readonly HttpClient Http = new()
     {
-        Timeout = TimeSpan.FromSeconds(18)
+        Timeout = TimeSpan.FromSeconds(45)
     };
 
-    public bool IsConfigured => AiSettingsStore.HasApiKey;
+    public bool IsConfigured => FindOllamaExe() != null;
+
+    public static string? FindOllamaExe()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs", "Ollama", "ollama.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Ollama", "ollama.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "Ollama", "ollama.exe")
+        };
+
+        foreach (var path in candidates)
+            if (File.Exists(path)) return path;
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in pathEnv.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var path = Path.Combine(dir.Trim(), "ollama.exe");
+                if (File.Exists(path)) return path;
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
+    private static async Task<bool> ServerIsReadyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await Http.GetAsync(BaseUrl + "/api/tags", cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task EnsureServerAsync(CancellationToken cancellationToken)
+    {
+        if (await ServerIsReadyAsync(cancellationToken)) return;
+
+        var exe = FindOllamaExe();
+        if (exe == null)
+            throw new InvalidOperationException(
+                "Local AI ni nameščen. Odpri AI Settings in klikni Install Ollama.");
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(exe, "serve")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+        }
+        catch { }
+
+        for (int i = 0; i < 12; i++)
+        {
+            await Task.Delay(500, cancellationToken);
+            if (await ServerIsReadyAsync(cancellationToken)) return;
+        }
+
+        throw new InvalidOperationException(
+            "Ollama je nameščen, vendar lokalnega AI strežnika ni bilo mogoče zagnati.");
+    }
+
+    public static async Task PrepareLocalAiAsync(CancellationToken cancellationToken = default)
+    {
+        var exe = FindOllamaExe();
+        if (exe == null)
+            throw new InvalidOperationException(
+                "Najprej namesti Ollama. Klikni Install Ollama, nato ponovno odpri ta meni.");
+
+        await EnsureServerAsync(cancellationToken);
+
+        using var process = Process.Start(new ProcessStartInfo(exe, $"pull {ModelName}")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        });
+
+        if (process == null)
+            throw new InvalidOperationException("Prenosa lokalnega AI modela ni bilo mogoče zagnati.");
+
+        await process.WaitForExitAsync(cancellationToken);
+        if (process.ExitCode != 0)
+        {
+            var err = await process.StandardError.ReadToEndAsync(cancellationToken);
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(err) ? "Prenos lokalnega AI modela ni uspel." : err.Trim());
+        }
+    }
+
+    public static async Task<string> TestLocalAiAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureServerAsync(cancellationToken);
+
+        var payload = new
+        {
+            model = ModelName,
+            prompt = "Odgovori samo: LOCAL AI OK",
+            stream = false,
+            options = new
+            {
+                temperature = 0.0,
+                num_predict = 16
+            }
+        };
+
+        using var response = await Http.PostAsJsonAsync(BaseUrl + "/api/generate", payload, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw BuildLocalError(response.StatusCode, raw);
+
+        using var doc = JsonDocument.Parse(raw);
+        var text = doc.RootElement.TryGetProperty("response", out var value)
+            ? value.GetString()
+            : null;
+
+        return string.IsNullOrWhiteSpace(text) ? "LOCAL AI OK" : text.Trim();
+    }
 
     public async Task<string> GenerateRoundAdviceAsync(
         GameSnapshot s,
@@ -19,9 +157,7 @@ public sealed class AiCoachService
         string mode,
         CancellationToken cancellationToken = default)
     {
-        var key = AiSettingsStore.LoadApiKey();
-        if (string.IsNullOrWhiteSpace(key))
-            throw new InvalidOperationException("OpenAI API key ni nastavljen.");
+        await EnsureServerAsync(cancellationToken);
 
         var recent = rounds.TakeLast(6)
             .Select(r => $"R{r.Round + 1}: {r.Side}, +{r.KillsRound}K/+{r.DeathsRound}D, end USD {r.MoneyEnd}")
@@ -46,58 +182,48 @@ public sealed class AiCoachService
             "Ne predlagaj cheatov, memory readanja, avtomatizacije inputa ali skritih podatkov. " +
             "Cilj je izboljšati odločitve, trade timing, survival po prvem killu in dolgoročni kill output. " +
             "Odgovori v slovenščini, zelo kratko in praktično, največ 5 vrstic. " +
-            "Uporabi format: PLAN:, OPENING:, AFTER KILL:, AVOID:, FOCUS:. " +
-            "Če je podatkov premalo, povej varen splošen plan glede na mapo, side in economy.";
+            "Uporabi točno format PLAN:, OPENING:, AFTER KILL:, AVOID:, FOCUS:. " +
+            "Brez uvoda, brez dolge razlage. Če je podatkov premalo, uporabi varen splošen plan glede na mapo, side in economy.";
 
         var payload = new
         {
-            model = "gpt-6-luna",
-            instructions,
-            input = state,
-            max_output_tokens = 220
+            model = ModelName,
+            prompt = instructions + "\n\nSTANJE TEKME:\n" + state,
+            stream = false,
+            keep_alive = "15m",
+            options = new
+            {
+                temperature = 0.35,
+                num_predict = 220
+            }
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/responses");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        req.Headers.UserAgent.ParseAdd("Sm0kiSoloCoach/" + AppUpdater.CurrentVersion);
-        req.Content = JsonContent.Create(payload);
-
-        using var response = await Http.SendAsync(req, cancellationToken);
+        using var response = await Http.PostAsJsonAsync(BaseUrl + "/api/generate", payload, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
-        {
-            var shortError = raw.Length > 220 ? raw[..220] + "…" : raw;
-            throw new InvalidOperationException($"OpenAI API {(int)response.StatusCode}: {shortError}");
-        }
+            throw BuildLocalError(response.StatusCode, raw);
 
         using var doc = JsonDocument.Parse(raw);
-        var root = doc.RootElement;
+        if (doc.RootElement.TryGetProperty("response", out var output) &&
+            output.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(output.GetString()))
+            return output.GetString()!.Trim();
 
-        if (root.TryGetProperty("output_text", out var direct) &&
-            direct.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(direct.GetString()))
-            return direct.GetString()!.Trim();
+        throw new InvalidOperationException("Local AI odgovor ni vseboval besedila.");
+    }
 
-        if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
+    private static Exception BuildLocalError(System.Net.HttpStatusCode status, string raw)
+    {
+        if (raw.Contains("model", StringComparison.OrdinalIgnoreCase) &&
+            (raw.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+             raw.Contains("pull", StringComparison.OrdinalIgnoreCase)))
         {
-            foreach (var item in output.EnumerateArray())
-            {
-                if (!item.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
-                    continue;
-
-                foreach (var part in content.EnumerateArray())
-                {
-                    if (part.TryGetProperty("type", out var type) &&
-                        type.GetString() == "output_text" &&
-                        part.TryGetProperty("text", out var text) &&
-                        text.ValueKind == JsonValueKind.String &&
-                        !string.IsNullOrWhiteSpace(text.GetString()))
-                        return text.GetString()!.Trim();
-                }
-            }
+            return new InvalidOperationException(
+                $"Model {ModelName} še ni pripravljen. Odpri AI Settings in klikni Prepare Local AI.");
         }
 
-        throw new InvalidOperationException("AI odgovor ni vseboval besedila.");
+        var shortError = raw.Length > 240 ? raw[..240] + "…" : raw;
+        return new InvalidOperationException($"Local AI {(int)status}: {shortError}");
     }
 }
