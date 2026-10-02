@@ -121,6 +121,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             git commit -m "Update manifest [skip ci]"
 
+            # The installer step rewrites the local .iss version for packaging only.
+            # Restore it before rebasing so Git has a clean working tree.
+            git restore installer/Sm0kiSoloCoach.iss
+
             git pull --rebase origin main
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
