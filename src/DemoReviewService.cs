@@ -10,6 +10,7 @@ public sealed class DemoDeathPoint
     public string Killer { get; set; } = "";
     public string Weapon { get; set; } = "";
     public string Side { get; set; } = "";
+    public string PlaceName { get; set; } = "";
     public float X { get; set; }
     public float Y { get; set; }
     public float Z { get; set; }
@@ -74,6 +75,7 @@ public static class DemoReviewService
                 Killer = killer,
                 Weapon = e.Weapon ?? "",
                 Side = side,
+                PlaceName = pawn.LastPlaceName ?? "",
                 X = pos.X,
                 Y = pos.Y,
                 Z = pos.Z
