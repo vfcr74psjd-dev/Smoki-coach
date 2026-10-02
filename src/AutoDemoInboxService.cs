@@ -36,6 +36,92 @@ public sealed class AutoDemoInboxService : IDisposable
         return await ScanInternalAsync(cancellationToken, true);
     }
 
+    public async Task<HeatMapMatchRecord?> ImportFileAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            throw new FileNotFoundException("Demo file ni bil najden.", path);
+
+        if (!IsSupportedDemoFile(path))
+            throw new InvalidOperationException(
+                "Podprti formati so .dem, .dem.gz in .zip z demo datoteko.");
+
+        var nickname = (_nicknameProvider() ?? "").Trim();
+        if (nickname.Length < 2)
+            throw new InvalidOperationException("FACEIT/player nickname ni nastavljen.");
+
+        var fingerprint = HeatMapStore.FingerprintFile(path);
+        var existing = HeatMapStore.Load()
+            .FirstOrDefault(x =>
+                x.DemoFingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            StatusChanged?.Invoke(
+                $"Demo je že analiziran: {CoachEngine.PrettyMap(existing.Map)} • {existing.Deaths.Count} deaths");
+            return existing;
+        }
+
+        string? tempExpanded = null;
+        string? tempZipDir = null;
+
+        try
+        {
+            StatusChanged?.Invoke($"Analiziram {Path.GetFileName(path)}…");
+
+            var demoPath = path;
+
+            if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                (demoPath, tempZipDir) = await ExtractDemoFromZipAsync(path, cancellationToken);
+            }
+
+            if (demoPath.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase) ||
+                demoPath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+            {
+                tempExpanded = await ExpandGzipAsync(demoPath, cancellationToken);
+                demoPath = tempExpanded;
+            }
+
+            var result = await DemoReviewService.AnalyzeAsync(
+                demoPath,
+                nickname,
+                cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(result.Map))
+                throw new InvalidOperationException(
+                    "Demo je bil prebran, vendar mapa ni bila prepoznana.");
+
+            if (result.Deaths.Count == 0)
+                throw new InvalidOperationException(
+                    $"Demo je bil prebran ({CoachEngine.PrettyMap(result.Map)}), vendar zate ni bilo najdenih death eventov. " +
+                    "Preveri FACEIT nickname/SteamID v appu.");
+
+            var record = HeatMapStore.AddFromResult(path, nickname, result);
+            if (record == null)
+                throw new InvalidOperationException("Heatmap recorda ni bilo mogoče shraniti.");
+
+            DemoImported?.Invoke(record);
+            StatusChanged?.Invoke(
+                $"IMPORT OK: {CoachEngine.PrettyMap(record.Map)} • {record.Deaths.Count} deaths");
+
+            return record;
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(tempExpanded))
+            {
+                try { File.Delete(tempExpanded); } catch { }
+            }
+
+            if (!string.IsNullOrWhiteSpace(tempZipDir))
+            {
+                try { Directory.Delete(tempZipDir, true); } catch { }
+            }
+        }
+    }
+
     private async Task LoopAsync(CancellationToken ct)
     {
         try
@@ -111,29 +197,46 @@ public sealed class AutoDemoInboxService : IDisposable
                     StatusChanged?.Invoke($"Analiziram {Path.GetFileName(file)}…");
 
                     var demoPath = file;
-                    if (file.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase) ||
-                        file.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+                    string? tempZipDir = null;
+
+                    try
                     {
-                        tempDemo = await ExpandGzipAsync(file, ct);
-                        demoPath = tempDemo;
+                        if (file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            (demoPath, tempZipDir) = await ExtractDemoFromZipAsync(file, ct);
+                        }
+
+                        if (demoPath.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase) ||
+                            demoPath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+                        {
+                            tempDemo = await ExpandGzipAsync(demoPath, ct);
+                            demoPath = tempDemo;
+                        }
+
+                        var result = await DemoReviewService.AnalyzeAsync(demoPath, nickname, ct);
+
+                        if (result.Deaths.Count == 0)
+                        {
+                            _retryAfter[fingerprint] = DateTime.UtcNow.AddMinutes(30);
+                            continue;
+                        }
+
+                        var record = HeatMapStore.AddFromResult(file, nickname, result);
+                        if (record != null)
+                        {
+                            imported++;
+                            knownFingerprints.Add(record.DemoFingerprint);
+                            DemoImported?.Invoke(record);
+                            StatusChanged?.Invoke(
+                                $"Dodano: {CoachEngine.PrettyMap(record.Map)} • {record.Deaths.Count} deaths");
+                        }
                     }
-
-                    var result = await DemoReviewService.AnalyzeAsync(demoPath, nickname, ct);
-
-                    if (result.Deaths.Count == 0)
+                    finally
                     {
-                        _retryAfter[fingerprint] = DateTime.UtcNow.AddMinutes(30);
-                        continue;
-                    }
-
-                    var record = HeatMapStore.AddFromResult(file, nickname, result);
-                    if (record != null)
-                    {
-                        imported++;
-                        knownFingerprints.Add(record.DemoFingerprint);
-                        DemoImported?.Invoke(record);
-                        StatusChanged?.Invoke(
-                            $"Dodano: {CoachEngine.PrettyMap(record.Map)} • {record.Deaths.Count} deaths");
+                        if (!string.IsNullOrWhiteSpace(tempZipDir))
+                        {
+                            try { Directory.Delete(tempZipDir, true); } catch { }
+                        }
                     }
                 }
                 catch (OperationCanceledException) { throw; }
@@ -201,7 +304,50 @@ public sealed class AutoDemoInboxService : IDisposable
     private static bool IsSupportedDemoFile(string path)
     {
         return path.EndsWith(".dem", StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase);
+               path.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase) ||
+               path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<(string DemoPath, string TempDir)> ExtractDemoFromZipAsync(
+        string path,
+        CancellationToken ct)
+    {
+        var tempDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Sm0kiSoloCoach",
+            "TempDemos",
+            "zip-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            using var archive = ZipFile.OpenRead(path);
+            var entry = archive.Entries
+                .Where(x =>
+                    !string.IsNullOrWhiteSpace(x.Name) &&
+                    (x.FullName.EndsWith(".dem", StringComparison.OrdinalIgnoreCase) ||
+                     x.FullName.EndsWith(".dem.gz", StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(x => x.Length)
+                .FirstOrDefault();
+
+            if (entry == null)
+                throw new InvalidOperationException(
+                    "ZIP ne vsebuje .dem ali .dem.gz datoteke.");
+
+            var safeName = Path.GetFileName(entry.FullName);
+            var output = Path.Combine(tempDir, safeName);
+
+            await using var input = entry.Open();
+            await using var target = File.Create(output);
+            await input.CopyToAsync(target, ct);
+
+            return (output, tempDir);
+        }
+        catch
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+            throw;
+        }
     }
 
     private static async Task<string> ExpandGzipAsync(string path, CancellationToken ct)
