@@ -1,6 +1,13 @@
 name: Validate Sm0ki Solo Coach
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'VERSION'
+      - 'installer/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main ]
     paths:

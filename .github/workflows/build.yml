@@ -4,11 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/**'
       - 'VERSION'
-      - '.github/workflows/build.yml'
-      - 'installer/**'
   workflow_dispatch:
+
+concurrency:
+  group: smoki-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -85,11 +86,20 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag dist\Sm0kiSoloCoach.exe dist\Sm0kiSoloCoach-Setup.exe --clobber
+            if ($LASTEXITCODE -ne 0) {
+              Start-Sleep -Seconds 3
+              gh release upload $tag dist\Sm0kiSoloCoach.exe dist\Sm0kiSoloCoach-Setup.exe --clobber
+            }
           } else {
             gh release create $tag dist\Sm0kiSoloCoach.exe dist\Sm0kiSoloCoach-Setup.exe --target "$env:GITHUB_SHA" --title "Sm0ki Solo Coach $versionText" --notes "Sm0ki Solo Coach release. Novi uporabniki naj uporabijo Setup datoteko."
           }
 
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $assets = gh release view $tag --json assets --jq '.assets[].name'
+          if ($assets -notcontains "Sm0kiSoloCoach.exe" -or $assets -notcontains "Sm0kiSoloCoach-Setup.exe") {
+            throw "Release ni vseboval obeh update assetov."
+          }
 
       - name: Generate update manifest
         shell: pwsh
