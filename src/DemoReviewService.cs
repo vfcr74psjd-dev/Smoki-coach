@@ -44,10 +44,19 @@ public static class DemoReviewService
                 result.Map = e.MapName;
         };
 
-        demo.Source1GameEvents.RoundStart += _ => round++;
+        demo.Source1GameEvents.RoundStart += _ =>
+        {
+            // FACEIT demos can contain warmup RoundStart events. Keep match round
+            // numbering clean by counting only actual gameplay phases.
+            if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound)
+                round++;
+        };
 
         demo.Source1GameEvents.PlayerDeath += e =>
         {
+            if (demo.GameRules.CSGamePhase == CSGamePhase.WarmupRound)
+                return;
+
             var victim = e.Player?.PlayerName ?? "";
             var killer = e.Attacker?.PlayerName ?? "";
 
