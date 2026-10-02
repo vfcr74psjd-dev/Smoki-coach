@@ -8,6 +8,10 @@ public sealed class AutoDemoInboxService : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly Dictionary<string, DateTime> _retryAfter = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HttpClient DownloadHttp = new()
+    {
+        Timeout = TimeSpan.FromMinutes(3)
+    };
     private Task? _loop;
 
     public static string InboxFolder { get; } =
@@ -120,6 +124,137 @@ public sealed class AutoDemoInboxService : IDisposable
                 try { Directory.Delete(tempZipDir, true); } catch { }
             }
         }
+    }
+
+
+    public async Task<int> DownloadReadyFaceitDemosAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var nickname = (_nicknameProvider() ?? "").Trim();
+        if (nickname.Length < 2)
+            throw new InvalidOperationException("FACEIT/player nickname ni nastavljen.");
+
+        var ready = FaceitHistoryStore.LoadForPlayer(nickname)
+            .Where(x => x.DemoReady && x.DemoResources.Count > 0)
+            .OrderByDescending(x => x.FinishedUtc)
+            .ToList();
+
+        if (ready.Count == 0)
+        {
+            StatusChanged?.Invoke("FACEIT History nima demo URL-jev za prenos.");
+            return 0;
+        }
+
+        Directory.CreateDirectory(InboxFolder);
+        int downloaded = 0;
+        int failed = 0;
+        int index = 0;
+
+        foreach (var match in ready)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            index++;
+
+            foreach (var resource in match.DemoResources.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!Uri.TryCreate(resource, UriKind.Absolute, out var uri))
+                {
+                    failed++;
+                    continue;
+                }
+
+                var ext = GuessDemoExtension(uri);
+                var safeMatch = string.IsNullOrWhiteSpace(match.MatchId)
+                    ? Guid.NewGuid().ToString("N")
+                    : match.MatchId;
+                var destination = Path.Combine(
+                    InboxFolder,
+                    safeMatch + ext);
+
+                if (File.Exists(destination) && new FileInfo(destination).Length > 1024)
+                    continue;
+
+                var partial = destination + ".partial";
+
+                try
+                {
+                    StatusChanged?.Invoke(
+                        $"Downloading FACEIT demos… {index}/{ready.Count} • {CoachEngine.PrettyMap(match.Map)}");
+
+                    using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                    using var response = await DownloadHttp.SendAsync(
+                        request,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cancellationToken);
+
+                    if (!response.IsSuccessStatusCode &&
+                        ((int)response.StatusCode == 401 || (int)response.StatusCode == 403))
+                    {
+                        var key = FaceitSettingsStore.LoadKey();
+                        if (!string.IsNullOrWhiteSpace(key))
+                        {
+                            using var retry = new HttpRequestMessage(HttpMethod.Get, uri);
+                            retry.Headers.Authorization =
+                                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+
+                            using var retryResponse = await DownloadHttp.SendAsync(
+                                retry,
+                                HttpCompletionOption.ResponseHeadersRead,
+                                cancellationToken);
+
+                            retryResponse.EnsureSuccessStatusCode();
+                            await using var retryInput =
+                                await retryResponse.Content.ReadAsStreamAsync(cancellationToken);
+                            await using var retryOutput = File.Create(partial);
+                            await retryInput.CopyToAsync(retryOutput, cancellationToken);
+                        }
+                        else
+                        {
+                            response.EnsureSuccessStatusCode();
+                        }
+                    }
+                    else
+                    {
+                        response.EnsureSuccessStatusCode();
+                        await using var input =
+                            await response.Content.ReadAsStreamAsync(cancellationToken);
+                        await using var output = File.Create(partial);
+                        await input.CopyToAsync(output, cancellationToken);
+                    }
+
+                    if (!File.Exists(partial) || new FileInfo(partial).Length < 1024)
+                        throw new InvalidOperationException("Downloaded demo je prazen.");
+
+                    File.Move(partial, destination, true);
+                    downloaded++;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch
+                {
+                    failed++;
+                    try { if (File.Exists(partial)) File.Delete(partial); } catch { }
+                }
+            }
+        }
+
+        StatusChanged?.Invoke(
+            failed > 0
+                ? $"FACEIT backfill: downloaded {downloaded}, failed {failed}. Importing local demos…"
+                : $"FACEIT backfill: downloaded {downloaded}. Importing local demos…");
+
+        await ScanInternalAsync(cancellationToken, false);
+        return downloaded;
+    }
+
+    private static string GuessDemoExtension(Uri uri)
+    {
+        var path = uri.AbsolutePath.ToLowerInvariant();
+        if (path.EndsWith(".dem.gz")) return ".dem.gz";
+        if (path.EndsWith(".zip")) return ".zip";
+        if (path.EndsWith(".dem")) return ".dem";
+        return ".dem.gz";
     }
 
     private async Task LoopAsync(CancellationToken ct)
