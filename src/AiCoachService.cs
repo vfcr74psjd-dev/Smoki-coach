@@ -140,6 +140,27 @@ public sealed class AiCoachService
         return ModelName;
     }
 
+    public static async Task<bool> IsFastModelReadyAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (FindOllamaExe() == null)
+            return false;
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(4));
+
+            await EnsureServerAsync(timeout.Token);
+            var models = await GetInstalledModelsAsync(timeout.Token);
+            return models.Contains(ModelName) || models.Contains(LegacyModelName);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static async Task PrepareLocalAiAsync(CancellationToken cancellationToken = default)
     {
         var exe = FindOllamaExe();

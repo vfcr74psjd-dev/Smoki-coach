@@ -8,8 +8,6 @@ namespace Sm0kiSoloCoach;
 
 public sealed class HeatMapForm : Form
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
-
     private readonly string _nickname;
     private readonly AutoDemoInboxService _inbox;
     private readonly ComboBox _map = new();
@@ -91,7 +89,7 @@ public sealed class HeatMapForm : Form
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,22));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,58));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,190));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,300));
 
         controls.Controls.Add(FilterLabel("MAP"),0,0);
         ConfigureCombo(_map);
@@ -107,13 +105,22 @@ public sealed class HeatMapForm : Form
 
         controls.Controls.Add(FilterLabel("RANGE"),4,0);
         ConfigureCombo(_window);
-        _window.Items.AddRange(new object[] { "Last match", "Last 10", "Last 20", "Last 50" });
+        _window.Items.AddRange(new object[] { "Last match", "Last 10", "Last 20", "Last 50", "All matches" });
         _window.SelectedItem = "Last 20";
         _window.SelectedIndexChanged += async (_,__) => await RefreshViewAsync();
         controls.Controls.Add(_window,5,0);
 
-        var scan = MakeButton("SCAN NOW",88,true);
-        var open = MakeButton("OPEN INBOX",92,false);
+        var syncFaceit = MakeButton("FACEIT SYNC",96,true);
+        var scan = MakeButton("SCAN NOW",82,false);
+        var open = MakeButton("INBOX",76,false);
+
+        syncFaceit.Click += (_,__) =>
+        {
+            using var dialog = new FaceitHistoryForm(_nickname, _inbox);
+            dialog.ShowDialog(this);
+            ReloadData();
+        };
+
         scan.Click += async (_,__) =>
         {
             scan.Enabled = false;
@@ -124,6 +131,7 @@ public sealed class HeatMapForm : Form
             }
             finally { scan.Enabled = true; }
         };
+
         open.Click += (_,__) =>
         {
             Directory.CreateDirectory(AutoDemoInboxService.InboxFolder);
@@ -140,6 +148,7 @@ public sealed class HeatMapForm : Form
             WrapContents = false,
             Padding = new Padding(0,6,0,0)
         };
+        actions.Controls.Add(syncFaceit);
         actions.Controls.Add(scan);
         actions.Controls.Add(open);
         controls.Controls.Add(actions,6,0);
@@ -200,7 +209,7 @@ public sealed class HeatMapForm : Form
         _hotspots.BackColor = Color.FromArgb(12,17,24);
         _hotspots.ForeColor = Color.FromArgb(211,219,231);
         _hotspots.Columns.Add("#",34);
-        _hotspots.Columns.Add("Sector",92);
+        _hotspots.Columns.Add("Area",132);
         _hotspots.Columns.Add("Deaths",62);
         _hotspots.Columns.Add("Side",55);
         side.Controls.Add(_hotspots,0,2);
@@ -213,7 +222,7 @@ public sealed class HeatMapForm : Form
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
 
         _status.Text =
-            $"Watching Downloads + {AutoDemoInboxService.InboxFolder}. Demo parsing stays local.";
+            $"Local analysis • radar images are cached after first load • no demo upload. FACEIT Sync indexes history/demo availability.";
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = Color.FromArgb(105,118,138);
         _status.Font = new Font("Segoe UI",8.5f);
@@ -309,12 +318,44 @@ public sealed class HeatMapForm : Form
     {
         _hotspots.Items.Clear();
         var def = RadarCatalog.Get(map);
+
         if (def == null || points.Count == 0)
         {
             _hotspots.Items.Add(new ListViewItem(new[] { "—", "No data", "0", "—" }));
             return;
         }
 
+        var named = points
+            .Where(p => !string.IsNullOrWhiteSpace(p.PlaceName))
+            .GroupBy(p => p.PlaceName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Name = g.Key,
+                Deaths = g.Count(),
+                Ct = g.Count(x => x.Side.Equals("CT", StringComparison.OrdinalIgnoreCase)),
+                T = g.Count(x => x.Side.Equals("T", StringComparison.OrdinalIgnoreCase))
+            })
+            .OrderByDescending(x => x.Deaths)
+            .Take(6)
+            .ToList();
+
+        if (named.Count > 0)
+        {
+            int rank = 1;
+            foreach (var h in named)
+            {
+                var dominant = h.Ct == h.T ? "Mix" : h.Ct > h.T ? "CT" : "T";
+                var item = new ListViewItem(rank.ToString());
+                item.SubItems.Add(h.Name);
+                item.SubItems.Add(h.Deaths.ToString());
+                item.SubItems.Add(dominant);
+                _hotspots.Items.Add(item);
+                rank++;
+            }
+            return;
+        }
+
+        // Older records may not contain place names. Keep a coordinate sector fallback.
         const int grid = 6;
         var clusters = points
             .Select(p =>
@@ -337,16 +378,16 @@ public sealed class HeatMapForm : Form
             .Take(6)
             .ToList();
 
-        int rank = 1;
+        int sectorRank = 1;
         foreach (var h in clusters)
         {
             var dominant = h.Ct == h.T ? "Mix" : h.Ct > h.T ? "CT" : "T";
-            var item = new ListViewItem(rank.ToString());
+            var item = new ListViewItem(sectorRank.ToString());
             item.SubItems.Add($"S{h.Col + 1}-{h.Row + 1}");
             item.SubItems.Add(h.Deaths.ToString());
             item.SubItems.Add(dominant);
             _hotspots.Items.Add(item);
-            rank++;
+            sectorRank++;
         }
     }
 
@@ -357,6 +398,7 @@ public sealed class HeatMapForm : Form
             "Last match" => 1,
             "Last 10" => 10,
             "Last 50" => 50,
+            "All matches" => int.MaxValue,
             _ => 20
         };
     }
@@ -421,6 +463,7 @@ public sealed class HeatMapForm : Form
         private string _map = "";
         private IReadOnlyList<DemoDeathPoint> _points = Array.Empty<DemoDeathPoint>();
         private RadarDefinition? _definition;
+        private string _loadedRadarUrl = "";
 
         public HeatCanvas()
         {
@@ -438,27 +481,44 @@ public sealed class HeatMapForm : Form
 
         public async Task LoadRadarAsync(string map, CancellationToken ct)
         {
-            if (_map.Equals(map, StringComparison.OrdinalIgnoreCase) && _image != null)
-            {
-                Invalidate();
-                return;
-            }
-
             _definition = RadarCatalog.Get(map);
-            _image?.Dispose();
-            _image = null;
-
             if (_definition == null)
             {
+                _image?.Dispose();
+                _image = null;
+                _loadedRadarUrl = "";
                 Invalidate();
                 return;
             }
 
-            var url = _definition.RadarUrl;
-            var bytes = await Http.GetByteArrayAsync(url, ct);
+            var lowerCount = _definition.LowerBelowZ.HasValue
+                ? _points.Count(p => p.Z < _definition.LowerBelowZ.Value)
+                : 0;
+
+            var useLower =
+                lowerCount > (_points.Count / 2) &&
+                !string.IsNullOrWhiteSpace(_definition.LowerRadarUrl);
+
+            var url = useLower
+                ? _definition.LowerRadarUrl!
+                : _definition.RadarUrl;
+
+            if (_image != null &&
+                _loadedRadarUrl.Equals(url, StringComparison.OrdinalIgnoreCase))
+            {
+                _map = map;
+                Invalidate();
+                return;
+            }
+
+            var bytes = await RadarImageCache.GetAsync(url, ct);
             using var ms = new MemoryStream(bytes);
             using var temp = Image.FromStream(ms);
-            _image = new Bitmap(temp);
+            var next = new Bitmap(temp);
+
+            _image?.Dispose();
+            _image = next;
+            _loadedRadarUrl = url;
             _map = map;
             Invalidate();
         }
@@ -549,6 +609,7 @@ public sealed class HeatMapForm : Form
         {
             _image?.Dispose();
             _image = null;
+            _loadedRadarUrl = "";
         }
     }
 }

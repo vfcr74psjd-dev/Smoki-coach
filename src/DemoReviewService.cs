@@ -10,6 +10,7 @@ public sealed class DemoDeathPoint
     public string Killer { get; set; } = "";
     public string Weapon { get; set; } = "";
     public string Side { get; set; } = "";
+    public string PlaceName { get; set; } = "";
     public float X { get; set; }
     public float Y { get; set; }
     public float Z { get; set; }
@@ -24,9 +25,22 @@ public sealed class DemoReviewResult
 
 public static class DemoReviewService
 {
+    public static Task<DemoReviewResult> AnalyzeAsync(
+        string demoPath,
+        string playerNickname,
+        CancellationToken cancellationToken = default)
+    {
+        return AnalyzeAsync(
+            demoPath,
+            playerNickname,
+            FaceitSettingsStore.LoadSteamId64(),
+            cancellationToken);
+    }
+
     public static async Task<DemoReviewResult> AnalyzeAsync(
         string demoPath,
         string playerNickname,
+        string? playerSteamId64,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(demoPath))
@@ -36,6 +50,7 @@ public static class DemoReviewService
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var demo = new CsDemoParser();
         int round = 0;
+        var hasSteamId = ulong.TryParse(playerSteamId64, out var targetSteamId);
 
         demo.PacketEvents.SvcServerInfo += e =>
         {
@@ -43,17 +58,34 @@ public static class DemoReviewService
                 result.Map = e.MapName;
         };
 
-        demo.Source1GameEvents.RoundStart += _ => round++;
+        demo.Source1GameEvents.RoundStart += _ =>
+        {
+            // FACEIT demos can contain warmup RoundStart events. Keep match round
+            // numbering clean by counting only actual gameplay phases.
+            if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound)
+                round++;
+        };
 
         demo.Source1GameEvents.PlayerDeath += e =>
         {
+            if (demo.GameRules.CSGamePhase == CSGamePhase.WarmupRound)
+                return;
+
             var victim = e.Player?.PlayerName ?? "";
             var killer = e.Attacker?.PlayerName ?? "";
 
             if (!string.IsNullOrWhiteSpace(victim)) names.Add(victim);
             if (!string.IsNullOrWhiteSpace(killer)) names.Add(killer);
 
-            if (!victim.Equals(playerNickname, StringComparison.OrdinalIgnoreCase))
+            var steamMatches =
+                hasSteamId &&
+                e.Player != null &&
+                e.Player.SteamID == targetSteamId;
+
+            var nicknameMatches =
+                victim.Equals(playerNickname, StringComparison.OrdinalIgnoreCase);
+
+            if (!steamMatches && !nicknameMatches)
                 return;
 
             var pawn = e.PlayerPawn;
@@ -74,6 +106,7 @@ public static class DemoReviewService
                 Killer = killer,
                 Weapon = e.Weapon ?? "",
                 Side = side,
+                PlaceName = pawn.LastPlaceName ?? "",
                 X = pos.X,
                 Y = pos.Y,
                 Z = pos.Z

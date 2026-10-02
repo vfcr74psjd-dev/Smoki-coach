@@ -6,8 +6,6 @@ namespace Sm0kiSoloCoach;
 
 public sealed class ReviewLabForm : Form
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
-
     private readonly string _nickname;
     private readonly Label _status = new();
     private readonly Label _summary = new();
@@ -104,8 +102,9 @@ public sealed class ReviewLabForm : Form
         _deaths.ForeColor = Color.FromArgb(211,219,231);
         _deaths.Columns.Add("R",38);
         _deaths.Columns.Add("Killer",110);
-        _deaths.Columns.Add("Weapon",100);
-        _deaths.Columns.Add("Position",170);
+        _deaths.Columns.Add("Weapon",90);
+        _deaths.Columns.Add("Area",110);
+        _deaths.Columns.Add("Position",150);
         _deaths.SelectedIndexChanged += (_,__) =>
         {
             if (_deaths.SelectedItems.Count == 0) return;
@@ -186,6 +185,7 @@ public sealed class ReviewLabForm : Form
                 var item = new ListViewItem(d.Round.ToString());
                 item.SubItems.Add(string.IsNullOrWhiteSpace(d.Killer) ? "—" : d.Killer);
                 item.SubItems.Add(string.IsNullOrWhiteSpace(d.Weapon) ? "—" : d.Weapon);
+                item.SubItems.Add(string.IsNullOrWhiteSpace(d.PlaceName) ? "—" : d.PlaceName);
                 item.SubItems.Add($"{d.X:0}, {d.Y:0}, {d.Z:0}");
                 item.Tag = d;
                 _deaths.Items.Add(item);
@@ -268,7 +268,7 @@ public sealed class ReviewLabForm : Form
                 ? _definition.LowerRadarUrl!
                 : _definition.RadarUrl;
 
-            var bytes = await Http.GetByteArrayAsync(url,ct);
+            var bytes = await RadarImageCache.GetAsync(url,ct);
             using var ms = new MemoryStream(bytes);
             using var temp = Image.FromStream(ms);
             _image = new Bitmap(temp);

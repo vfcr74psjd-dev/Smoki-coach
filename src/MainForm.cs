@@ -51,6 +51,9 @@ public sealed class MainForm : Form
     private int _roundStartKills;
     private int _roundStartDeaths;
     private DateTime _sessionStartedUtc = DateTime.UtcNow;
+    private readonly System.Windows.Forms.Timer _uiPulseTimer = new();
+    private DateTime _lastGsiUtc = DateTime.MinValue;
+    private bool _pulseBright;
 
     private GameSnapshot _current = new();
     private GameSnapshot? _previous;
@@ -77,11 +80,11 @@ public sealed class MainForm : Form
 
         _phoneServer = new PhoneDashboardServer(
             () => _current,
-            () => _mode.SelectedItem?.ToString() ?? "Balanced",
-            () => _role.SelectedItem?.ToString() ?? "Flex",
-            () => _focus.SelectedItem?.ToString() ?? "More kills",
+            () => _prefs.Mode,
+            () => _prefs.Role,
+            () => _prefs.Focus,
             () => _profile.Nickname,
-            () => _autoAi.Checked,
+            () => _prefs.AutoAi,
             () => _latestAiAdvice,
             ApplyPhoneSettings
         );
@@ -92,6 +95,10 @@ public sealed class MainForm : Form
         _demoInbox.Start();
 
         UpdateAiStatus();
+
+        _uiPulseTimer.Interval = 750;
+        _uiPulseTimer.Tick += (_,__) => UpdateUiHeartbeat();
+        _uiPulseTimer.Start();
 
         var path = GsiInstaller.TryInstall();
         if (path == null)
@@ -109,6 +116,7 @@ public sealed class MainForm : Form
             ArchiveCurrentSession(_current.Map, _current);
             _aiCts?.Cancel();
             _aiCts?.Dispose();
+            _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
             _demoInbox?.Dispose();
             _server.Dispose();
@@ -230,13 +238,6 @@ public sealed class MainForm : Form
             dialog.ShowDialog(this);
         }));
 
-        nav.Controls.Add(MakeNavButton("REVIEW LAB", false, (_,__) =>
-        {
-            var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
-            using var dialog = new ReviewLabForm(nickname);
-            dialog.ShowDialog(this);
-        }));
-
         nav.Controls.Add(MakeNavButton("PROGRESS", false, async (_,__) =>
         {
             await LoadFaceitSnapshotAsync();
@@ -248,21 +249,7 @@ public sealed class MainForm : Form
             dialog.ShowDialog(this);
         }));
 
-        nav.Controls.Add(MakeNavButton("FACEIT", false, async (_,__) =>
-        {
-            using var dialog = new FaceitForm(_profile.Nickname);
-            dialog.ShowDialog(this);
-            await LoadFaceitSnapshotAsync(true);
-        }));
-
-        nav.Controls.Add(MakeNavButton("PHONE COMPANION", false, (_,__) =>
-        {
-            if (_phoneServer == null) return;
-            using var qr = new PhoneQrForm(_phoneServer.GetLocalUrl());
-            qr.ShowDialog(this);
-        }));
-
-        nav.Controls.Add(MakeNavButton("PLAYER PROFILE", false, (_,__) => EditProfile()));
+        nav.Controls.Add(MakeNavButton("TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
 
         var health = MakeCard();
@@ -763,11 +750,10 @@ public sealed class MainForm : Form
         var setupFooter = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 1,
             Margin = Padding.Empty
         };
         setupFooter.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        setupFooter.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
 
         _autoAi.Text = " Auto AI refine";
         _autoAi.Checked = _prefs.AutoAi;
@@ -776,21 +762,6 @@ public sealed class MainForm : Form
         _autoAi.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
         _autoAi.CheckedChanged += (_,__) => PreferencesChanged();
         setupFooter.Controls.Add(_autoAi, 0, 0);
-
-        var localAi = MakeButton("LOCAL AI", 96, false);
-        localAi.Dock = DockStyle.Fill;
-        localAi.Margin = new Padding(5, 4, 0, 4);
-        localAi.Click += (_,__) =>
-        {
-            using var dialog = new AiSettingsForm();
-            if (dialog.ShowDialog(this) == DialogResult.OK)
-            {
-                UpdateAiStatus();
-                if (_current.Round is int && _autoAi.Checked)
-                    _ = RefreshAiCoachAsync(_current, true);
-            }
-        };
-        setupFooter.Controls.Add(localAi, 1, 0);
         setupLayout.Controls.Add(setupFooter, 0, 4);
         setupCard.Controls.Add(setupLayout);
         right.Controls.Add(setupCard, 0, 2);
@@ -833,13 +804,12 @@ public sealed class MainForm : Form
         var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             Padding = new Padding(24, 3, 24, 3),
             Margin = Padding.Empty,
             BackColor = Color.FromArgb(8, 11, 17)
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
 
         _phoneUrl.Visible = false;
@@ -868,18 +838,6 @@ public sealed class MainForm : Form
         };
         footer.Controls.Add(refreshGsi, 1, 0);
 
-        var phoneButton = MakeButton("PHONE QR", 112, false);
-        phoneButton.Dock = DockStyle.Fill;
-        phoneButton.Height = 24;
-        phoneButton.Margin = new Padding(4, 0, 0, 0);
-        phoneButton.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-        phoneButton.Click += (_,__) =>
-        {
-            if (_phoneServer == null) return;
-            using var qr = new PhoneQrForm(_phoneServer.GetLocalUrl());
-            qr.ShowDialog(this);
-        };
-        footer.Controls.Add(phoneButton, 2, 0);
 
         workspace.Controls.Add(footer, 0, 3);
         root.Controls.Add(workspace, 1, 0);
@@ -889,6 +847,171 @@ public sealed class MainForm : Form
         _liveLayoutExpanded = true;
         SetLiveLayoutExpanded(false);
         ResumeLayout(true);
+    }
+
+    private void UpdateUiHeartbeat()
+    {
+        _pulseBright = !_pulseBright;
+
+        var age = _lastGsiUtc == DateTime.MinValue
+            ? TimeSpan.MaxValue
+            : DateTime.UtcNow - _lastGsiUtc;
+
+        if (age <= TimeSpan.FromSeconds(12))
+        {
+            _status.Text = "GSI LIVE";
+            _status.ForeColor = Color.FromArgb(126, 240, 174);
+            _status.BackColor = _pulseBright
+                ? Color.FromArgb(23, 64, 44)
+                : Color.FromArgb(18, 52, 36);
+
+            _gsiHealth.Text = "● GSI LIVE";
+            _gsiHealth.ForeColor = _pulseBright
+                ? Color.FromArgb(142, 246, 184)
+                : Color.FromArgb(104, 214, 151);
+        }
+        else if (_lastGsiUtc != DateTime.MinValue)
+        {
+            _status.Text = "GSI WAITING";
+            _status.ForeColor = Color.FromArgb(244, 155, 121);
+            _status.BackColor = Color.FromArgb(52, 35, 31);
+            _gsiHealth.Text = "● GSI WAITING";
+            _gsiHealth.ForeColor = Color.FromArgb(244, 155, 121);
+            SetLiveLayoutExpanded(false);
+        }
+
+        if (_aiStatus.Text.Contains("REFINE", StringComparison.OrdinalIgnoreCase))
+        {
+            _aiStatus.ForeColor = _pulseBright
+                ? Color.FromArgb(196, 188, 255)
+                : Color.FromArgb(145, 133, 235);
+        }
+    }
+
+    private void ShowToolsHub()
+    {
+        using var dialog = new Form
+        {
+            Text = "Sm0ki Solo Coach • Tools",
+            Width = 620,
+            Height = 490,
+            MinimumSize = new Size(560, 450),
+            StartPosition = FormStartPosition.CenterParent,
+            AutoScaleMode = AutoScaleMode.Dpi,
+            BackColor = Color.FromArgb(9, 13, 19),
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 10)
+        };
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(24, 20, 24, 22)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+
+        root.Controls.Add(new Label
+        {
+            Text = "TOOLS & CONNECTIONS",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 18, FontStyle.Bold),
+            ForeColor = Color.White
+        }, 0, 0);
+
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 3,
+            Margin = Padding.Empty
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        for (int i = 0; i < 3; i++)
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33f));
+
+        Button ToolButton(string title, string subtitle, EventHandler click)
+        {
+            var b = new Button
+            {
+                Text = title + "\n" + subtitle,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(5),
+                Padding = new Padding(14, 8, 14, 8),
+                FlatStyle = FlatStyle.Flat,
+                TextAlign = ContentAlignment.MiddleLeft,
+                BackColor = Color.FromArgb(17, 22, 30),
+                ForeColor = Color.FromArgb(225, 230, 238),
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            b.FlatAppearance.BorderSize = 1;
+            b.FlatAppearance.BorderColor = Color.FromArgb(40, 48, 63);
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(27, 33, 46);
+            b.Click += click;
+            return b;
+        }
+
+        grid.Controls.Add(ToolButton("REVIEW LAB", "Inspect one demo in detail", (_,__) =>
+        {
+            var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
+            using var review = new ReviewLabForm(nickname);
+            review.ShowDialog(dialog);
+        }), 0, 0);
+
+        grid.Controls.Add(ToolButton("FACEIT", "API key, nickname & stats", async (_,__) =>
+        {
+            using var faceit = new FaceitForm(_profile.Nickname);
+            faceit.ShowDialog(dialog);
+            await LoadFaceitSnapshotAsync(true);
+        }), 1, 0);
+
+        grid.Controls.Add(ToolButton("FACEIT HISTORY", "Index matches & demo availability", (_,__) =>
+        {
+            if (_demoInbox == null) return;
+            var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
+            using var history = new FaceitHistoryForm(nickname, _demoInbox);
+            history.ShowDialog(dialog);
+        }), 0, 1);
+
+        grid.Controls.Add(ToolButton("PHONE COMPANION", "Private LAN dashboard", (_,__) =>
+        {
+            if (_phoneServer == null) return;
+            using var qr = new PhoneQrForm(_phoneServer.GetLocalUrl());
+            qr.ShowDialog(dialog);
+        }), 1, 1);
+
+        grid.Controls.Add(ToolButton("PLAYER PROFILE", "Local player identity", (_,__) =>
+        {
+            dialog.Hide();
+            EditProfile();
+            dialog.Show();
+        }), 0, 2);
+
+        grid.Controls.Add(ToolButton("LOCAL AI", "Install, prepare or test Ollama", (_,__) =>
+        {
+            using var ai = new AiSettingsForm();
+            if (ai.ShowDialog(dialog) == DialogResult.OK)
+            {
+                UpdateAiStatus();
+                if (_current.Round is int && _autoAi.Checked)
+                    _ = RefreshAiCoachAsync(_current, true);
+            }
+        }), 1, 2);
+
+        root.Controls.Add(grid, 0, 1);
+
+        var close = MakeButton("CLOSE", 90, false);
+        close.Anchor = AnchorStyles.Right;
+        close.Click += (_,__) => dialog.Close();
+        root.Controls.Add(close, 0, 2);
+
+        dialog.Controls.Add(root);
+        dialog.ShowDialog(this);
     }
 
     private Button MakeNavButton(string text, bool active, EventHandler click)
@@ -1218,25 +1341,53 @@ public sealed class MainForm : Form
 
     private void UpdateAiStatus()
     {
-        if (_aiCoach.IsConfigured)
-        {
-            _aiStatus.Text = "FAST AI READY";
-            _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
-            _aiHealth.Text = "● FAST AI READY";
-            _aiHealth.ForeColor = Color.FromArgb(126, 240, 174);
-            if (_latestAiAdvice == "AI coach čaka na nastavitev.")
-                _latestAiAdvice = "Coach je pripravljen. Ko CS2 pošlje novo rundo, se plan pokaže takoj; Local AI ga nato v ozadju samo izboljša.";
-        }
-        else
+        if (!_aiCoach.IsConfigured)
         {
             _aiStatus.Text = "INSTANT PLAN";
             _aiStatus.ForeColor = Color.FromArgb(255, 190, 132);
             _aiHealth.Text = "● AI OPTIONAL";
             _aiHealth.ForeColor = Color.FromArgb(255, 190, 132);
-            _latestAiAdvice = "Klikni Local AI in namesti brezplačni lokalni AI.";
+            _latestAiAdvice = "Instant coach dela brez AI. Za AI refine odpri Tools → Local AI.";
+            _aiText.Text = _latestAiAdvice;
+            return;
         }
 
-        _aiText.Text = _latestAiAdvice;
+        _aiStatus.Text = "AI CHECK";
+        _aiStatus.ForeColor = Color.FromArgb(176, 166, 255);
+        _aiHealth.Text = "● AI CHECKING";
+        _aiHealth.ForeColor = Color.FromArgb(176, 166, 255);
+        _ = RefreshAiReadinessAsync();
+    }
+
+    private async Task RefreshAiReadinessAsync()
+    {
+        var ready = await AiCoachService.IsFastModelReadyAsync();
+        if (IsDisposed) return;
+
+        if (ready)
+        {
+            _aiStatus.Text = "FAST AI READY";
+            _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+            _aiHealth.Text = "● FAST AI READY";
+            _aiHealth.ForeColor = Color.FromArgb(126, 240, 174);
+
+            if (_latestAiAdvice == "AI coach čaka na nastavitev." ||
+                _latestAiAdvice.StartsWith("Instant coach dela", StringComparison.Ordinal))
+            {
+                _latestAiAdvice =
+                    "Coach je pripravljen. Nova runda dobi instant plan takoj; Local AI ga v ozadju samo izboljša.";
+                _aiText.Text = _latestAiAdvice;
+            }
+        }
+        else
+        {
+            _aiStatus.Text = "INSTANT PLAN";
+            _aiStatus.ForeColor = Color.FromArgb(255, 190, 132);
+            _aiHealth.Text = "● AI NEEDS PREP";
+            _aiHealth.ForeColor = Color.FromArgb(255, 190, 132);
+            _latestAiAdvice = "Instant coach je aktiven. Za AI refine odpri Tools → Local AI → Prepare Fast AI.";
+            _aiText.Text = _latestAiAdvice;
+        }
     }
 
     private async Task RefreshAiCoachAsync(GameSnapshot snapshot, bool force = false)
@@ -1497,6 +1648,7 @@ public sealed class MainForm : Form
     {
         BeginInvoke(() =>
         {
+            _lastGsiUtc = DateTime.UtcNow;
             _previous = _current;
             _current = s;
 
@@ -1687,10 +1839,7 @@ public sealed class MainForm : Form
             _phoneUrl.Text = "Phone: " + _phoneServer.GetLocalUrl();
 
         _status.Text = "GSI LIVE";
-        _status.ForeColor = Color.FromArgb(126, 240, 174);
-        _status.BackColor = Color.FromArgb(20, 56, 39);
         _gsiHealth.Text = "● GSI LIVE";
-        _gsiHealth.ForeColor = Color.FromArgb(126, 240, 174);
 
         int k = _current.Kills ?? 0;
         int d = _current.Deaths ?? 0;

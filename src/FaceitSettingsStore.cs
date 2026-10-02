@@ -9,6 +9,7 @@ public static class FaceitSettingsStore
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sm0kiSoloCoach");
     private static readonly string KeyPath = Path.Combine(Dir, "faceit.key");
     private static readonly string NicknamePath = Path.Combine(Dir, "faceit.nickname");
+    private static readonly string SteamIdPath = Path.Combine(Dir, "faceit.steamid64");
 
     public static bool HasKey => !string.IsNullOrWhiteSpace(LoadKey());
 
@@ -54,6 +55,27 @@ public static class FaceitSettingsStore
             if (!File.Exists(NicknamePath)) return null;
             var nickname = File.ReadAllText(NicknamePath, Encoding.UTF8).Trim();
             return string.IsNullOrWhiteSpace(nickname) ? null : nickname;
+        }
+        catch { return null; }
+    }
+
+    public static void SaveSteamId64(string steamId64)
+    {
+        steamId64 = (steamId64 ?? "").Trim();
+        if (!ulong.TryParse(steamId64, out _))
+            return;
+
+        Directory.CreateDirectory(Dir);
+        File.WriteAllText(SteamIdPath, steamId64, Encoding.UTF8);
+    }
+
+    public static string? LoadSteamId64()
+    {
+        try
+        {
+            if (!File.Exists(SteamIdPath)) return null;
+            var value = File.ReadAllText(SteamIdPath, Encoding.UTF8).Trim();
+            return ulong.TryParse(value, out _) ? value : null;
         }
         catch { return null; }
     }

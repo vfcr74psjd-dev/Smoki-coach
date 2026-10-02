@@ -2,11 +2,32 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace Sm0kiSoloCoach;
 
 public sealed class PhoneDashboardServer : IDisposable
 {
+    private sealed class PhoneState
+    {
+        public string map { get; init; } = "—";
+        public string side { get; init; } = "—";
+        public string round { get; init; } = "—";
+        public string score { get; init; } = "—";
+        public int kills { get; init; }
+        public int deaths { get; init; }
+        public string kd { get; init; } = "0.00";
+        public int money { get; init; }
+        public string hp { get; init; } = "—";
+        public string armor { get; init; } = "—";
+        public string weapon { get; init; } = "—";
+        public string roundType { get; init; } = "—";
+        public string buyTitle { get; init; } = "";
+        public string buyAdvice { get; init; } = "";
+        public string aiTip { get; init; } = "";
+        public string tip { get; init; } = "";
+    }
+
     private TcpListener? _listener;
     private readonly CancellationTokenSource _cts = new();
     private readonly Func<GameSnapshot> _snapshotProvider;
@@ -17,7 +38,8 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly Func<bool> _autoAiProvider;
     private readonly Func<string> _aiProvider;
     private readonly Action<string,string,string,bool> _settingsUpdater;
-    private readonly string _accessToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(10)).ToLowerInvariant();
+    private readonly string _accessToken =
+        Convert.ToHexString(RandomNumberGenerator.GetBytes(10)).ToLowerInvariant();
     private Task? _loopTask;
 
     public int Port { get; private set; } = 31990;
@@ -45,6 +67,7 @@ public sealed class PhoneDashboardServer : IDisposable
     public void Start()
     {
         Exception? last = null;
+
         for (int p = 31990; p <= 32000; p++)
         {
             try
@@ -60,7 +83,10 @@ public sealed class PhoneDashboardServer : IDisposable
                 last = ex;
             }
         }
-        throw new InvalidOperationException("Phone Mode ni našel prostega porta 31990-32000.", last);
+
+        throw new InvalidOperationException(
+            "Phone Mode ni našel prostega porta 31990-32000.",
+            last);
     }
 
     public string GetLocalUrl()
@@ -74,25 +100,28 @@ public sealed class PhoneDashboardServer : IDisposable
     {
         try
         {
-            foreach (var a in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
+            foreach (var address in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
             {
-                if (a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
-                    return a.ToString();
+                if (address.AddressFamily == AddressFamily.InterNetwork &&
+                    !IPAddress.IsLoopback(address))
+                    return address.ToString();
             }
         }
         catch { }
+
         return null;
     }
 
     private async Task ListenLoop()
     {
         if (_listener == null) return;
+
         while (!_cts.IsCancellationRequested)
         {
             try
             {
-                var c = await _listener.AcceptTcpClientAsync(_cts.Token);
-                _ = Task.Run(() => Handle(c));
+                var client = await _listener.AcceptTcpClientAsync(_cts.Token);
+                _ = Task.Run(() => Handle(client));
             }
             catch (OperationCanceledException) { break; }
             catch when (_cts.IsCancellationRequested) { break; }
@@ -107,43 +136,79 @@ public sealed class PhoneDashboardServer : IDisposable
             try
             {
                 using var stream = client.GetStream();
-                using var reader = new StreamReader(stream, Encoding.UTF8, false, 4096, leaveOpen:true);
-                string? first = await reader.ReadLineAsync();
-                if (string.IsNullOrWhiteSpace(first)) return;
+                using var reader = new StreamReader(
+                    stream,
+                    Encoding.UTF8,
+                    false,
+                    4096,
+                    leaveOpen: true);
+
+                var first = await reader.ReadLineAsync();
+                if (string.IsNullOrWhiteSpace(first))
+                    return;
 
                 while (!string.IsNullOrEmpty(await reader.ReadLineAsync())) { }
 
-                var parts = first.Split(' ');
+                var parts = first.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 2)
                 {
                     await SendText(stream, 400, "Bad Request");
                     return;
                 }
 
-                var target = parts[1];
-                var uri = new Uri("http://localhost" + target);
+                var uri = new Uri("http://localhost" + parts[1]);
                 var query = ParseQuery(uri.Query);
 
                 if (!query.TryGetValue("token", out var token) ||
-                    !CryptographicOperations.FixedTimeEquals(
-                        Encoding.UTF8.GetBytes(token),
-                        Encoding.UTF8.GetBytes(_accessToken)))
+                    !SafeTokenEquals(token, _accessToken))
                 {
-                    await SendText(stream, 403, "Phone Mode link ni veljaven. Ponovno poskeniraj QR kodo v aplikaciji.");
+                    await SendText(
+                        stream,
+                        403,
+                        "Phone Mode link ni veljaven. Ponovno poskeniraj QR kodo v aplikaciji.");
                     return;
                 }
 
                 if (uri.AbsolutePath.Equals("/settings", StringComparison.OrdinalIgnoreCase))
                 {
-                    var mode = GetAllowed(query, "mode", new[] { "Balanced", "Aggressive", "Safe" }, _modeProvider());
-                    var role = GetAllowed(query, "role", new[] { "Flex", "Entry", "Lurk", "Support", "Anchor" }, _roleProvider());
-                    var focus = GetAllowed(query, "focus",
-                        new[] { "More kills", "Survive & trade", "Entry impact", "Utility impact", "Clutch / late round" },
+                    var mode = GetAllowed(
+                        query,
+                        "mode",
+                        new[] { "Balanced", "Aggressive", "Safe" },
+                        _modeProvider());
+
+                    var role = GetAllowed(
+                        query,
+                        "role",
+                        new[] { "Flex", "Entry", "Lurk", "Support", "Anchor" },
+                        _roleProvider());
+
+                    var focus = GetAllowed(
+                        query,
+                        "focus",
+                        new[]
+                        {
+                            "More kills",
+                            "Survive & trade",
+                            "Entry impact",
+                            "Utility impact",
+                            "Clutch / late round"
+                        },
                         _focusProvider());
-                    var autoAi = query.TryGetValue("autoAi", out var auto) && auto == "1";
+
+                    var autoAi =
+                        query.TryGetValue("autoAi", out var auto) &&
+                        auto == "1";
 
                     _settingsUpdater(mode, role, focus, autoAi);
                     await SendRedirect(stream, $"/?token={_accessToken}");
+                    return;
+                }
+
+                if (uri.AbsolutePath.Equals("/api/state", StringComparison.OrdinalIgnoreCase))
+                {
+                    var json = JsonSerializer.Serialize(BuildState());
+                    await SendJson(stream, json);
                     return;
                 }
 
@@ -153,31 +218,69 @@ public sealed class PhoneDashboardServer : IDisposable
                     return;
                 }
 
-                var s = _snapshotProvider();
-                var modeNow = _modeProvider();
-                var roleNow = _roleProvider();
-                var focusNow = _focusProvider();
-                var nickname = _nicknameProvider();
-                var autoAiNow = _autoAiProvider();
+                await SendHtml(stream, BuildHtml());
+            }
+            catch { }
+        }
+    }
 
-                string map = CoachEngine.PrettyMap(s.Map);
-                string round = s.Round is int r ? $"R{r+1}" : "—";
-                string score = $"{s.CtScore?.ToString() ?? "—"}:{s.TScore?.ToString() ?? "—"}";
-                int k = s.Kills ?? 0;
-                int d = s.Deaths ?? 0;
-                string kd = d > 0 ? ((double)k/d).ToString("0.00") : k.ToString("0.00");
-                var (buyTitle, buyAdvice) = CoachEngine.BuyAdvice(s);
-                string tip = CoachEngine.SoloTip(s, modeNow) + $" Role: {roleNow}. Focus: {focusNow}.";
-                string aiTip = _aiProvider();
+    private PhoneState BuildState()
+    {
+        var snapshot = _snapshotProvider();
+        var mode = _modeProvider();
+        var role = _roleProvider();
+        var focus = _focusProvider();
 
-                string html = $@"<!doctype html>
+        var map = CoachEngine.PrettyMap(snapshot.Map);
+        var round = snapshot.Round is int r ? $"R{r + 1}" : "—";
+        var score =
+            $"{snapshot.CtScore?.ToString() ?? "—"}:{snapshot.TScore?.ToString() ?? "—"}";
+        var kills = snapshot.Kills ?? 0;
+        var deaths = snapshot.Deaths ?? 0;
+        var kd = deaths > 0
+            ? ((double)kills / deaths).ToString("0.00")
+            : kills.ToString("0.00");
+        var (buyTitle, buyAdvice) = CoachEngine.BuyAdvice(snapshot);
+
+        return new PhoneState
+        {
+            map = map,
+            side = string.IsNullOrWhiteSpace(snapshot.Team) ? "—" : snapshot.Team,
+            round = round,
+            score = score,
+            kills = kills,
+            deaths = deaths,
+            kd = kd,
+            money = snapshot.Money ?? 0,
+            hp = snapshot.Health?.ToString() ?? "—",
+            armor = snapshot.Armor?.ToString() ?? "—",
+            weapon = string.IsNullOrWhiteSpace(snapshot.Weapon) ? "—" : snapshot.Weapon,
+            roundType = CoachEngine.ClassifyRound(snapshot),
+            buyTitle = buyTitle,
+            buyAdvice = buyAdvice,
+            aiTip = _aiProvider(),
+            tip =
+                CoachEngine.SoloTip(snapshot, mode) +
+                $" Role: {role}. Focus: {focus}."
+        };
+    }
+
+    private string BuildHtml()
+    {
+        var state = BuildState();
+        var mode = _modeProvider();
+        var role = _roleProvider();
+        var focus = _focusProvider();
+        var nickname = _nicknameProvider();
+        var autoAi = _autoAiProvider();
+
+        return $@"<!doctype html>
 <html lang='sl'>
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>
 <meta name='theme-color' content='#090d13'>
 <meta name='apple-mobile-web-app-capable' content='yes'>
-<meta http-equiv='refresh' content='2'>
 <title>Sm0ki Solo Coach</title>
 <style>
 *{{box-sizing:border-box}}
@@ -186,13 +289,16 @@ body{{margin:0;background:#090d13;color:#f4f6fa;font-family:Segoe UI,Arial,sans-
 .hero{{position:sticky;top:0;z-index:2;background:rgba(9,13,19,.94);backdrop-filter:blur(12px);padding:9px 0 12px}}
 h1{{font-size:25px;margin:2px 0 4px;letter-spacing:-.02em}}
 .sub{{font-size:10px;letter-spacing:.14em;color:#737f93;font-weight:800}}
-.badge{{display:inline-block;padding:5px 9px;border-radius:999px;background:#183927;color:#8af0b8;font-weight:800;font-size:10px;vertical-align:middle}}
+.badge{{display:inline-block;padding:5px 9px;border-radius:999px;background:#183927;color:#8af0b8;font-weight:800;font-size:10px;vertical-align:middle;animation:pulse 1.8s ease-in-out infinite}}
 .grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:14px 0 10px}}
 .card,.section{{background:linear-gradient(180deg,#121923,#0f151e);border:1px solid #252e3d;border-radius:15px;box-shadow:0 8px 24px rgba(0,0,0,.18)}}
-.card{{padding:13px}} .label{{font-size:9px;color:#758197;letter-spacing:.11em;font-weight:800}}
-.value{{font-size:21px;font-weight:800;margin-top:6px;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis}}
-.section{{padding:17px;margin-top:10px}} .section h2{{font-size:10px;color:#7d899e;margin:0 0 9px;letter-spacing:.13em}}
-.big{{font-size:21px;font-weight:800;margin-bottom:7px}} .text{{line-height:1.5;color:#cbd3df;white-space:pre-line}}
+.card{{padding:13px}}
+.label{{font-size:9px;color:#758197;letter-spacing:.11em;font-weight:800}}
+.value{{font-size:21px;font-weight:800;margin-top:6px;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;transition:opacity .15s ease}}
+.section{{padding:17px;margin-top:10px}}
+.section h2{{font-size:10px;color:#7d899e;margin:0 0 9px;letter-spacing:.13em}}
+.big{{font-size:21px;font-weight:800;margin-bottom:7px}}
+.text{{line-height:1.5;color:#cbd3df;white-space:pre-line}}
 .ai{{border-left:3px solid #685cff}}
 .controls{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
 .field label{{display:block;font-size:9px;color:#758197;font-weight:800;letter-spacing:.1em;margin:0 0 5px}}
@@ -200,6 +306,7 @@ select{{width:100%;background:#171e29;color:#f5f7fb;border:1px solid #303a4c;bor
 .toggle{{display:flex;align-items:center;gap:8px;color:#cbd3df;font-size:13px;padding-top:8px}}
 button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px;background:#685cff;color:white;font-weight:800;font-size:14px}}
 .note{{font-size:11px;color:#7e8ba1;margin-top:10px;line-height:1.45}}
+@keyframes pulse{{0%,100%{{box-shadow:0 0 0 rgba(126,240,174,0)}}50%{{box-shadow:0 0 16px rgba(126,240,174,.28)}}}}
 @media(max-width:600px){{
  .wrap{{padding:12px 10px 28px}}
  .grid{{grid-template-columns:repeat(2,1fr)}}
@@ -208,63 +315,131 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
 }}
 </style>
 </head>
-<body><div class='wrap'>
+<body>
+<div class='wrap'>
 <div class='hero'>
 <h1>Sm0ki <span style='color:#8176ff'>Solo Coach</span> <span class='badge'>LIVE</span></h1>
 <div class='sub'>PROFILE: {Html(nickname)} • PRIVATE LAN COMPANION • v{Html(AppUpdater.CurrentVersion)}</div>
 </div>
 
 <div class='grid'>
-<div class='card'><div class='label'>MAP</div><div class='value'>{Html(map)}</div></div>
-<div class='card'><div class='label'>SIDE</div><div class='value'>{Html(s.Team)}</div></div>
-<div class='card'><div class='label'>ROUND</div><div class='value'>{Html(round)}</div></div>
-<div class='card'><div class='label'>SCORE</div><div class='value'>{Html(score)}</div></div>
-<div class='card'><div class='label'>KILLS</div><div class='value'>{k}</div></div>
-<div class='card'><div class='label'>DEATHS</div><div class='value'>{d}</div></div>
-<div class='card'><div class='label'>K/D</div><div class='value'>{kd}</div></div>
-<div class='card'><div class='label'>MONEY</div><div class='value'>&#36;{s.Money ?? 0}</div></div>
-<div class='card'><div class='label'>HP</div><div class='value'>{s.Health?.ToString() ?? "—"}</div></div>
-<div class='card'><div class='label'>ARMOR</div><div class='value'>{s.Armor?.ToString() ?? "—"}</div></div>
-<div class='card'><div class='label'>WEAPON</div><div class='value'>{Html(s.Weapon)}</div></div>
-<div class='card'><div class='label'>ROUND TYPE</div><div class='value'>{Html(CoachEngine.ClassifyRound(s))}</div></div>
+<div class='card'><div class='label'>MAP</div><div id='map' class='value'>{Html(state.map)}</div></div>
+<div class='card'><div class='label'>SIDE</div><div id='side' class='value'>{Html(state.side)}</div></div>
+<div class='card'><div class='label'>ROUND</div><div id='round' class='value'>{Html(state.round)}</div></div>
+<div class='card'><div class='label'>SCORE</div><div id='score' class='value'>{Html(state.score)}</div></div>
+<div class='card'><div class='label'>KILLS</div><div id='kills' class='value'>{state.kills}</div></div>
+<div class='card'><div class='label'>DEATHS</div><div id='deaths' class='value'>{state.deaths}</div></div>
+<div class='card'><div class='label'>K/D</div><div id='kd' class='value'>{state.kd}</div></div>
+<div class='card'><div class='label'>MONEY</div><div id='money' class='value'>&#36;{state.money}</div></div>
+<div class='card'><div class='label'>HP</div><div id='hp' class='value'>{Html(state.hp)}</div></div>
+<div class='card'><div class='label'>ARMOR</div><div id='armor' class='value'>{Html(state.armor)}</div></div>
+<div class='card'><div class='label'>WEAPON</div><div id='weapon' class='value'>{Html(state.weapon)}</div></div>
+<div class='card'><div class='label'>ROUND TYPE</div><div id='roundType' class='value'>{Html(state.roundType)}</div></div>
 </div>
 
-<div class='section'><h2>NEXT BUY</h2><div class='big'>{Html(buyTitle)}</div><div class='text'>{Html(buyAdvice)}</div></div>
-<div class='section ai'><h2>NEXT ROUND PLAN</h2><div class='text'>{Html(aiTip)}</div></div>
-<div class='section'><h2>COACH NOTE</h2><div class='text'>{Html(tip)}</div></div>
+<div class='section'>
+<h2>NEXT BUY</h2>
+<div id='buyTitle' class='big'>{Html(state.buyTitle)}</div>
+<div id='buyAdvice' class='text'>{Html(state.buyAdvice)}</div>
+</div>
+
+<div class='section ai'>
+<h2>NEXT ROUND PLAN</h2>
+<div id='aiTip' class='text'>{Html(state.aiTip)}</div>
+</div>
+
+<div class='section'>
+<h2>COACH NOTE</h2>
+<div id='coachTip' class='text'>{Html(state.tip)}</div>
+</div>
 
 <div class='section'>
 <h2>COACH CONTROLS</h2>
 <form method='get' action='/settings'>
 <input type='hidden' name='token' value='{Html(_accessToken)}'>
 <div class='controls'>
-<div class='field'><label>MODE</label><select name='mode'>{Options(new[] { "Balanced","Aggressive","Safe" }, modeNow)}</select></div>
-<div class='field'><label>ROLE</label><select name='role'>{Options(new[] { "Flex","Entry","Lurk","Support","Anchor" }, roleNow)}</select></div>
-<div class='field'><label>FOCUS</label><select name='focus'>{Options(new[] { "More kills","Survive & trade","Entry impact","Utility impact","Clutch / late round" }, focusNow)}</select></div>
-<div class='toggle'><input id='autoAi' type='checkbox' name='autoAi' value='1' {(autoAiNow ? "checked" : "")}><label for='autoAi'>Auto AI</label></div>
+<div class='field'>
+<label>MODE</label>
+<select name='mode'>{Options(new[] { "Balanced","Aggressive","Safe" }, mode)}</select>
+</div>
+<div class='field'>
+<label>ROLE</label>
+<select name='role'>{Options(new[] { "Flex","Entry","Lurk","Support","Anchor" }, role)}</select>
+</div>
+<div class='field'>
+<label>FOCUS</label>
+<select name='focus'>{Options(new[] { "More kills","Survive & trade","Entry impact","Utility impact","Clutch / late round" }, focus)}</select>
+</div>
+<div class='toggle'>
+<input id='autoAi' type='checkbox' name='autoAi' value='1' {(autoAi ? "checked" : "")}>
+<label for='autoAi'>Auto AI</label>
+</div>
 </div>
 <button type='submit'>Apply to PC coach</button>
 </form>
-<div class='note'>Spremembe se shranijo tudi na PC-ju. Telefon in PC morata ostati na istem Wi‑Fi/LAN omrežju.</div>
+<div class='note'>Live values update without reloading the page, so controls stay usable. Telefon in PC morata biti na istem trusted Wi‑Fi/LAN omrežju.</div>
 </div>
-</div></body></html>";
+</div>
 
-                await SendHtml(stream, html);
-            }
-            catch { }
-        }
+<script>
+const liveToken='{Html(_accessToken)}';
+const setText=(id,value)=>{{
+  const el=document.getElementById(id);
+  if(el) el.textContent=(value ?? '—');
+}};
+async function refreshLive(){{
+  try{{
+    const response=await fetch('/api/state?token='+encodeURIComponent(liveToken),{{cache:'no-store'}});
+    if(!response.ok) return;
+    const x=await response.json();
+    setText('map',x.map);
+    setText('side',x.side);
+    setText('round',x.round);
+    setText('score',x.score);
+    setText('kills',x.kills);
+    setText('deaths',x.deaths);
+    setText('kd',x.kd);
+    setText('money','$'+x.money);
+    setText('hp',x.hp);
+    setText('armor',x.armor);
+    setText('weapon',x.weapon);
+    setText('roundType',x.roundType);
+    setText('buyTitle',x.buyTitle);
+    setText('buyAdvice',x.buyAdvice);
+    setText('aiTip',x.aiTip);
+    setText('coachTip',x.tip);
+  }}catch{{}}
+}}
+setInterval(refreshLive,1500);
+</script>
+</body>
+</html>";
+    }
+
+    private static bool SafeTokenEquals(string supplied, string expected)
+    {
+        var a = Encoding.UTF8.GetBytes(supplied);
+        var b = Encoding.UTF8.GetBytes(expected);
+        return a.Length == b.Length &&
+               CryptographicOperations.FixedTimeEquals(a, b);
     }
 
     private static Dictionary<string,string> ParseQuery(string query)
     {
         var result = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = pair.Split('=', 2);
             var key = Uri.UnescapeDataString(parts[0].Replace("+", " "));
-            var value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1].Replace("+", " ")) : "";
+            var value =
+                parts.Length > 1
+                    ? Uri.UnescapeDataString(parts[1].Replace("+", " "))
+                    : "";
+
             result[key] = value;
         }
+
         return result;
     }
 
@@ -274,12 +449,17 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
         IReadOnlyCollection<string> allowed,
         string fallback)
     {
-        return query.TryGetValue(key, out var value) && allowed.Contains(value) ? value : fallback;
+        return query.TryGetValue(key, out var value) &&
+               allowed.Contains(value)
+            ? value
+            : fallback;
     }
 
     private static string Options(IEnumerable<string> items, string current)
-        => string.Join("", items.Select(x =>
-            $"<option value='{Html(x)}'{(x == current ? " selected" : "")}>{Html(x)}</option>"));
+        => string.Join(
+            "",
+            items.Select(x =>
+                $"<option value='{Html(x)}'{(x == current ? " selected" : "")}>{Html(x)}</option>"));
 
     private static async Task SendHtml(NetworkStream stream, string html)
     {
@@ -291,6 +471,22 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
             "Pragma: no-cache\r\n" +
             $"Content-Length: {body.Length}\r\n" +
             "Connection: close\r\n\r\n";
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.WriteAsync(body);
+        await stream.FlushAsync();
+    }
+
+    private static async Task SendJson(NetworkStream stream, string json)
+    {
+        var body = Encoding.UTF8.GetBytes(json);
+        var header =
+            "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: application/json; charset=utf-8\r\n" +
+            "Cache-Control: no-store, no-cache, must-revalidate\r\n" +
+            $"Content-Length: {body.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+
         await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
         await stream.WriteAsync(body);
         await stream.FlushAsync();
@@ -299,12 +495,17 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
     private static async Task SendText(NetworkStream stream, int code, string text)
     {
         var body = Encoding.UTF8.GetBytes(text);
-        var status = code == 403 ? "Forbidden" : code == 404 ? "Not Found" : "Bad Request";
+        var status =
+            code == 403 ? "Forbidden" :
+            code == 404 ? "Not Found" :
+            "Bad Request";
+
         var header =
             $"HTTP/1.1 {code} {status}\r\n" +
             "Content-Type: text/plain; charset=utf-8\r\n" +
             $"Content-Length: {body.Length}\r\n" +
             "Connection: close\r\n\r\n";
+
         await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
         await stream.WriteAsync(body);
         await stream.FlushAsync();
@@ -318,12 +519,14 @@ button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px
             "Cache-Control: no-store\r\n" +
             "Content-Length: 0\r\n" +
             "Connection: close\r\n\r\n";
+
         await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
         await stream.FlushAsync();
     }
 
-    private static string Html(string? s)
-        => WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(s) ? "—" : s);
+    private static string Html(string? value)
+        => WebUtility.HtmlEncode(
+            string.IsNullOrWhiteSpace(value) ? "—" : value);
 
     public void Dispose()
     {

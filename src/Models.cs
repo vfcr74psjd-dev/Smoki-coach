@@ -2,7 +2,7 @@ namespace Sm0kiSoloCoach;
 
 public sealed class GameSnapshot
 {
-    public string PlayerName { get; set; } = "Sm0ki_72";
+    public string PlayerName { get; set; } = "";
     public string Team { get; set; } = "";
     public string Map { get; set; } = "";
     public int? Round { get; set; }
