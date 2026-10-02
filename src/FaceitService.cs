@@ -20,6 +20,25 @@ public sealed class FaceitSnapshot
     public double? RecentAverageDeaths { get; set; }
     public double? RecentAverageKd { get; set; }
     public int RecentMatchesRead { get; set; }
+    public double? Recent5AverageKills { get; set; }
+    public double? Previous5AverageKills { get; set; }
+    public double? RecentKillsTrendDelta { get; set; }
+
+    public string RecentKillsTrendLabel
+    {
+        get
+        {
+            if (RecentKillsTrendDelta is not double delta)
+                return "Trend: —";
+
+            if (Math.Abs(delta) < 0.25)
+                return "Trend: stable";
+
+            return delta > 0
+                ? $"Trend: +{delta:0.0} kills"
+                : $"Trend: {delta:0.0} kills";
+        }
+    }
 }
 
 public sealed class FaceitService
@@ -227,7 +246,25 @@ public sealed class FaceitService
             kills.Count,
             Math.Max(deaths.Count, kds.Count));
 
-        if (kills.Count > 0) snapshot.RecentAverageKills = kills.Average();
+        if (kills.Count > 0)
+        {
+            snapshot.RecentAverageKills = kills.Average();
+
+            var recent5 = kills.Take(5).ToList();
+            if (recent5.Count > 0)
+                snapshot.Recent5AverageKills = recent5.Average();
+
+            var previous5 = kills.Skip(5).Take(5).ToList();
+            if (previous5.Count > 0)
+                snapshot.Previous5AverageKills = previous5.Average();
+
+            if (snapshot.Recent5AverageKills is double latest &&
+                snapshot.Previous5AverageKills is double previous)
+            {
+                snapshot.RecentKillsTrendDelta = latest - previous;
+            }
+        }
+
         if (deaths.Count > 0) snapshot.RecentAverageDeaths = deaths.Average();
 
         if (kds.Count > 0)

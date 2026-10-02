@@ -29,7 +29,15 @@ public sealed class MainForm : Form
     private readonly Label _gsiHealth = new();
     private readonly Label _aiHealth = new();
     private readonly FlowLayoutPanel _roundTimeline = new();
+    private readonly Label _faceitElo = new();
+    private readonly Label _faceitLevel = new();
+    private readonly Label _faceitAvgKills = new();
+    private readonly Label _faceitKd = new();
+    private readonly Label _faceitTrend = new();
     private readonly AiCoachService _aiCoach = new();
+    private FaceitSnapshot? _faceitSnapshot;
+    private DateTime _faceitLoadedUtc = DateTime.MinValue;
+    private bool _faceitLoading;
     private CancellationTokenSource? _aiCts;
     private string _latestAiAdvice = "AI coach čaka na nastavitev.";
     private int? _lastAiRound;
@@ -83,6 +91,7 @@ public sealed class MainForm : Form
         {
             await CheckForUpdatesSilentAsync();
             _ = AiCoachService.WarmUpAsync();
+            _ = LoadFaceitSnapshotAsync();
         };
 
         FormClosing += (_,__) =>
@@ -208,19 +217,22 @@ public sealed class MainForm : Form
             dialog.ShowDialog(this);
         }));
 
-        nav.Controls.Add(MakeNavButton("PROGRESS", false, (_,__) =>
+        nav.Controls.Add(MakeNavButton("PROGRESS", false, async (_,__) =>
         {
+            await LoadFaceitSnapshotAsync();
             using var dialog = new SessionAnalyticsForm(
                 _profile.Nickname,
                 _current.Map,
-                _rounds.ToList());
+                _rounds.ToList(),
+                _faceitSnapshot);
             dialog.ShowDialog(this);
         }));
 
-        nav.Controls.Add(MakeNavButton("FACEIT", false, (_,__) =>
+        nav.Controls.Add(MakeNavButton("FACEIT", false, async (_,__) =>
         {
             using var dialog = new FaceitForm(_profile.Nickname);
             dialog.ShowDialog(this);
+            await LoadFaceitSnapshotAsync(true);
         }));
 
         nav.Controls.Add(MakeNavButton("PHONE COMPANION", false, (_,__) =>
@@ -567,11 +579,12 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 4,
             Margin = new Padding(8, 0, 0, 0)
         };
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 254));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 132));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 238));
         right.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var buyCard = MakeCard();
@@ -607,6 +620,56 @@ public sealed class MainForm : Form
         buyLayout.Controls.Add(_buyText, 0, 2);
         buyCard.Controls.Add(buyLayout);
         right.Controls.Add(buyCard, 0, 0);
+
+        var faceitCard = MakeCard();
+        faceitCard.Margin = new Padding(0, 7, 0, 7);
+        faceitCard.Padding = new Padding(14, 10, 14, 10);
+        var faceitLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty
+        };
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        faceitLayout.Controls.Add(new Label
+        {
+            Text = "FACEIT PERFORMANCE",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 8, FontStyle.Bold),
+            ForeColor = Color.FromArgb(111, 123, 144)
+        }, 0, 0);
+
+        var faceitMetrics = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            Margin = Padding.Empty
+        };
+        for (int i = 0; i < 4; i++)
+            faceitMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        faceitMetrics.Controls.Add(MakeMiniMetric("ELO", _faceitElo), 0, 0);
+        faceitMetrics.Controls.Add(MakeMiniMetric("LEVEL", _faceitLevel), 1, 0);
+        faceitMetrics.Controls.Add(MakeMiniMetric("AVG K", _faceitAvgKills), 2, 0);
+        faceitMetrics.Controls.Add(MakeMiniMetric("K / D", _faceitKd), 3, 0);
+        faceitLayout.Controls.Add(faceitMetrics, 0, 1);
+
+        _faceitTrend.Text = FaceitSettingsStore.HasKey
+            ? "Loading FACEIT snapshot…"
+            : "Connect FACEIT to add ELO + recent form.";
+        _faceitTrend.Dock = DockStyle.Fill;
+        _faceitTrend.Font = new Font("Segoe UI", 8, FontStyle.Bold);
+        _faceitTrend.ForeColor = Color.FromArgb(139, 151, 170);
+        _faceitTrend.TextAlign = ContentAlignment.MiddleLeft;
+        _faceitTrend.AutoEllipsis = true;
+        faceitLayout.Controls.Add(_faceitTrend, 0, 2);
+
+        faceitCard.Controls.Add(faceitLayout);
+        right.Controls.Add(faceitCard, 0, 1);
 
         var setupCard = MakeCard();
         setupCard.Margin = new Padding(0, 7, 0, 7);
@@ -692,7 +755,7 @@ public sealed class MainForm : Form
         setupFooter.Controls.Add(localAi, 1, 0);
         setupLayout.Controls.Add(setupFooter, 0, 4);
         setupCard.Controls.Add(setupLayout);
-        right.Controls.Add(setupCard, 0, 1);
+        right.Controls.Add(setupCard, 0, 2);
 
         var recentCard = MakeCard();
         recentCard.Margin = new Padding(0, 7, 0, 0);
@@ -722,7 +785,7 @@ public sealed class MainForm : Form
         _history.Font = new Font("Cascadia Mono", 9);
         recentLayout.Controls.Add(_history, 0, 1);
         recentCard.Controls.Add(recentLayout);
-        right.Controls.Add(recentCard, 0, 2);
+        right.Controls.Add(recentCard, 0, 3);
 
         content.Controls.Add(left, 0, 0);
         content.Controls.Add(right, 1, 0);
@@ -830,6 +893,39 @@ public sealed class MainForm : Form
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(31, 36, 49);
         button.Click += (_,__) => ApplyCoachPreset(preset);
         return button;
+    }
+
+    private Control MakeMiniMetric(string title, Label value)
+    {
+        var metric = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0, 1, 5, 1),
+            Padding = new Padding(5, 2, 5, 2),
+            BackColor = Color.FromArgb(13, 18, 26)
+        };
+        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 17));
+        metric.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        metric.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 6.8f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(92, 106, 128),
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, 0);
+
+        value.Text = "—";
+        value.Dock = DockStyle.Fill;
+        value.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+        value.ForeColor = Color.White;
+        value.TextAlign = ContentAlignment.MiddleLeft;
+        metric.Controls.Add(value, 0, 1);
+
+        return metric;
     }
 
     private Control MakeCompactSelector(string title, ComboBox combo)
@@ -1374,6 +1470,87 @@ public sealed class MainForm : Form
                 _ = RefreshAiCoachAsync(s);
             }
         });
+    }
+
+    private async Task LoadFaceitSnapshotAsync(bool force = false)
+    {
+        if (_faceitLoading) return;
+
+        if (!FaceitSettingsStore.HasKey)
+        {
+            _faceitSnapshot = null;
+            RefreshFaceitCard("Connect FACEIT to add ELO + recent form.");
+            return;
+        }
+
+        if (!force &&
+            _faceitSnapshot != null &&
+            DateTime.UtcNow - _faceitLoadedUtc < TimeSpan.FromMinutes(10))
+        {
+            RefreshFaceitCard();
+            return;
+        }
+
+        var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
+        if (string.IsNullOrWhiteSpace(nickname))
+        {
+            RefreshFaceitCard("Set your FACEIT nickname first.");
+            return;
+        }
+
+        _faceitLoading = true;
+        RefreshFaceitCard($"Loading {nickname}…");
+
+        try
+        {
+            _faceitSnapshot = await new FaceitService().LoadAsync(nickname);
+            _faceitLoadedUtc = DateTime.UtcNow;
+            RefreshFaceitCard();
+        }
+        catch (Exception ex)
+        {
+            _faceitSnapshot = null;
+            RefreshFaceitCard("FACEIT unavailable • open FACEIT to retry");
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+        finally
+        {
+            _faceitLoading = false;
+        }
+    }
+
+    private void RefreshFaceitCard(string? overrideStatus = null)
+    {
+        var f = _faceitSnapshot;
+
+        _faceitElo.Text = f?.Elo > 0 ? f.Elo.ToString() : "—";
+        _faceitLevel.Text = f?.SkillLevel > 0 ? f.SkillLevel.ToString() : "—";
+        _faceitAvgKills.Text = f?.RecentAverageKills?.ToString("0.0") ?? "—";
+        _faceitKd.Text = f?.RecentAverageKd?.ToString("0.00") ?? "—";
+
+        if (!string.IsNullOrWhiteSpace(overrideStatus))
+        {
+            _faceitTrend.Text = overrideStatus;
+            _faceitTrend.ForeColor = Color.FromArgb(139, 151, 170);
+            return;
+        }
+
+        if (f == null)
+        {
+            _faceitTrend.Text = "FACEIT snapshot not loaded.";
+            _faceitTrend.ForeColor = Color.FromArgb(139, 151, 170);
+            return;
+        }
+
+        _faceitTrend.Text =
+            $"{f.Nickname} • recent {f.RecentMatchesRead} • {f.RecentKillsTrendLabel}";
+
+        _faceitTrend.ForeColor =
+            f.RecentKillsTrendDelta is double delta && delta > 0.25
+                ? Color.FromArgb(126, 240, 174)
+                : f.RecentKillsTrendDelta is double down && down < -0.25
+                    ? Color.FromArgb(255, 174, 143)
+                    : Color.FromArgb(164, 174, 191);
     }
 
     private void RefreshUi()
