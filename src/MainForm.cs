@@ -20,6 +20,7 @@ public sealed class MainForm : Form
     private UserProfile _profile = UserProfileStore.Load();
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
+    private AutoDemoInboxService? _demoInbox;
     private readonly Label _phoneUrl = new();
     private readonly Button _updateButton = new();
     private readonly Label _aiText = new();
@@ -85,6 +86,11 @@ public sealed class MainForm : Form
             ApplyPhoneSettings
         );
         _phoneServer.Start();
+
+        _demoInbox = new AutoDemoInboxService(
+            () => FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
+        _demoInbox.Start();
+
         UpdateAiStatus();
 
         var path = GsiInstaller.TryInstall();
@@ -104,6 +110,7 @@ public sealed class MainForm : Form
             _aiCts?.Cancel();
             _aiCts?.Dispose();
             _phoneServer?.Dispose();
+            _demoInbox?.Dispose();
             _server.Dispose();
         };
     }
@@ -215,9 +222,18 @@ public sealed class MainForm : Form
 
         nav.Controls.Add(MakeNavButton("LIVE COACH", true, (_,__) => { }));
 
+        nav.Controls.Add(MakeNavButton("HEAT MAP", false, (_,__) =>
+        {
+            if (_demoInbox == null) return;
+            var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
+            using var dialog = new HeatMapForm(nickname, _demoInbox);
+            dialog.ShowDialog(this);
+        }));
+
         nav.Controls.Add(MakeNavButton("REVIEW LAB", false, (_,__) =>
         {
-            using var dialog = new ReviewLabForm(_profile.Nickname);
+            var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
+            using var dialog = new ReviewLabForm(nickname);
             dialog.ShowDialog(this);
         }));
 
