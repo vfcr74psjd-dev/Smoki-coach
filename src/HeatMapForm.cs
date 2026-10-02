@@ -89,7 +89,7 @@ public sealed class HeatMapForm : Form
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,22));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,58));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,300));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,320));
 
         controls.Controls.Add(FilterLabel("MAP"),0,0);
         ConfigureCombo(_map);
@@ -110,7 +110,7 @@ public sealed class HeatMapForm : Form
         _window.SelectedIndexChanged += async (_,__) => await RefreshViewAsync();
         controls.Controls.Add(_window,5,0);
 
-        var syncFaceit = MakeButton("FACEIT SYNC",96,true);
+        var syncFaceit = MakeButton("FACEIT HISTORY",112,true);
         var scan = MakeButton("SCAN NOW",82,false);
         var open = MakeButton("INBOX",76,false);
 
@@ -222,7 +222,7 @@ public sealed class HeatMapForm : Form
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
 
         _status.Text =
-            $"Local analysis • radar images are cached after first load • no demo upload. FACEIT Sync indexes history/demo availability.";
+            "FACEIT HISTORY = remote index • SCAN NOW = local .dem analysis • no demo upload.";
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = Color.FromArgb(105,118,138);
         _status.Font = new Font("Segoe UI",8.5f);
@@ -239,11 +239,16 @@ public sealed class HeatMapForm : Form
 
     private void ReloadData()
     {
-        var all = HeatMapStore.LoadForPlayer(_nickname);
+        var local = HeatMapStore.LoadForPlayer(_nickname);
+        var remoteReady = FaceitHistoryStore.LoadForPlayer(_nickname)
+            .Where(x => x.DemoReady)
+            .ToList();
+
         var selected = _map.SelectedItem?.ToString();
 
-        var maps = all
+        var maps = local
             .Select(x => x.Map)
+            .Concat(remoteReady.Select(x => x.Map))
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(CoachEngine.PrettyMap)
@@ -262,9 +267,15 @@ public sealed class HeatMapForm : Form
         else
         {
             _summary.Text =
-                $"PROFILE: {_nickname}\n0 analyzed matches. Download a FACEIT .dem/.dem.gz or drop it in DemoInbox.";
+                $"PROFILE: {_nickname}\n" +
+                "No FACEIT demo history yet. Run FACEIT HISTORY first.";
             _hotspots.Items.Clear();
-            _canvas.SetData("", Array.Empty<DemoDeathPoint>());
+            _canvas.SetData(
+                "",
+                Array.Empty<DemoDeathPoint>(),
+                "No FACEIT demo history yet.\nRun FACEIT HISTORY first.");
+            _status.Text =
+                "FACEIT History indexes matches. Heatmap points appear after a demo file is analyzed locally.";
         }
     }
 
@@ -277,13 +288,21 @@ public sealed class HeatMapForm : Form
         var side = _side.SelectedItem?.ToString() ?? "All";
         var take = WindowCount();
 
-        var matches = HeatMapStore.LoadForPlayer(_nickname)
+        var localMatches = HeatMapStore.LoadForPlayer(_nickname)
             .Where(x => x.Map.Equals(map, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(x => x.ImportedUtc)
             .Take(take)
             .ToList();
 
-        var points = matches
+        var remoteReady = FaceitHistoryStore.LoadForPlayer(_nickname)
+            .Where(x =>
+                x.DemoReady &&
+                x.Map.Equals(map, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => x.FinishedUtc)
+            .Take(take)
+            .ToList();
+
+        var points = localMatches
             .SelectMany(x => x.Deaths)
             .Where(x => side == "All" || x.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -293,11 +312,29 @@ public sealed class HeatMapForm : Form
 
         _summary.Text =
             $"MAP: {CoachEngine.PrettyMap(map).ToUpperInvariant()}\n" +
-            $"{matches.Count} match(es) • {points.Count} deaths • CT {ct} / T {t}\n" +
-            $"PROFILE: {_nickname}";
+            $"FACEIT demos ready: {remoteReady.Count} • Local analyzed: {localMatches.Count}\n" +
+            $"Heat deaths: {points.Count} • CT {ct} / T {t}";
 
-        _canvas.SetData(map, points);
+        var emptyMessage = remoteReady.Count > 0 && localMatches.Count == 0
+            ? $"{remoteReady.Count} FACEIT DEMO{(remoteReady.Count == 1 ? "" : "S")} READY\n0 LOCAL ANALYZED"
+            : "No deaths for this filter.";
+
+        _canvas.SetData(map, points, emptyMessage);
         FillHotspots(map, points);
+
+        if (remoteReady.Count > 0 && localMatches.Count == 0)
+        {
+            _status.Text =
+                $"FACEIT has {remoteReady.Count} demo resource(s) for {CoachEngine.PrettyMap(map)}, " +
+                "but private demo download needs FACEIT Downloads API access. " +
+                "SCAN NOW analyzes any .dem/.dem.gz already on this PC.";
+        }
+        else if (localMatches.Count > 0)
+        {
+            _status.Text =
+                $"Local heatmap ready • {localMatches.Count} analyzed match(es) • " +
+                $"{points.Count} death point(s) in current filter.";
+        }
 
         _radarCts?.Cancel();
         _radarCts?.Dispose();
@@ -464,6 +501,7 @@ public sealed class HeatMapForm : Form
         private IReadOnlyList<DemoDeathPoint> _points = Array.Empty<DemoDeathPoint>();
         private RadarDefinition? _definition;
         private string _loadedRadarUrl = "";
+        private string _emptyMessage = "No heatmap data yet.";
 
         public HeatCanvas()
         {
@@ -471,10 +509,16 @@ public sealed class HeatMapForm : Form
             BackColor = Color.FromArgb(8,11,16);
         }
 
-        public void SetData(string map, IReadOnlyList<DemoDeathPoint> points)
+        public void SetData(
+            string map,
+            IReadOnlyList<DemoDeathPoint> points,
+            string? emptyMessage = null)
         {
             _map = map;
             _points = points;
+            _emptyMessage = string.IsNullOrWhiteSpace(emptyMessage)
+                ? "No heatmap data yet."
+                : emptyMessage;
             _definition = RadarCatalog.Get(map);
             Invalidate();
         }
@@ -541,13 +585,13 @@ public sealed class HeatMapForm : Form
 
             if (_definition == null)
             {
-                DrawCentered(e.Graphics, rect, "No heatmap data yet.");
+                DrawCentered(e.Graphics, rect, _emptyMessage);
                 return;
             }
 
             if (_points.Count == 0)
             {
-                DrawCentered(e.Graphics, rect, "No deaths for this filter.");
+                DrawCentered(e.Graphics, rect, _emptyMessage);
                 return;
             }
 
@@ -599,10 +643,17 @@ public sealed class HeatMapForm : Form
         {
             using var font = new Font("Segoe UI",11,FontStyle.Bold);
             using var brush = new SolidBrush(Color.FromArgb(150,162,181));
-            var size = g.MeasureString(text,font);
-            g.DrawString(text,font,brush,
-                rect.Left+(rect.Width-size.Width)/2,
-                rect.Top+(rect.Height-size.Height)/2);
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center
+            };
+            g.DrawString(
+                text,
+                font,
+                brush,
+                new RectangleF(rect.Left + 20, rect.Top + 20, rect.Width - 40, rect.Height - 40),
+                format);
         }
 
         public void DisposeRadar()
