@@ -7,7 +7,7 @@ public sealed class OverlaySettingsForm : Form
 {
     public string SelectedMode { get; private set; }
 
-    public OverlaySettingsForm(string currentMode, bool hotkeyRegistered)
+    public OverlaySettingsForm(string currentMode, bool hotkeyRegistered, string hotkeyDisplay)
     {
         SelectedMode = currentMode is "Full" or "Off" ? currentMode : "Minimal";
 
@@ -45,7 +45,7 @@ public sealed class OverlaySettingsForm : Form
 
         root.Controls.Add(new Label
         {
-            Text = "External click-through HUD. No game injection. F8 temporarily hides/shows the overlay.",
+            Text = "External click-through HUD. No game injection. The app automatically reserves a free overlay hotkey.",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 9),
             ForeColor = Color.FromArgb(153, 163, 179),
@@ -112,8 +112,8 @@ public sealed class OverlaySettingsForm : Form
         root.Controls.Add(new Label
         {
             Text = hotkeyRegistered
-                ? "● F8 HOTKEY READY"
-                : "● F8 HOTKEY UNAVAILABLE • another app may already use it",
+                ? $"● {hotkeyDisplay.ToUpperInvariant()} HOTKEY READY • HIDE / SHOW"
+                : "● HOTKEY UNAVAILABLE • F8–F11 are already in use",
             Dock = DockStyle.Fill,
             ForeColor = hotkeyRegistered
                 ? Color.FromArgb(112, 214, 151)

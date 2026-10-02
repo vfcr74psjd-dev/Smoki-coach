@@ -1048,7 +1048,8 @@ public sealed class MainForm : Form
 
         using var settings = new OverlaySettingsForm(
             _prefs.OverlayMode,
-            _gameOverlay.HotkeyRegistered);
+            _gameOverlay.HotkeyRegistered,
+            _gameOverlay.HotkeyDisplay);
 
         if (settings.ShowDialog(owner) != DialogResult.OK)
             return;

@@ -32,8 +32,10 @@ public sealed class GameOverlayForm : Form
     private int? _lastRound;
     private string _lastMap = "";
     private bool _hotkeyRegistered;
+    private Keys _hotkeyKey = Keys.None;
 
     public bool HotkeyRegistered => _hotkeyRegistered;
+    public string HotkeyDisplay => _hotkeyRegistered ? _hotkeyKey.ToString() : "Unavailable";
     public string OverlayMode => _mode;
 
     public GameOverlayForm()
@@ -79,11 +81,20 @@ public sealed class GameOverlayForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        _hotkeyRegistered = RegisterHotKey(
-            Handle,
-            HotkeyId,
-            ModNoRepeat,
-            (uint)Keys.F8);
+
+        foreach (var candidate in new[] { Keys.F8, Keys.F9, Keys.F10, Keys.F11 })
+        {
+            if (!RegisterHotKey(
+                    Handle,
+                    HotkeyId,
+                    ModNoRepeat,
+                    (uint)candidate))
+                continue;
+
+            _hotkeyRegistered = true;
+            _hotkeyKey = candidate;
+            break;
+        }
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
@@ -92,6 +103,7 @@ public sealed class GameOverlayForm : Form
         {
             UnregisterHotKey(Handle, HotkeyId);
             _hotkeyRegistered = false;
+            _hotkeyKey = Keys.None;
         }
 
         base.OnHandleDestroyed(e);
@@ -362,7 +374,11 @@ public sealed class GameOverlayForm : Form
 
         using var hintFont = new Font("Segoe UI", 7f);
         using var hintBrush = new SolidBrush(Color.FromArgb(112, 119, 128));
-        g.DrawString("F8  HIDE / SHOW", hintFont, hintBrush, Width - 105, Height - 20);
+        var hotkeyHint = _hotkeyRegistered
+            ? $"{_hotkeyKey}  HIDE / SHOW"
+            : "HOTKEY UNAVAILABLE";
+        var hintSize = g.MeasureString(hotkeyHint, hintFont);
+        g.DrawString(hotkeyHint, hintFont, hintBrush, Width - hintSize.Width - 18, Height - 20);
     }
 
     private static List<string> ParseAdvice(string advice)
