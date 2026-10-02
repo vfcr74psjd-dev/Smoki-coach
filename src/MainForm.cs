@@ -74,7 +74,11 @@ public sealed class MainForm : Form
         if (path == null)
             _status.Text = "OFFLINE • GSI NOT INSTALLED";
 
-        Shown += async (_,__) => await CheckForUpdatesSilentAsync();
+        Shown += async (_,__) =>
+        {
+            await CheckForUpdatesSilentAsync();
+            _ = AiCoachService.WarmUpAsync();
+        };
 
         FormClosing += (_,__) =>
         {
@@ -648,51 +652,73 @@ public sealed class MainForm : Form
 
     private async Task RefreshAiCoachAsync(GameSnapshot snapshot, bool force = false)
     {
-        if (!_aiCoach.IsConfigured)
-        {
-            UpdateAiStatus();
-            return;
-        }
-
         if (!force && snapshot.Round == null) return;
+
+        // Every round gets a useful plan immediately. Local AI is only a refinement.
+        var instant = CoachEngine.InstantRoundPlan(
+            snapshot,
+            _mode.SelectedItem?.ToString() ?? "Balanced",
+            _role.SelectedItem?.ToString() ?? "Flex",
+            _focus.SelectedItem?.ToString() ?? "More kills",
+            _rounds.ToList()
+        );
+
+        _latestAiAdvice = instant;
+        _aiText.Text = instant;
+        _aiStatus.Text = _aiCoach.IsConfigured ? "FAST PLAN • AI REFINE" : "FAST PLAN";
+        _aiStatus.ForeColor = _aiCoach.IsConfigured
+            ? Color.FromArgb(176, 166, 255)
+            : Color.FromArgb(126, 240, 174);
+
+        if (!_aiCoach.IsConfigured)
+            return;
 
         _aiCts?.Cancel();
         _aiCts?.Dispose();
         _aiCts = new CancellationTokenSource();
+        _aiCts.CancelAfter(TimeSpan.FromSeconds(7));
 
         var requestedMap = snapshot.Map;
         var requestedRound = snapshot.Round;
+        var requestToken = _aiCts.Token;
 
         try
         {
-            _aiStatus.Text = "AI THINKING";
-            _aiStatus.ForeColor = Color.FromArgb(176, 166, 255);
-            _latestAiAdvice = "Pripravljam plan za to rundo…";
-            _aiText.Text = _latestAiAdvice;
-
             var advice = await _aiCoach.GenerateRoundAdviceAsync(
                 snapshot,
                 _rounds.ToList(),
                 $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"}",
                 _profile.Nickname,
-                _aiCts.Token
+                requestToken
             );
 
-            if (_current.Map != requestedMap || _current.Round != requestedRound)
+            if (requestToken.IsCancellationRequested ||
+                _current.Map != requestedMap ||
+                _current.Round != requestedRound)
                 return;
 
             _latestAiAdvice = advice;
             _aiText.Text = advice;
-            _aiStatus.Text = "AI LIVE";
+            _aiStatus.Text = "AI REFINED";
             _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            _latestAiAdvice = ex.Message;
-            _aiText.Text = _latestAiAdvice;
-            _aiStatus.Text = "AI ERROR";
-            _aiStatus.ForeColor = Color.FromArgb(255, 150, 130);
+            // New round or 7-second budget reached: keep the instant plan.
+            if (_current.Map == requestedMap && _current.Round == requestedRound)
+            {
+                _aiStatus.Text = "FAST PLAN";
+                _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+            }
+        }
+        catch
+        {
+            // Never replace a usable round plan with an AI error during a match.
+            if (_current.Map == requestedMap && _current.Round == requestedRound)
+            {
+                _aiStatus.Text = "FAST PLAN";
+                _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+            }
         }
     }
 
@@ -768,7 +794,7 @@ public sealed class MainForm : Form
         _prefs.AutoAi = _autoAi.Checked;
         UserSettingsStore.Save(_prefs);
 
-        if (_current.Round is int && _aiCoach.IsConfigured && _autoAi.Checked)
+        if (_current.Round is int && _autoAi.Checked)
             _ = RefreshAiCoachAsync(_current, true);
 
         if (!string.IsNullOrWhiteSpace(_current.Map))

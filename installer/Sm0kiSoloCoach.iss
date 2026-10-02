@@ -1,5 +1,5 @@
 #define MyAppName "Sm0ki Solo Coach"
-#define MyAppVersion "2.6.0"
+#define MyAppVersion "2.7.1"
 #define MyAppExeName "Sm0kiSoloCoach.exe"
 
 [Setup]
