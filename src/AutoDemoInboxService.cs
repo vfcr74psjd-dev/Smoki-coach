@@ -66,10 +66,15 @@ public sealed class AutoDemoInboxService : IDisposable
 
             var files = FindCandidateFiles()
                 .OrderByDescending(File.GetLastWriteTimeUtc)
-                .Take(60)
                 .ToList();
 
+            var knownFingerprints = HeatMapStore.Load()
+                .Select(x => x.DemoFingerprint)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             int imported = 0;
+            int checkedFiles = 0;
 
             foreach (var file in files)
             {
@@ -90,8 +95,12 @@ public sealed class AutoDemoInboxService : IDisposable
                 try { fingerprint = HeatMapStore.FingerprintFile(file); }
                 catch { continue; }
 
-                if (HeatMapStore.ContainsFingerprint(fingerprint))
+                if (knownFingerprints.Contains(fingerprint))
                     continue;
+
+                checkedFiles++;
+                if (announce && checkedFiles % 10 == 0)
+                    StatusChanged?.Invoke($"Scanning local demos… {checkedFiles} new candidate(s)");
 
                 if (_retryAfter.TryGetValue(fingerprint, out var retry) && retry > DateTime.UtcNow)
                     continue;
@@ -121,6 +130,7 @@ public sealed class AutoDemoInboxService : IDisposable
                     if (record != null)
                     {
                         imported++;
+                        knownFingerprints.Add(record.DemoFingerprint);
                         DemoImported?.Invoke(record);
                         StatusChanged?.Invoke(
                             $"Dodano: {CoachEngine.PrettyMap(record.Map)} • {record.Deaths.Count} deaths");
