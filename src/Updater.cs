@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 
 namespace Sm0kiSoloCoach;
@@ -21,7 +22,14 @@ public static class AppUpdater
     {
         using var http = new HttpClient();
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Sm0kiSoloCoach/" + CurrentVersion);
-        return await http.GetFromJsonAsync<UpdateManifest>(ManifestUrl);
+        http.DefaultRequestHeaders.CacheControl = new CacheControlHeaderValue
+        {
+            NoCache = true,
+            NoStore = true
+        };
+
+        var url = ManifestUrl + "?t=" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return await http.GetFromJsonAsync<UpdateManifest>(url);
     }
 
     public static bool IsNewer(string? remote)
