@@ -91,7 +91,7 @@ public sealed class HeatMapForm : Form
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,22));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,58));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,190));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,300));
 
         controls.Controls.Add(FilterLabel("MAP"),0,0);
         ConfigureCombo(_map);
@@ -112,8 +112,17 @@ public sealed class HeatMapForm : Form
         _window.SelectedIndexChanged += async (_,__) => await RefreshViewAsync();
         controls.Controls.Add(_window,5,0);
 
-        var scan = MakeButton("SCAN NOW",88,true);
-        var open = MakeButton("OPEN INBOX",92,false);
+        var syncFaceit = MakeButton("FACEIT SYNC",96,true);
+        var scan = MakeButton("SCAN NOW",82,false);
+        var open = MakeButton("INBOX",76,false);
+
+        syncFaceit.Click += (_,__) =>
+        {
+            using var dialog = new FaceitHistoryForm(_nickname, _inbox);
+            dialog.ShowDialog(this);
+            ReloadData();
+        };
+
         scan.Click += async (_,__) =>
         {
             scan.Enabled = false;
@@ -124,6 +133,7 @@ public sealed class HeatMapForm : Form
             }
             finally { scan.Enabled = true; }
         };
+
         open.Click += (_,__) =>
         {
             Directory.CreateDirectory(AutoDemoInboxService.InboxFolder);
@@ -140,6 +150,7 @@ public sealed class HeatMapForm : Form
             WrapContents = false,
             Padding = new Padding(0,6,0,0)
         };
+        actions.Controls.Add(syncFaceit);
         actions.Controls.Add(scan);
         actions.Controls.Add(open);
         controls.Controls.Add(actions,6,0);
@@ -213,7 +224,7 @@ public sealed class HeatMapForm : Form
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
 
         _status.Text =
-            $"Watching Downloads + {AutoDemoInboxService.InboxFolder}. Demo parsing stays local.";
+            $"Downloads + DemoInbox are watched automatically. FACEIT Sync indexes history/demo availability; parsing stays local.";
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = Color.FromArgb(105,118,138);
         _status.Font = new Font("Segoe UI",8.5f);
