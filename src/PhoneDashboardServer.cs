@@ -110,16 +110,18 @@ public sealed class PhoneDashboardServer : IDisposable
 <meta http-equiv='refresh' content='2'>
 <title>Sm0ki Solo Coach</title>
 <style>
-*{{box-sizing:border-box}} body{{margin:0;background:#0e1117;color:#f3f5f8;font-family:Segoe UI,Arial,sans-serif}}
-.wrap{{max-width:760px;margin:auto;padding:16px}} h1{{font-size:24px;margin:4px 0 14px}}
-.badge{{display:inline-block;padding:6px 10px;border-radius:999px;background:#17392c;color:#83f0b8;font-weight:700;font-size:13px}}
-.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}}
-.card{{background:#171b23;border:1px solid #252c38;border-radius:14px;padding:13px}}
-.label{{font-size:11px;color:#929baa;letter-spacing:.08em}} .value{{font-size:22px;font-weight:800;margin-top:5px}}
-.section{{background:#171b23;border:1px solid #252c38;border-radius:16px;padding:16px;margin-top:10px}}
-.section h2{{font-size:13px;color:#929baa;margin:0 0 8px;letter-spacing:.08em}}
-.big{{font-size:21px;font-weight:800;margin-bottom:8px}} .text{{line-height:1.45;color:#dde3ec}}
-@media(max-width:600px){{.grid{{grid-template-columns:repeat(2,1fr)}}}}
+*{{box-sizing:border-box}} body{{margin:0;background:#090d13;color:#f4f6fa;font-family:Segoe UI,Arial,sans-serif}}
+.wrap{{max-width:780px;margin:auto;padding:20px 16px 28px}} h1{{font-size:25px;margin:4px 0 4px;letter-spacing:-.02em}}
+h1:after{{content:'LIVE PERFORMANCE DASHBOARD';display:block;font-size:10px;letter-spacing:.14em;color:#737f93;margin-top:7px}}
+.badge{{display:inline-block;padding:5px 9px;border-radius:7px;background:#183927;color:#8af0b8;font-weight:800;font-size:11px;vertical-align:middle}}
+.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0 12px}}
+.card{{background:linear-gradient(180deg,#121923,#0f151e);border:1px solid #252e3d;border-radius:15px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.18)}}
+.label{{font-size:10px;color:#758197;letter-spacing:.12em;font-weight:800}} .value{{font-size:23px;font-weight:800;margin-top:6px;letter-spacing:-.02em}}
+.section{{background:#101720;border:1px solid #252e3d;border-radius:16px;padding:18px;margin-top:11px;box-shadow:0 8px 24px rgba(0,0,0,.14)}}
+.section h2{{font-size:11px;color:#7d899e;margin:0 0 10px;letter-spacing:.13em}}
+.big{{font-size:22px;font-weight:800;margin-bottom:8px;color:#fff}} .text{{line-height:1.55;color:#cbd3df}}
+.section:first-of-type{{border-left:3px solid #685cff}}
+@media(max-width:600px){{.wrap{{padding:14px 12px 24px}}.grid{{grid-template-columns:repeat(2,1fr)}}.value{{font-size:21px}}}}
 </style>
 </head>
 <body><div class='wrap'>

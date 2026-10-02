@@ -56,44 +56,101 @@ public sealed class MainForm : Form
 
     private void BuildUi()
     {
-        var top = new Panel { Dock = DockStyle.Top, Height = 72, Padding = new Padding(18,16,18,8) };
-        var title = new Label { Text = "Sm0ki Solo Coach", AutoSize = true, Font = new Font("Segoe UI", 20, FontStyle.Bold), Left = 18, Top = 16 };
-        _status.Text = "OFFLINE";
-        _status.AutoSize = true;
-        _status.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-        _status.ForeColor = Color.OrangeRed;
-        _status.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _status.Top = 22;
-        _status.Left = 800;
+        SuspendLayout();
+
+        var top = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 88,
+            BackColor = Color.FromArgb(14,18,26),
+            Padding = new Padding(24,18,24,12)
+        };
+
+        var accent = new Panel
+        {
+            BackColor = Color.FromArgb(104, 92, 255),
+            Width = 5,
+            Height = 44,
+            Left = 22,
+            Top = 21
+        };
+        top.Controls.Add(accent);
+
+        var title = new Label
+        {
+            Text = "Sm0ki Solo Coach",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 21, FontStyle.Bold),
+            Left = 40,
+            Top = 15
+        };
         top.Controls.Add(title);
+
+        var subtitle = new Label
+        {
+            Text = "LIVE CS2 • SOLO PERFORMANCE COMPANION",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(126,137,156),
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            Left = 42,
+            Top = 52
+        };
+        top.Controls.Add(subtitle);
+
+        _status.Text = "OFFLINE";
+        _status.AutoSize = false;
+        _status.TextAlign = ContentAlignment.MiddleCenter;
+        _status.Width = 94;
+        _status.Height = 30;
+        _status.Font = new Font("Segoe UI", 9, FontStyle.Bold);
+        _status.ForeColor = Color.FromArgb(255, 150, 130);
+        _status.BackColor = Color.FromArgb(55, 28, 28);
+        _status.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _status.Top = 28;
+        _status.Left = 940;
         top.Controls.Add(_status);
         Controls.Add(top);
 
-        var controls = new Panel { Dock = DockStyle.Top, Height = 50, Padding = new Padding(18,6,18,6) };
-        controls.Controls.Add(new Label { Text = "Coach mode:", AutoSize = true, Left = 18, Top = 14 });
+        var toolbar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 60,
+            BackColor = Color.FromArgb(11,15,22),
+            Padding = new Padding(24,10,24,10)
+        };
+
+        toolbar.Controls.Add(new Label
+        {
+            Text = "COACH MODE",
+            AutoSize = true,
+            Left = 24,
+            Top = 9,
+            ForeColor = Color.FromArgb(126,137,156),
+            Font = new Font("Segoe UI", 8, FontStyle.Bold)
+        });
 
         _mode.Items.AddRange(new object[] { "Balanced", "Aggressive", "Safe" });
         _mode.SelectedIndex = 0;
         _mode.DropDownStyle = ComboBoxStyle.DropDownList;
-        _mode.Left = 120;
-        _mode.Top = 8;
-        _mode.Width = 140;
-        controls.Controls.Add(_mode);
+        _mode.Left = 24;
+        _mode.Top = 26;
+        _mode.Width = 150;
+        _mode.FlatStyle = FlatStyle.Flat;
+        _mode.BackColor = Color.FromArgb(24,29,39);
+        _mode.ForeColor = Color.White;
+        toolbar.Controls.Add(_mode);
 
-        var install = new Button { Text = "Refresh GSI", Width = 120, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right };
-        install.Left = 795;
-        install.Top = 7;
-        install.Click += (_,__) =>
-        {
-            var p = GsiInstaller.TryInstall();
-            MessageBox.Show(p != null ? $"Installed to:\n{p}\n\nRestart CS2 if already open." : "CS2 cfg folder was not found automatically.",
-                "Sm0ki Solo Coach");
-        };
-        controls.Controls.Add(install);
+        _phoneUrl.AutoSize = true;
+        _phoneUrl.Left = 194;
+        _phoneUrl.Top = 30;
+        _phoneUrl.ForeColor = Color.FromArgb(112,124,145);
+        _phoneUrl.Font = new Font("Segoe UI", 8.5f);
+        toolbar.Controls.Add(_phoneUrl);
 
-        var phone = new Button { Text = "Phone Mode", Width = 110, Height = 32 };
-        phone.Left = 585;
-        phone.Top = 7;
+        var phone = MakeButton("Phone Mode", 118, false);
+        phone.Left = 690;
+        phone.Top = 15;
+        phone.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         phone.Click += (_,__) =>
         {
             if (_phoneServer == null) return;
@@ -104,32 +161,65 @@ public sealed class MainForm : Form
                 "Phone Mode"
             );
         };
-        controls.Controls.Add(phone);
+        toolbar.Controls.Add(phone);
 
         _updateButton.Text = "Update";
-        _updateButton.Width = 85;
-        _updateButton.Height = 32;
-        _updateButton.Left = 700;
-        _updateButton.Top = 7;
+        StyleButton(_updateButton, true);
+        _updateButton.Width = 92;
+        _updateButton.Left = 818;
+        _updateButton.Top = 15;
+        _updateButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _updateButton.Click += async (_,__) => await CheckForUpdatesAsync();
-        controls.Controls.Add(_updateButton);
+        toolbar.Controls.Add(_updateButton);
 
-        _phoneUrl.AutoSize = true;
-        _phoneUrl.Left = 275;
-        _phoneUrl.Top = 14;
-        _phoneUrl.ForeColor = Color.FromArgb(145,155,170);
-        controls.Controls.Add(_phoneUrl);
+        var install = MakeButton("Refresh GSI", 118, false);
+        install.Left = 918;
+        install.Top = 15;
+        install.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        install.Click += (_,__) =>
+        {
+            var p = GsiInstaller.TryInstall();
+            MessageBox.Show(p != null ? $"Installed to:\n{p}\n\nRestart CS2 if already open." : "CS2 cfg folder was not found automatically.",
+                "Sm0ki Solo Coach");
+        };
+        toolbar.Controls.Add(install);
 
-        Controls.Add(controls);
+        Controls.Add(toolbar);
 
-        var statPanel = new TableLayoutPanel { Dock = DockStyle.Top, Height = 96, ColumnCount = 8, Padding = new Padding(18,8,18,8) };
+        var statPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 110,
+            ColumnCount = 8,
+            Padding = new Padding(20,10,20,10),
+            BackColor = Color.FromArgb(10,13,19)
+        };
         for (int i=0;i<8;i++) statPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,12.5f));
-        var items = new[] { ("map","MAP"),("side","SIDE"),("round","ROUND"),("score","SCORE"),("kills","KILLS"),("deaths","DEATHS"),("kd","K/D"),("money","MONEY") };
+
+        var items = new[] { ("map","MAP"),("side","SIDE"),("round","ROUND"),("score","SCORE"),("kills","KILLS"),("deaths","DEATHS"),("kd","K / D"),("money","MONEY") };
         for (int i=0;i<items.Length;i++)
         {
             var card = MakeCard();
-            var small = new Label { Text = items[i].Item2, ForeColor = Color.FromArgb(145,155,170), AutoSize=true, Top=8, Left=8, Font=new Font("Segoe UI",8) };
-            var val = new Label { Text = "—", AutoSize=true, Top=30, Left=8, Font=new Font("Segoe UI",13,FontStyle.Bold) };
+            card.Margin = new Padding(5);
+
+            var small = new Label
+            {
+                Text = items[i].Item2,
+                ForeColor = Color.FromArgb(113,125,146),
+                AutoSize = true,
+                Top = 13,
+                Left = 13,
+                Font = new Font("Segoe UI",8,FontStyle.Bold)
+            };
+            var val = new Label
+            {
+                Text = "—",
+                AutoSize = true,
+                Top = 36,
+                Left = 13,
+                Font = new Font("Segoe UI",15,FontStyle.Bold),
+                ForeColor = Color.FromArgb(241,244,249)
+            };
             card.Controls.Add(small);
             card.Controls.Add(val);
             _stats[items[i].Item1] = val;
@@ -137,32 +227,134 @@ public sealed class MainForm : Form
         }
         Controls.Add(statPanel);
 
-        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(18,8,18,18) };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+        var body = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Padding = new Padding(20,8,20,18),
+            BackColor = Color.FromArgb(10,13,19)
+        };
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,52));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,48));
 
         var left = MakeCard();
+        left.Margin = new Padding(5,5,9,5);
         var right = MakeCard();
+        right.Margin = new Padding(9,5,5,5);
 
-        var buyHdr = Header("NEXT BUY"); buyHdr.Top=16; buyHdr.Left=16;
-        _buyTitle.Text="Waiting for CS2…"; _buyTitle.Left=16; _buyTitle.Top=48; _buyTitle.Width=390; _buyTitle.Font=new Font("Segoe UI",17,FontStyle.Bold);
-        _buyText.Left=16; _buyText.Top=90; _buyText.Width=390; _buyText.Height=120; _buyText.ForeColor=Color.FromArgb(220,225,235);
+        var buyHdr = Header("NEXT BUY");
+        buyHdr.Top=22; buyHdr.Left=20;
+        _buyTitle.Text="Waiting for CS2…";
+        _buyTitle.Left=20; _buyTitle.Top=54; _buyTitle.Width=430; _buyTitle.Height=36;
+        _buyTitle.Font=new Font("Segoe UI",18,FontStyle.Bold);
+        _buyTitle.ForeColor = Color.FromArgb(240,242,247);
 
-        var coachHdr=Header("SOLO AVG-KILLS COACH"); coachHdr.Top=240; coachHdr.Left=16;
-        _tip.Left=16; _tip.Top=275; _tip.Width=390; _tip.Height=180; _tip.ForeColor=Color.FromArgb(220,225,235);
+        _buyText.Left=20; _buyText.Top=98; _buyText.Width=440; _buyText.Height=115;
+        _buyText.ForeColor=Color.FromArgb(190,198,211);
+        _buyText.Font = new Font("Segoe UI", 10);
 
-        left.Controls.Add(buyHdr); left.Controls.Add(_buyTitle); left.Controls.Add(_buyText); left.Controls.Add(coachHdr); left.Controls.Add(_tip);
+        var divider = new Panel { Left=20, Top=224, Width=440, Height=1, BackColor=Color.FromArgb(43,50,64) };
 
-        var histHdr=Header("ROUND HISTORY"); histHdr.Top=16; histHdr.Left=16;
-        _history.Left=16; _history.Top=48; _history.Width=410; _history.Height=400;
-        _history.BackColor=Color.FromArgb(17,21,28); _history.ForeColor=Color.FromArgb(220,225,235); _history.BorderStyle=BorderStyle.None;
-        _history.Font=new Font("Consolas",10);
-        right.Controls.Add(histHdr); right.Controls.Add(_history);
+        var coachHdr=Header("SOLO AVG-KILLS COACH");
+        coachHdr.Top=246; coachHdr.Left=20;
+        _tip.Left=20; _tip.Top=281; _tip.Width=440; _tip.Height=180;
+        _tip.ForeColor=Color.FromArgb(205,211,221);
+        _tip.Font = new Font("Segoe UI", 10);
+
+        left.Controls.Add(buyHdr);
+        left.Controls.Add(_buyTitle);
+        left.Controls.Add(_buyText);
+        left.Controls.Add(divider);
+        left.Controls.Add(coachHdr);
+        left.Controls.Add(_tip);
+
+        var histHdr=Header("ROUND HISTORY");
+        histHdr.Top=22; histHdr.Left=20;
+
+        var histSub = new Label
+        {
+            Text = "Recent round deltas",
+            AutoSize = true,
+            Left = 20,
+            Top = 47,
+            ForeColor = Color.FromArgb(96,108,128),
+            Font = new Font("Segoe UI",8.5f)
+        };
+        right.Controls.Add(histHdr);
+        right.Controls.Add(histSub);
+
+        _history.Left=20; _history.Top=78; _history.Width=405; _history.Height=380;
+        _history.BackColor=Color.FromArgb(17,22,30);
+        _history.ForeColor=Color.FromArgb(206,213,223);
+        _history.BorderStyle=BorderStyle.None;
+        _history.Font=new Font("Cascadia Mono",10);
+        right.Controls.Add(_history);
 
         body.Controls.Add(left,0,0);
         body.Controls.Add(right,1,0);
         Controls.Add(body);
+
+        var footer = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 28,
+            BackColor = Color.FromArgb(10,13,19)
+        };
+        footer.Controls.Add(new Label
+        {
+            Text = $"v{AppUpdater.CurrentVersion}  •  CS2 Game State Integration",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(77,88,106),
+            Left = 24,
+            Top = 5,
+            Font = new Font("Segoe UI",8)
+        });
+        Controls.Add(footer);
+
+        ResumeLayout();
     }
+
+    private Button MakeButton(string text, int width, bool primary)
+    {
+        var b = new Button { Text=text, Width=width };
+        StyleButton(b, primary);
+        return b;
+    }
+
+    private void StyleButton(Button b, bool primary)
+    {
+        b.Height = 32;
+        b.FlatStyle = FlatStyle.Flat;
+        b.FlatAppearance.BorderSize = 0;
+        b.Cursor = Cursors.Hand;
+        b.Font = new Font("Segoe UI", 9, FontStyle.Bold);
+        b.BackColor = primary ? Color.FromArgb(104,92,255) : Color.FromArgb(27,33,44);
+        b.ForeColor = Color.White;
+    }
+
+    private Panel MakeCard()
+    {
+        var p = new Panel
+        {
+            BackColor = Color.FromArgb(17,22,30),
+            Margin = new Padding(4),
+            Dock = DockStyle.Fill
+        };
+        p.Paint += (_,e) =>
+        {
+            using var pen = new Pen(Color.FromArgb(39,47,61));
+            e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0,p.Width-1), Math.Max(0,p.Height-1));
+        };
+        return p;
+    }
+
+    private Label Header(string t) => new()
+    {
+        Text=t,
+        ForeColor=Color.FromArgb(126,137,156),
+        AutoSize=true,
+        Font=new Font("Segoe UI",9,FontStyle.Bold)
+    };
 
     private async Task CheckForUpdatesAsync()
     {
@@ -240,7 +432,7 @@ public sealed class MainForm : Form
             _phoneUrl.Text = "Phone: " + _phoneServer.GetLocalUrl();
 
         _status.Text = "LIVE";
-        _status.ForeColor = Color.LightGreen;
+        _status.ForeColor = Color.FromArgb(126, 240, 174);\n        _status.BackColor = Color.FromArgb(20, 56, 39);
 
         int k = _current.Kills ?? 0;
         int d = _current.Deaths ?? 0;
