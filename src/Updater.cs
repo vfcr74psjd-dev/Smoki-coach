@@ -20,6 +20,32 @@ public static class AppUpdater
     public static string CurrentVersion =>
         typeof(AppUpdater).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
+    public static string InstalledExePath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Programs",
+        "Sm0kiSoloCoach",
+        "Sm0kiSoloCoach.exe");
+
+    public static bool IsInstalledBuild
+    {
+        get
+        {
+            try
+            {
+                var current = Path.GetFullPath(
+                    Environment.ProcessPath ?? Application.ExecutablePath);
+                var installed = Path.GetFullPath(InstalledExePath);
+                return current.Equals(installed, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public static string InstallMode => IsInstalledBuild ? "INSTALLED" : "PORTABLE";
+
     private const string ManifestUrl =
         "https://raw.githubusercontent.com/vfcr74psjd-dev/Smoki-coach/main/update.json";
 
@@ -48,16 +74,28 @@ public static class AppUpdater
         if (string.IsNullOrWhiteSpace(manifest.Version))
             throw new InvalidOperationException("Update manifest nima verzije.");
 
-        // Preferred path: use the signed/packaged installer instead of trying
-        // to overwrite the EXE that is currently running.
+        // Installed builds should update through the installer. Portable builds
+        // must update the EXE they are actually running, otherwise the user can
+        // reopen an old copy and think the update failed.
+        if (IsInstalledBuild && !string.IsNullOrWhiteSpace(manifest.SetupUrl))
+        {
+            await InstallViaSetupAsync(manifest);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest.Url))
+        {
+            await InstallPortableFallbackAsync(manifest);
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(manifest.SetupUrl))
         {
             await InstallViaSetupAsync(manifest);
             return;
         }
 
-        // Backward-compatible fallback for old manifests.
-        await InstallPortableFallbackAsync(manifest);
+        throw new InvalidOperationException("Update manifest nima veljavnega download URL-ja.");
     }
 
     private static async Task InstallViaSetupAsync(UpdateManifest manifest)
@@ -83,9 +121,7 @@ public static class AppUpdater
                 throw new IOException("Preneseni installer ni bil pravilno shranjen.");
 
             var pid = Environment.ProcessId;
-            var installedExe = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Programs", "Sm0kiSoloCoach", "Sm0kiSoloCoach.exe");
+            var installedExe = InstalledExePath;
 
             var cmd =
                 "@echo off\r\n" +
