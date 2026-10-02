@@ -9,6 +9,7 @@ public sealed class DemoDeathPoint
     public string Victim { get; set; } = "";
     public string Killer { get; set; } = "";
     public string Weapon { get; set; } = "";
+    public string Side { get; set; } = "";
     public float X { get; set; }
     public float Y { get; set; }
     public float Z { get; set; }
@@ -58,6 +59,13 @@ public static class DemoReviewService
             var pawn = e.PlayerPawn;
             if (pawn == null) return;
 
+            var side = e.Player?.CSTeamNum switch
+            {
+                CSTeamNumber.CounterTerrorist => "CT",
+                CSTeamNumber.Terrorist => "T",
+                _ => ""
+            };
+
             var pos = pawn.Origin;
             result.Deaths.Add(new DemoDeathPoint
             {
@@ -65,6 +73,7 @@ public static class DemoReviewService
                 Victim = victim,
                 Killer = killer,
                 Weapon = e.Weapon ?? "",
+                Side = side,
                 X = pos.X,
                 Y = pos.Y,
                 Z = pos.Z
