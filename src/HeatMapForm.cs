@@ -8,8 +8,6 @@ namespace Sm0kiSoloCoach;
 
 public sealed class HeatMapForm : Form
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
-
     private readonly string _nickname;
     private readonly AutoDemoInboxService _inbox;
     private readonly ComboBox _map = new();
@@ -224,7 +222,7 @@ public sealed class HeatMapForm : Form
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
 
         _status.Text =
-            $"Downloads + DemoInbox are watched automatically. FACEIT Sync indexes history/demo availability; parsing stays local.";
+            $"Local analysis • radar images are cached after first load • no demo upload. FACEIT Sync indexes history/demo availability.";
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = Color.FromArgb(105,118,138);
         _status.Font = new Font("Segoe UI",8.5f);
@@ -513,7 +511,7 @@ public sealed class HeatMapForm : Form
                 return;
             }
 
-            var bytes = await Http.GetByteArrayAsync(url, ct);
+            var bytes = await RadarImageCache.GetAsync(url, ct);
             using var ms = new MemoryStream(bytes);
             using var temp = Image.FromStream(ms);
             var next = new Bitmap(temp);
