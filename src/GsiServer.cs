@@ -175,6 +175,17 @@ public sealed class GsiServer : IDisposable
            ? (v.GetString() ?? "")
            : "";
 
+    private static bool TryParseVector3(string raw, out float x, out float y, out float z)
+    {
+        x = y = z = 0;
+        var parts = (raw ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 3) return false;
+
+        return float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out x)
+            && float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out y)
+            && float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out z);
+    }
+
     private static GameSnapshot Parse(JsonElement root)
     {
         var s = new GameSnapshot();
@@ -183,6 +194,14 @@ public sealed class GsiServer : IDisposable
         {
             s.PlayerName = StrProp(p, "name");
             s.Team = StrProp(p, "team");
+
+            var rawPosition = StrProp(p, "position");
+            if (TryParseVector3(rawPosition, out var px, out var py, out var pz))
+            {
+                s.PositionX = px;
+                s.PositionY = py;
+                s.PositionZ = pz;
+            }
 
             if (p.TryGetProperty("state", out var ps))
             {
