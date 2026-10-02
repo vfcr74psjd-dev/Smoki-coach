@@ -96,11 +96,14 @@ jobs:
         run: |
           $versionText = (Get-Content VERSION -Raw).Trim()
           $sha = (Get-FileHash dist\Sm0kiSoloCoach.exe -Algorithm SHA256).Hash
+          $setupSha = (Get-FileHash dist\Sm0kiSoloCoach-Setup.exe -Algorithm SHA256).Hash
 
           $manifest = @{
             version = $versionText
             url = "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v$versionText/Sm0kiSoloCoach.exe"
             sha256 = $sha
+            setupUrl = "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v$versionText/Sm0kiSoloCoach-Setup.exe"
+            setupSha256 = $setupSha
             notes = "Sm0ki Solo Coach $versionText"
           } | ConvertTo-Json
 
