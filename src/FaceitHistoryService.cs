@@ -87,18 +87,40 @@ public sealed class FaceitHistoryService
             .Take(maxMatches)
             .ToList();
 
+        // Reuse previously checked details. A normal sync should only spend API calls
+        // on new/unchecked matches, so a 1000-match backfill does not repeat itself.
+        var cached = FaceitHistoryStore.LoadForPlayer(nickname)
+            .Where(x => x.DetailsChecked && !string.IsNullOrWhiteSpace(x.MatchId))
+            .ToDictionary(x => x.MatchId, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var match in matches)
+        {
+            if (!cached.TryGetValue(match.MatchId, out var old))
+                continue;
+
+            match.DetailsChecked = true;
+            match.DemoReady = old.DemoReady;
+            match.DemoResources = old.DemoResources.ToList();
+            if (!string.IsNullOrWhiteSpace(old.Map)) match.Map = old.Map;
+            if (!string.IsNullOrWhiteSpace(old.FaceitUrl)) match.FaceitUrl = old.FaceitUrl;
+            if (!string.IsNullOrWhiteSpace(old.Status)) match.Status = old.Status;
+        }
+
         FaceitHistoryStore.UpsertRange(nickname, matches);
 
         // Player history does not include demo_url in the current Data API schema,
-        // so match details are checked separately. Keep concurrency intentionally low.
+        // so only unchecked match details are queried separately.
+        var uncheckedMatches = matches.Where(x => !x.DetailsChecked).ToList();
         int completed = 0;
         int errors = 0;
-        int ready = 0;
+        int ready = matches.Count(x => x.DemoReady);
         using var gate = new SemaphoreSlim(2, 2);
 
-        progress?.Report($"Checking demo availability 0/{matches.Count}…");
+        progress?.Report(uncheckedMatches.Count == 0
+            ? $"History cached • demos ready {ready}"
+            : $"Checking demo availability 0/{uncheckedMatches.Count}…");
 
-        var tasks = matches.Select(async match =>
+        var tasks = uncheckedMatches.Select(async match =>
         {
             await gate.WaitAsync(cancellationToken);
             try
@@ -113,7 +135,7 @@ public sealed class FaceitHistoryService
                     if (match.DemoReady) ready++;
                 }
 
-                progress?.Report($"Demo check {completed}/{matches.Count} • ready {ready}");
+                progress?.Report($"Demo check {completed}/{uncheckedMatches.Count} • ready {ready}");
             }
             catch (OperationCanceledException) { throw; }
             catch
@@ -124,7 +146,7 @@ public sealed class FaceitHistoryService
                     completed++;
                     errors++;
                 }
-                progress?.Report($"Demo check {completed}/{matches.Count} • {errors} skipped");
+                progress?.Report($"Demo check {completed}/{uncheckedMatches.Count} • {errors} skipped");
             }
             finally
             {
