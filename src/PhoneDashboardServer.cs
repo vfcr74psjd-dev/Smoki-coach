@@ -8,6 +8,26 @@ namespace Sm0kiSoloCoach;
 
 public sealed class PhoneDashboardServer : IDisposable
 {
+    private sealed class PhoneState
+    {
+        public string map { get; init; } = "—";
+        public string side { get; init; } = "—";
+        public string round { get; init; } = "—";
+        public string score { get; init; } = "—";
+        public int kills { get; init; }
+        public int deaths { get; init; }
+        public string kd { get; init; } = "0.00";
+        public int money { get; init; }
+        public string hp { get; init; } = "—";
+        public string armor { get; init; } = "—";
+        public string weapon { get; init; } = "—";
+        public string roundType { get; init; } = "—";
+        public string buyTitle { get; init; } = "";
+        public string buyAdvice { get; init; } = "";
+        public string aiTip { get; init; } = "";
+        public string tip { get; init; } = "";
+    }
+
     private TcpListener? _listener;
     private readonly CancellationTokenSource _cts = new();
     private readonly Func<GameSnapshot> _snapshotProvider;
@@ -275,7 +295,7 @@ async function refreshLive(){{
         }
     }
 
-    private object BuildState()
+    private PhoneState BuildState()
     {
         var s = _snapshotProvider();
         var mode = _modeProvider();
@@ -291,7 +311,7 @@ async function refreshLive(){{
         var (buyTitle, buyAdvice) = CoachEngine.BuyAdvice(s);
         var tip = CoachEngine.SoloTip(s, mode) + $" Role: {role}. Focus: {focus}.";
 
-        return new
+        return new PhoneState
         {
             map,
             side = string.IsNullOrWhiteSpace(s.Team) ? "—" : s.Team,
