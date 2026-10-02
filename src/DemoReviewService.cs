@@ -21,6 +21,15 @@ public sealed class DemoReviewResult
     public string Map { get; set; } = "";
     public List<DemoDeathPoint> Deaths { get; } = new();
     public List<string> Players { get; } = new();
+
+    public int HeGrenades { get; set; }
+    public int Flashbangs { get; set; }
+    public int Smokes { get; set; }
+    public int Molotovs { get; set; }
+    public int UtilityDamage { get; set; }
+    public int EnemiesFlashed { get; set; }
+    public double EnemyFlashSeconds { get; set; }
+    public int TotalUtilityThrown => HeGrenades + Flashbangs + Smokes + Molotovs;
 }
 
 public static class DemoReviewService
@@ -52,6 +61,20 @@ public static class DemoReviewService
         int round = 0;
         var hasSteamId = ulong.TryParse(playerSteamId64, out var targetSteamId);
 
+        bool IsTarget(CCSPlayerController? player)
+        {
+            if (player == null) return false;
+            if (hasSteamId && player.SteamID == targetSteamId) return true;
+            return player.PlayerName.Equals(playerNickname, StringComparison.OrdinalIgnoreCase);
+        }
+
+        bool IsEnemy(CCSPlayerController? target, CCSPlayerController? attacker)
+        {
+            if (target == null || attacker == null) return false;
+            if (target.SteamID == attacker.SteamID) return false;
+            return target.CSTeamNum != attacker.CSTeamNum;
+        }
+
         demo.PacketEvents.SvcServerInfo += e =>
         {
             if (!string.IsNullOrWhiteSpace(e.MapName))
@@ -64,6 +87,48 @@ public static class DemoReviewService
             // numbering clean by counting only actual gameplay phases.
             if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound)
                 round++;
+        };
+
+        demo.Source1GameEvents.HegrenadeDetonate += e =>
+        {
+            if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound && IsTarget(e.Player))
+                result.HeGrenades++;
+        };
+
+        demo.Source1GameEvents.FlashbangDetonate += e =>
+        {
+            if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound && IsTarget(e.Player))
+                result.Flashbangs++;
+        };
+
+        demo.Source1GameEvents.SmokegrenadeDetonate += e =>
+        {
+            if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound && IsTarget(e.Player))
+                result.Smokes++;
+        };
+
+        demo.Source1GameEvents.MolotovDetonate += e =>
+        {
+            if (demo.GameRules.CSGamePhase != CSGamePhase.WarmupRound && IsTarget(e.Player))
+                result.Molotovs++;
+        };
+
+        demo.Source1GameEvents.PlayerBlind += e =>
+        {
+            if (demo.GameRules.CSGamePhase == CSGamePhase.WarmupRound) return;
+            if (!IsTarget(e.Attacker) || !IsEnemy(e.Player, e.Attacker)) return;
+            result.EnemiesFlashed++;
+            result.EnemyFlashSeconds += Math.Max(0, e.BlindDuration);
+        };
+
+        demo.Source1GameEvents.PlayerHurt += e =>
+        {
+            if (demo.GameRules.CSGamePhase == CSGamePhase.WarmupRound) return;
+            if (!IsTarget(e.Attacker) || !IsEnemy(e.Player, e.Attacker)) return;
+
+            var weapon = (e.Weapon ?? "").ToLowerInvariant();
+            if (weapon.Contains("hegrenade") || weapon.Contains("inferno") || weapon.Contains("molotov"))
+                result.UtilityDamage += Math.Max(0, e.DmgHealth);
         };
 
         demo.Source1GameEvents.PlayerDeath += e =>
