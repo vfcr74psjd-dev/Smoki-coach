@@ -68,7 +68,7 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         DoubleBuffered = true;
-        BackColor = Color.FromArgb(14,17,23);
+        BackColor = Color.FromArgb(11, 13, 15);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
 
@@ -135,7 +135,7 @@ public sealed class MainForm : Form
             RowCount = 1,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = Color.FromArgb(8, 11, 17)
+            BackColor = Color.FromArgb(9, 11, 13)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 214));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -148,7 +148,7 @@ public sealed class MainForm : Form
             RowCount = 6,
             Margin = Padding.Empty,
             Padding = new Padding(14, 16, 14, 14),
-            BackColor = Color.FromArgb(12, 16, 23)
+            BackColor = Color.FromArgb(14, 16, 18)
         };
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
@@ -158,6 +158,13 @@ public sealed class MainForm : Form
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
         var brand = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        // CS2 ACCENT STRIP
+        brand.Controls.Add(new Panel
+        {
+            Dock = DockStyle.Left,
+            Width = 3,
+            BackColor = Color.FromArgb(255, 156, 44)
+        });
         brand.Controls.Add(new Label
         {
             Text = "SM0KI",
@@ -176,7 +183,7 @@ public sealed class MainForm : Form
             Width = 180,
             Height = 20,
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(118, 108, 255)
+            ForeColor = Color.FromArgb(255, 156, 44)
         });
         sidebar.Controls.Add(brand, 0, 0);
 
@@ -320,7 +327,7 @@ public sealed class MainForm : Form
             RowCount = 4,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = Color.FromArgb(8, 11, 17)
+            BackColor = Color.FromArgb(9, 11, 13)
         };
         workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
@@ -334,7 +341,7 @@ public sealed class MainForm : Form
             RowCount = 1,
             Padding = new Padding(24, 14, 24, 8),
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(10, 14, 21)
+            BackColor = Color.FromArgb(13, 15, 17)
         };
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
@@ -391,7 +398,7 @@ public sealed class MainForm : Form
             RowCount = 1,
             Padding = new Padding(24, 10, 24, 10),
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(8, 11, 17)
+            BackColor = Color.FromArgb(9, 11, 13)
         };
         presets.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
         presets.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -543,7 +550,7 @@ public sealed class MainForm : Form
             Text = "COACH NOTE",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(118, 108, 255),
+            ForeColor = Color.FromArgb(255, 156, 44),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
         _tip.Dock = DockStyle.Fill;
@@ -787,7 +794,7 @@ public sealed class MainForm : Form
         }, 0, 0);
 
         _history.Dock = DockStyle.Fill;
-        _history.BackColor = Color.FromArgb(12, 16, 23);
+        _history.BackColor = Color.FromArgb(14, 16, 18);
         _history.ForeColor = Color.FromArgb(204, 212, 224);
         _history.BorderStyle = BorderStyle.None;
         _history.IntegralHeight = false;
@@ -807,7 +814,7 @@ public sealed class MainForm : Form
             ColumnCount = 2,
             Padding = new Padding(24, 3, 24, 3),
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(8, 11, 17)
+            BackColor = Color.FromArgb(9, 11, 13)
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
@@ -1027,12 +1034,12 @@ public sealed class MainForm : Form
             Margin = new Padding(0, 2, 0, 2),
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             ForeColor = active ? Color.White : Color.FromArgb(153, 164, 181),
-            BackColor = active ? Color.FromArgb(35, 31, 67) : Color.FromArgb(12, 16, 23),
+            BackColor = active ? Color.FromArgb(52, 34, 20) : Color.FromArgb(14, 16, 18),
             Cursor = Cursors.Hand,
             TabStop = false
         };
         button.FlatAppearance.BorderSize = active ? 1 : 0;
-        button.FlatAppearance.BorderColor = Color.FromArgb(104, 92, 255);
+        button.FlatAppearance.BorderColor = Color.FromArgb(255, 156, 44);
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(28, 33, 44);
         button.Click += click;
         return button;
@@ -1050,13 +1057,13 @@ public sealed class MainForm : Form
             Margin = new Padding(0, 0, 8, 0),
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
             ForeColor = Color.FromArgb(202, 210, 223),
-            BackColor = Color.FromArgb(20, 25, 35),
+            BackColor = Color.FromArgb(20, 22, 24),
             Cursor = Cursors.Hand,
             TabStop = false
         };
         button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.BorderColor = Color.FromArgb(43, 51, 66);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(31, 36, 49);
+        button.FlatAppearance.BorderColor = Color.FromArgb(58, 52, 45);
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(38, 34, 29);
         button.Click += (_,__) => ApplyCoachPreset(preset);
         _presetButtons.Add(button);
         return button;
@@ -1094,14 +1101,14 @@ public sealed class MainForm : Form
                 StringComparison.OrdinalIgnoreCase);
 
             button.BackColor = active
-                ? Color.FromArgb(52, 44, 104)
-                : Color.FromArgb(20, 25, 35);
+                ? Color.FromArgb(67, 42, 22)
+                : Color.FromArgb(20, 22, 24);
             button.ForeColor = active
                 ? Color.White
                 : Color.FromArgb(202, 210, 223);
             button.FlatAppearance.BorderColor = active
-                ? Color.FromArgb(118, 108, 255)
-                : Color.FromArgb(43, 51, 66);
+                ? Color.FromArgb(255, 156, 44)
+                : Color.FromArgb(58, 52, 45);
         }
     }
 
@@ -1114,7 +1121,7 @@ public sealed class MainForm : Form
             RowCount = 2,
             Margin = new Padding(0, 1, 5, 1),
             Padding = new Padding(6, 3, 6, 3),
-            BackColor = Color.FromArgb(13, 18, 26)
+            BackColor = Color.FromArgb(16, 18, 20)
         };
         metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
         metric.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -1245,7 +1252,7 @@ public sealed class MainForm : Form
     {
         combo.DropDownStyle = ComboBoxStyle.DropDownList;
         combo.FlatStyle = FlatStyle.Flat;
-        combo.BackColor = Color.FromArgb(24,29,39);
+        combo.BackColor = Color.FromArgb(26, 28, 30);
         combo.ForeColor = Color.White;
         combo.Font = new Font("Segoe UI", 9);
     }
@@ -1318,13 +1325,13 @@ public sealed class MainForm : Form
     {
         var p = new Panel
         {
-            BackColor = Color.FromArgb(17,22,30),
+            BackColor = Color.FromArgb(20, 22, 24),
             Margin = new Padding(4),
             Dock = DockStyle.Fill
         };
         p.Paint += (_,e) =>
         {
-            using var pen = new Pen(Color.FromArgb(39,47,61));
+            using var pen = new Pen(Color.FromArgb(57, 51, 44));
             e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0,p.Width-1), Math.Max(0,p.Height-1));
         };
         return p;
@@ -1353,9 +1360,9 @@ public sealed class MainForm : Form
         }
 
         _aiStatus.Text = "AI CHECK";
-        _aiStatus.ForeColor = Color.FromArgb(176, 166, 255);
+        _aiStatus.ForeColor = Color.FromArgb(255, 178, 91);
         _aiHealth.Text = "● AI CHECKING";
-        _aiHealth.ForeColor = Color.FromArgb(176, 166, 255);
+        _aiHealth.ForeColor = Color.FromArgb(255, 178, 91);
         _ = RefreshAiReadinessAsync();
     }
 
@@ -1407,7 +1414,7 @@ public sealed class MainForm : Form
         _aiText.Text = instant;
         _aiStatus.Text = _aiCoach.IsConfigured ? "FAST PLAN • AI REFINE" : "FAST PLAN";
         _aiStatus.ForeColor = _aiCoach.IsConfigured
-            ? Color.FromArgb(176, 166, 255)
+            ? Color.FromArgb(255, 178, 91)
             : Color.FromArgb(126, 240, 174);
 
         if (!_aiCoach.IsConfigured)
@@ -1749,7 +1756,7 @@ public sealed class MainForm : Form
 
         _faceitLoading = true;
         _faceitHealth.Text = "● FACEIT SYNC";
-        _faceitHealth.ForeColor = Color.FromArgb(176, 166, 255);
+        _faceitHealth.ForeColor = Color.FromArgb(255, 178, 91);
         RefreshFaceitCard($"Loading {nickname}…");
 
         try
