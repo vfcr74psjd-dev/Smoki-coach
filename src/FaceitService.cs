@@ -9,6 +9,7 @@ public sealed class FaceitSnapshot
 {
     public string Nickname { get; set; } = "";
     public string PlayerId { get; set; } = "";
+    public string SteamId64 { get; set; } = "";
     public string GameId { get; set; } = "";
     public int Elo { get; set; }
     public int SkillLevel { get; set; }
@@ -67,8 +68,12 @@ public sealed class FaceitService
         var snapshot = new FaceitSnapshot
         {
             Nickname = GetString(root, "nickname") ?? nickname,
-            PlayerId = GetString(root, "player_id") ?? ""
+            PlayerId = GetString(root, "player_id") ?? "",
+            SteamId64 = GetString(root, "steam_id_64") ?? ""
         };
+
+        if (!string.IsNullOrWhiteSpace(snapshot.SteamId64))
+            FaceitSettingsStore.SaveSteamId64(snapshot.SteamId64);
 
         if (root.TryGetProperty("games", out var games) &&
             games.ValueKind == JsonValueKind.Object)
