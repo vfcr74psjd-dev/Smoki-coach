@@ -804,13 +804,12 @@ public sealed class MainForm : Form
         var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             Padding = new Padding(24, 3, 24, 3),
             Margin = Padding.Empty,
             BackColor = Color.FromArgb(8, 11, 17)
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
 
         _phoneUrl.Visible = false;
@@ -839,18 +838,6 @@ public sealed class MainForm : Form
         };
         footer.Controls.Add(refreshGsi, 1, 0);
 
-        var phoneButton = MakeButton("PHONE QR", 112, false);
-        phoneButton.Dock = DockStyle.Fill;
-        phoneButton.Height = 24;
-        phoneButton.Margin = new Padding(4, 0, 0, 0);
-        phoneButton.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-        phoneButton.Click += (_,__) =>
-        {
-            if (_phoneServer == null) return;
-            using var qr = new PhoneQrForm(_phoneServer.GetLocalUrl());
-            qr.ShowDialog(this);
-        };
-        footer.Controls.Add(phoneButton, 2, 0);
 
         workspace.Controls.Add(footer, 0, 3);
         root.Controls.Add(workspace, 1, 0);
