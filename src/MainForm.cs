@@ -24,9 +24,9 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "Sm0ki Solo Coach";
-        Width = 980;
-        Height = 680;
-        MinimumSize = new Size(860, 600);
+        Width = 1080;
+        Height = 720;
+        MinimumSize = new Size(940, 640);
         BackColor = Color.FromArgb(14,17,23);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -141,16 +141,15 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(_mode);
 
         _phoneUrl.AutoSize = true;
-        _phoneUrl.Left = 194;
+        _phoneUrl.Left = 560;
         _phoneUrl.Top = 30;
         _phoneUrl.ForeColor = Color.FromArgb(112,124,145);
         _phoneUrl.Font = new Font("Segoe UI", 8.5f);
         toolbar.Controls.Add(_phoneUrl);
 
         var phone = MakeButton("Phone Mode", 118, false);
-        phone.Left = 690;
+        phone.Left = 296;
         phone.Top = 15;
-        phone.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         phone.Click += (_,__) =>
         {
             if (_phoneServer == null) return;
@@ -166,16 +165,14 @@ public sealed class MainForm : Form
         _updateButton.Text = "Update";
         StyleButton(_updateButton, true);
         _updateButton.Width = 92;
-        _updateButton.Left = 818;
+        _updateButton.Left = 190;
         _updateButton.Top = 15;
-        _updateButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _updateButton.Click += async (_,__) => await CheckForUpdatesAsync();
         toolbar.Controls.Add(_updateButton);
 
         var install = MakeButton("Refresh GSI", 118, false);
-        install.Left = 918;
+        install.Left = 424;
         install.Top = 15;
-        install.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         install.Click += (_,__) =>
         {
             var p = GsiInstaller.TryInstall();
