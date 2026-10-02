@@ -72,50 +72,22 @@ public sealed class GsiServer : IDisposable
                 client.SendTimeout = 5000;
 
                 using var stream = client.GetStream();
-                using var reader = new StreamReader(stream, Encoding.UTF8, false, 8192, leaveOpen:true);
+                var request = await ReadRequestAsync(stream, _cts.Token);
 
-                string? requestLine = await reader.ReadLineAsync();
-                if (string.IsNullOrWhiteSpace(requestLine)) return;
-
-                var parts = requestLine.Split(' ');
-                if (parts.Length < 2 || !parts[0].Equals("POST", StringComparison.OrdinalIgnoreCase) || parts[1] != "/gsi")
+                if (!request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
+                    request.Path != "/gsi")
                 {
                     await SendResponse(stream, 404, "{\"error\":\"not found\"}");
                     return;
                 }
 
-                int contentLength = 0;
-                string? line;
-                while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync()))
-                {
-                    var idx = line.IndexOf(':');
-                    if (idx <= 0) continue;
-                    var name = line[..idx].Trim();
-                    var value = line[(idx + 1)..].Trim();
-
-                    if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
-                        int.TryParse(value, out contentLength);
-                }
-
-                if (contentLength <= 0 || contentLength > 2_000_000)
+                if (request.Body.Length == 0 || request.Body.Length > 2_000_000)
                 {
                     await SendResponse(stream, 400, "{\"error\":\"bad content length\"}");
                     return;
                 }
 
-                char[] chars = new char[contentLength];
-                int total = 0;
-
-                while (total < contentLength)
-                {
-                    int n = await reader.ReadAsync(chars, total, contentLength-total);
-                    if (n <= 0) break;
-                    total += n;
-                }
-
-                string body = new string(chars, 0, total);
-
-                using var doc = JsonDocument.Parse(body);
+                using var doc = JsonDocument.Parse(request.Body);
                 var root = doc.RootElement;
 
                 if (!root.TryGetProperty("auth", out var auth) ||
@@ -129,6 +101,7 @@ public sealed class GsiServer : IDisposable
                 SnapshotReceived?.Invoke(Parse(root));
                 await SendResponse(stream, 200, "{\"ok\":true}");
             }
+            catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
             catch
             {
                 try
@@ -139,6 +112,102 @@ public sealed class GsiServer : IDisposable
                 catch { }
             }
         }
+    }
+
+    private sealed record HttpRequestData(string Method, string Path, byte[] Body);
+
+    private static async Task<HttpRequestData> ReadRequestAsync(
+        NetworkStream stream,
+        CancellationToken cancellationToken)
+    {
+        const int maxHeaderBytes = 32 * 1024;
+        var received = new List<byte>(8192);
+        var buffer = new byte[4096];
+        int headerEnd = -1;
+
+        while (headerEnd < 0)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+            if (read <= 0)
+                throw new IOException("HTTP request ended before headers were complete.");
+
+            received.AddRange(buffer.AsSpan(0, read).ToArray());
+
+            if (received.Count > maxHeaderBytes + 2_000_000)
+                throw new InvalidDataException("HTTP request is too large.");
+
+            headerEnd = FindHeaderEnd(received);
+            if (headerEnd < 0 && received.Count > maxHeaderBytes)
+                throw new InvalidDataException("HTTP headers are too large.");
+        }
+
+        var headerBytes = received.Take(headerEnd).ToArray();
+        var headerText = Encoding.ASCII.GetString(headerBytes);
+        var lines = headerText.Split("\r\n", StringSplitOptions.None);
+
+        var requestLine = lines.FirstOrDefault() ?? "";
+        var requestParts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (requestParts.Length < 2)
+            throw new InvalidDataException("Invalid HTTP request line.");
+
+        int contentLength = 0;
+        foreach (var line in lines.Skip(1))
+        {
+            var idx = line.IndexOf(':');
+            if (idx <= 0) continue;
+
+            var name = line[..idx].Trim();
+            var value = line[(idx + 1)..].Trim();
+            if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+                int.TryParse(value, out contentLength);
+        }
+
+        if (contentLength <= 0 || contentLength > 2_000_000)
+            throw new InvalidDataException("Invalid Content-Length.");
+
+        var bodyStart = headerEnd + 4;
+        var alreadyBuffered = Math.Max(0, received.Count - bodyStart);
+        var body = new byte[contentLength];
+
+        if (alreadyBuffered > 0)
+        {
+            var copy = Math.Min(contentLength, alreadyBuffered);
+            received.CopyTo(bodyStart, body, 0, copy);
+            alreadyBuffered = copy;
+        }
+        else
+        {
+            alreadyBuffered = 0;
+        }
+
+        int total = alreadyBuffered;
+        while (total < contentLength)
+        {
+            var read = await stream.ReadAsync(
+                body.AsMemory(total, contentLength - total),
+                cancellationToken);
+
+            if (read <= 0)
+                throw new IOException("HTTP request body ended early.");
+
+            total += read;
+        }
+
+        return new HttpRequestData(requestParts[0], requestParts[1], body);
+    }
+
+    private static int FindHeaderEnd(List<byte> bytes)
+    {
+        for (int i = 0; i <= bytes.Count - 4; i++)
+        {
+            if (bytes[i] == (byte)'\r' &&
+                bytes[i + 1] == (byte)'\n' &&
+                bytes[i + 2] == (byte)'\r' &&
+                bytes[i + 3] == (byte)'\n')
+                return i;
+        }
+
+        return -1;
     }
 
     private static async Task SendResponse(NetworkStream stream, int statusCode, string json)
