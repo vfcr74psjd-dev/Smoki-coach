@@ -10,14 +10,16 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Func<GameSnapshot> _snapshotProvider;
     private readonly Func<string> _modeProvider;
+    private readonly Func<string> _aiProvider;
     private Task? _loopTask;
 
     public int Port { get; private set; } = 31990;
 
-    public PhoneDashboardServer(Func<GameSnapshot> snapshotProvider, Func<string> modeProvider)
+    public PhoneDashboardServer(Func<GameSnapshot> snapshotProvider, Func<string> modeProvider, Func<string> aiProvider)
     {
         _snapshotProvider = snapshotProvider;
         _modeProvider = modeProvider;
+        _aiProvider = aiProvider;
     }
 
     public void Start()
@@ -101,6 +103,7 @@ public sealed class PhoneDashboardServer : IDisposable
                 string kd = d > 0 ? ((double)k/d).ToString("0.00") : k.ToString("0.00");
                 var (buyTitle, buyAdvice) = CoachEngine.BuyAdvice(s);
                 string tip = CoachEngine.SoloTip(s, mode);
+                string aiTip = _aiProvider();
 
                 string html = $@"<!doctype html>
 <html lang='sl'>
@@ -137,6 +140,7 @@ h1:after{{content:'LIVE PERFORMANCE DASHBOARD';display:block;font-size:10px;lett
 <div class='card'><div class='label'>MONEY</div><div class='value'>${s.Money ?? 0}</div></div>
 </div>
 <div class='section'><h2>NEXT BUY</h2><div class='big'>{Html(buyTitle)}</div><div class='text'>{Html(buyAdvice)}</div></div>
+<div class='section'><h2>AI ROUND COACH</h2><div class='text' style='white-space:pre-line'>{Html(aiTip)}</div></div>
 <div class='section'><h2>SOLO AVG-KILLS COACH</h2><div class='text'>{Html(tip)}</div></div>
 <div class='section'><h2>PHONE MODE</h2><div class='text'>Ta stran se osveži na 2 sekundi. PC in telefon morata biti na istem Wi‑Fi/LAN omrežju.</div></div>
 </div></body></html>";

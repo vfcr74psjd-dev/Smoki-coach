@@ -16,6 +16,16 @@ public sealed class MainForm : Form
     private PhoneDashboardServer? _phoneServer;
     private readonly Label _phoneUrl = new();
     private readonly Button _updateButton = new();
+    private readonly Label _aiText = new();
+    private readonly Label _aiStatus = new();
+    private readonly AiCoachService _aiCoach = new();
+    private CancellationTokenSource? _aiCts;
+    private string _latestAiAdvice = "AI coach čaka na nastavitev.";
+    private int? _lastAiRound;
+    private string _lastAiMap = "";
+    private int? _trackedRound;
+    private int _roundStartKills;
+    private int _roundStartDeaths;
 
     private GameSnapshot _current = new();
     private GameSnapshot? _previous;
@@ -39,9 +49,11 @@ public sealed class MainForm : Form
 
         _phoneServer = new PhoneDashboardServer(
             () => _current,
-            () => _mode.SelectedItem?.ToString() ?? "Balanced"
+            () => _mode.SelectedItem?.ToString() ?? "Balanced",
+            () => _latestAiAdvice
         );
         _phoneServer.Start();
+        UpdateAiStatus();
 
         var path = GsiInstaller.TryInstall();
         if (path == null)
@@ -49,6 +61,8 @@ public sealed class MainForm : Form
 
         FormClosing += (_,__) =>
         {
+            _aiCts?.Cancel();
+            _aiCts?.Dispose();
             _phoneServer?.Dispose();
             _server.Dispose();
         };
@@ -138,10 +152,15 @@ public sealed class MainForm : Form
         _mode.FlatStyle = FlatStyle.Flat;
         _mode.BackColor = Color.FromArgb(24,29,39);
         _mode.ForeColor = Color.White;
+        _mode.SelectedIndexChanged += (_,__) =>
+        {
+            if (_current.Round is int && _aiCoach.IsConfigured)
+                _ = RefreshAiCoachAsync(_current, true);
+        };
         toolbar.Controls.Add(_mode);
 
         _phoneUrl.AutoSize = true;
-        _phoneUrl.Left = 560;
+        _phoneUrl.Left = 684;
         _phoneUrl.Top = 30;
         _phoneUrl.ForeColor = Color.FromArgb(112,124,145);
         _phoneUrl.Font = new Font("Segoe UI", 8.5f);
@@ -180,6 +199,21 @@ public sealed class MainForm : Form
                 "Sm0ki Solo Coach");
         };
         toolbar.Controls.Add(install);
+
+        var aiSettings = MakeButton("AI Settings", 118, false);
+        aiSettings.Left = 552;
+        aiSettings.Top = 15;
+        aiSettings.Click += (_,__) =>
+        {
+            using var dialog = new AiSettingsForm();
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                UpdateAiStatus();
+                if (_current.Round is int)
+                    _ = RefreshAiCoachAsync(_current, true);
+            }
+        };
+        toolbar.Controls.Add(aiSettings);
 
         Controls.Add(toolbar);
 
@@ -246,22 +280,41 @@ public sealed class MainForm : Form
         _buyTitle.Font=new Font("Segoe UI",18,FontStyle.Bold);
         _buyTitle.ForeColor = Color.FromArgb(240,242,247);
 
-        _buyText.Left=20; _buyText.Top=98; _buyText.Width=440; _buyText.Height=115;
+        _buyText.Left=20; _buyText.Top=98; _buyText.Width=440; _buyText.Height=82;
         _buyText.ForeColor=Color.FromArgb(190,198,211);
         _buyText.Font = new Font("Segoe UI", 10);
 
-        var divider = new Panel { Left=20, Top=224, Width=440, Height=1, BackColor=Color.FromArgb(43,50,64) };
+        var divider = new Panel { Left=20, Top=190, Width=440, Height=1, BackColor=Color.FromArgb(43,50,64) };
 
-        var coachHdr=Header("SOLO AVG-KILLS COACH");
-        coachHdr.Top=246; coachHdr.Left=20;
-        _tip.Left=20; _tip.Top=281; _tip.Width=440; _tip.Height=180;
-        _tip.ForeColor=Color.FromArgb(205,211,221);
-        _tip.Font = new Font("Segoe UI", 10);
+        var aiHdr=Header("AI ROUND COACH");
+        aiHdr.Top=208; aiHdr.Left=20;
+
+        _aiStatus.AutoSize = true;
+        _aiStatus.Top = 208;
+        _aiStatus.Left = 350;
+        _aiStatus.Font = new Font("Segoe UI", 8, FontStyle.Bold);
+
+        _aiText.Left=20; _aiText.Top=238; _aiText.Width=440; _aiText.Height=150;
+        _aiText.ForeColor=Color.FromArgb(220,225,234);
+        _aiText.Font = new Font("Segoe UI", 10);
+        _aiText.Text = "AI coach čaka na nastavitev.";
+
+        var divider2 = new Panel { Left=20, Top=400, Width=440, Height=1, BackColor=Color.FromArgb(43,50,64) };
+
+        var coachHdr=Header("LOCAL FALLBACK COACH");
+        coachHdr.Top=418; coachHdr.Left=20;
+        _tip.Left=20; _tip.Top=446; _tip.Width=440; _tip.Height=70;
+        _tip.ForeColor=Color.FromArgb(170,180,195);
+        _tip.Font = new Font("Segoe UI", 9);
 
         left.Controls.Add(buyHdr);
         left.Controls.Add(_buyTitle);
         left.Controls.Add(_buyText);
         left.Controls.Add(divider);
+        left.Controls.Add(aiHdr);
+        left.Controls.Add(_aiStatus);
+        left.Controls.Add(_aiText);
+        left.Controls.Add(divider2);
         left.Controls.Add(coachHdr);
         left.Controls.Add(_tip);
 
@@ -353,6 +406,80 @@ public sealed class MainForm : Form
         Font=new Font("Segoe UI",9,FontStyle.Bold)
     };
 
+    private void UpdateAiStatus()
+    {
+        if (_aiCoach.IsConfigured)
+        {
+            _aiStatus.Text = "AI READY";
+            _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+            if (_latestAiAdvice == "AI coach čaka na nastavitev.")
+                _latestAiAdvice = "AI je pripravljen. Nov plan se ustvari ob začetku runde.";
+        }
+        else
+        {
+            _aiStatus.Text = "AI OFF";
+            _aiStatus.ForeColor = Color.FromArgb(255, 170, 140);
+            _latestAiAdvice = "Klikni AI Settings in dodaj svoj OpenAI API key.";
+        }
+
+        _aiText.Text = _latestAiAdvice;
+    }
+
+    private async Task RefreshAiCoachAsync(GameSnapshot snapshot, bool force = false)
+    {
+        if (!_aiCoach.IsConfigured)
+        {
+            UpdateAiStatus();
+            return;
+        }
+
+        if (!force && snapshot.Round == null) return;
+
+        _aiCts?.Cancel();
+        _aiCts?.Dispose();
+        _aiCts = new CancellationTokenSource();
+
+        var requestedMap = snapshot.Map;
+        var requestedRound = snapshot.Round;
+
+        try
+        {
+            _aiStatus.Text = "AI THINKING";
+            _aiStatus.ForeColor = Color.FromArgb(176, 166, 255);
+            _latestAiAdvice = "Pripravljam plan za to rundo…";
+            _aiText.Text = _latestAiAdvice;
+
+            var advice = await _aiCoach.GenerateRoundAdviceAsync(
+                snapshot,
+                _rounds.ToList(),
+                _mode.SelectedItem?.ToString() ?? "Balanced",
+                _aiCts.Token
+            );
+
+            if (_current.Map != requestedMap || _current.Round != requestedRound)
+                return;
+
+            _latestAiAdvice = advice;
+            _aiText.Text = advice;
+            _aiStatus.Text = "AI LIVE";
+            _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _latestAiAdvice = "AI trenutno ni dosegljiv. Lokalni coach spodaj ostaja aktiven.";
+            _aiText.Text = _latestAiAdvice;
+            _aiStatus.Text = "AI ERROR";
+            _aiStatus.ForeColor = Color.FromArgb(255, 150, 130);
+
+            var msg = ex.Message;
+            if (msg.Contains("401"))
+                _latestAiAdvice = _aiText.Text = "API key ni sprejet. Odpri AI Settings in preveri ključ.";
+            else if (msg.Contains("429"))
+                _latestAiAdvice = _aiText.Text = "OpenAI API limit je trenutno dosežen. Lokalni coach ostaja aktiven.";
+        }
+    }
+
     private async Task CheckForUpdatesAsync()
     {
         try
@@ -403,20 +530,64 @@ public sealed class MainForm : Form
             _previous = _current;
             _current = s;
 
-            if (_previous?.Round is int pr && s.Round is int cr && pr != cr)
+            bool mapChanged =
+                !string.IsNullOrWhiteSpace(_previous.Map) &&
+                !string.IsNullOrWhiteSpace(s.Map) &&
+                !string.Equals(_previous.Map, s.Map, StringComparison.OrdinalIgnoreCase);
+
+            if (mapChanged)
             {
-                _rounds.Add(new RoundRecord
-                {
-                    Round = pr,
-                    Side = _previous.Team,
-                    KillsTotal = _previous.Kills ?? 0,
-                    DeathsTotal = _previous.Deaths ?? 0,
-                    MoneyEnd = _previous.Money ?? 0
-                });
-                while (_rounds.Count > 12) _rounds.RemoveAt(0);
+                _rounds.Clear();
+                _trackedRound = s.Round;
+                _roundStartKills = s.Kills ?? 0;
+                _roundStartDeaths = s.Deaths ?? 0;
+            }
+            else if (_trackedRound == null && s.Round is int initialRound)
+            {
+                _trackedRound = initialRound;
+                _roundStartKills = s.Kills ?? 0;
+                _roundStartDeaths = s.Deaths ?? 0;
             }
 
+            if (!mapChanged && _previous.Round is int pr && s.Round is int cr && pr != cr)
+            {
+                if (cr < pr)
+                {
+                    _rounds.Clear();
+                }
+                else
+                {
+                    _rounds.Add(new RoundRecord
+                    {
+                        Round = pr,
+                        Side = _previous.Team,
+                        KillsTotal = _previous.Kills ?? 0,
+                        DeathsTotal = _previous.Deaths ?? 0,
+                        MoneyEnd = _previous.Money ?? 0,
+                        KillsRound = Math.Max(0, (_previous.Kills ?? 0) - _roundStartKills),
+                        DeathsRound = Math.Max(0, (_previous.Deaths ?? 0) - _roundStartDeaths)
+                    });
+                    while (_rounds.Count > 12) _rounds.RemoveAt(0);
+                }
+
+                _trackedRound = cr;
+                _roundStartKills = s.Kills ?? 0;
+                _roundStartDeaths = s.Deaths ?? 0;
+            }
+
+            bool requestAi =
+                s.Round is int aiRound &&
+                (_lastAiRound != aiRound ||
+                 !string.Equals(_lastAiMap, s.Map, StringComparison.OrdinalIgnoreCase));
+
             RefreshUi();
+
+            if (requestAi)
+            {
+                _lastAiRound = s.Round;
+                _lastAiMap = s.Map;
+                _ = RefreshAiCoachAsync(s);
+            }
         });
     }
 
@@ -448,14 +619,9 @@ public sealed class MainForm : Form
         _tip.Text = CoachEngine.SoloTip(_current, _mode.SelectedItem?.ToString() ?? "Balanced");
 
         _history.Items.Clear();
-        int pk=0, pd=0;
         foreach (var rr in _rounds.TakeLast(10))
         {
-            int dk = Math.Max(0, rr.KillsTotal-pk);
-            int dd = Math.Max(0, rr.DeathsTotal-pd);
-            _history.Items.Add($"R{rr.Round+1:00}   {rr.Side,2}   +{dk}K +{dd}D   ${rr.MoneyEnd}");
-            pk=rr.KillsTotal;
-            pd=rr.DeathsTotal;
+            _history.Items.Add($"R{rr.Round+1:00}   {rr.Side,2}   +{rr.KillsRound}K +{rr.DeathsRound}D   $" + rr.MoneyEnd);
         }
         if (_history.Items.Count==0) _history.Items.Add("No completed rounds tracked yet.");
     }

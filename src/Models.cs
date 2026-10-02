@@ -28,4 +28,6 @@ public sealed class RoundRecord
     public int KillsTotal { get; set; }
     public int DeathsTotal { get; set; }
     public int MoneyEnd { get; set; }
+    public int KillsRound { get; set; }
+    public int DeathsRound { get; set; }
 }
