@@ -23,18 +23,29 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Validate source archive
+        shell: pwsh
+        run: |
+          if (!(Test-Path source.zip)) { throw "source.zip manjka" }
+          Get-Item source.zip | Format-List Name,Length
+
       - name: Extract source
         shell: pwsh
         run: |
           if (Test-Path buildsrc) { Remove-Item buildsrc -Recurse -Force }
-          Expand-Archive -Path source.zip -DestinationPath buildsrc -Force
+          New-Item -ItemType Directory -Force buildsrc | Out-Null
+          tar -xf source.zip -C buildsrc
+          $proj = Get-ChildItem buildsrc -Recurse -Filter Sm0kiSoloCoach.csproj | Select-Object -First 1
+          if ($null -eq $proj) { throw "Sm0kiSoloCoach.csproj ni bil najden po razpakiranju." }
 
       - name: Publish EXE
         shell: pwsh
         run: |
           $proj = Get-ChildItem buildsrc -Recurse -Filter Sm0kiSoloCoach.csproj | Select-Object -First 1
           dotnet publish $proj.FullName -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem $proj.Directory.FullName -Recurse -Filter Sm0kiSoloCoach.exe | Where-Object { $_.FullName -match 'publish' } | Select-Object -First 1
+          if ($null -eq $exe) { throw "Published EXE ni bil najden." }
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item $exe.FullName dist\Sm0kiSoloCoach.exe -Force
 
