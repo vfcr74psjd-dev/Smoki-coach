@@ -302,7 +302,7 @@ public sealed class MainForm : Form
 
         sidebar.Controls.Add(new Label
         {
-            Text = $"v{AppUpdater.CurrentVersion}  •  LOCAL / PRIVATE",
+            Text = $"v{AppUpdater.CurrentVersion}  •  {AppUpdater.InstallMode}  •  LOCAL / PRIVATE",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 7.5f),
             ForeColor = Color.FromArgb(73, 84, 103),
