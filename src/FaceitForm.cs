@@ -243,7 +243,8 @@ public sealed class FaceitForm : Form
                 $"Recent {s.RecentMatchesRead} matches\n" +
                 $"AVG kills: {(s.RecentAverageKills?.ToString("0.0") ?? "—")}\n" +
                 $"AVG deaths: {(s.RecentAverageDeaths?.ToString("0.0") ?? "—")}\n" +
-                $"AVG K/D: {(s.RecentAverageKd?.ToString("0.00") ?? "—")}";
+                $"AVG K/D: {(s.RecentAverageKd?.ToString("0.00") ?? "—")}\n" +
+                $"{s.RecentKillsTrendLabel}";
         }
         catch(Exception ex)
         {
