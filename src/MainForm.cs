@@ -60,7 +60,9 @@ public sealed class MainForm : Form
             () => _mode.SelectedItem?.ToString() ?? "Balanced",
             () => _role.SelectedItem?.ToString() ?? "Flex",
             () => _focus.SelectedItem?.ToString() ?? "More kills",
-            () => _latestAiAdvice
+            () => _autoAi.Checked,
+            () => _latestAiAdvice,
+            ApplyPhoneSettings
         );
         _phoneServer.Start();
         UpdateAiStatus();
@@ -536,7 +538,7 @@ public sealed class MainForm : Form
 
     private static Panel MakeDivider() => new()
     {
-        Dock = DockStyle.Fill,
+        Dock = DockStyle.Top,
         Height = 1,
         Margin = new Padding(0, 6, 0, 6),
         BackColor = Color.FromArgb(43,50,64)
@@ -651,6 +653,29 @@ public sealed class MainForm : Form
             _aiStatus.Text = "AI ERROR";
             _aiStatus.ForeColor = Color.FromArgb(255, 150, 130);
         }
+    }
+
+    private void ApplyPhoneSettings(string mode, string role, string focus, bool autoAi)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => ApplyPhoneSettings(mode, role, focus, autoAi));
+            return;
+        }
+
+        if (_mode.Items.Contains(mode)) _mode.SelectedItem = mode;
+        if (_role.Items.Contains(role)) _role.SelectedItem = role;
+        if (_focus.Items.Contains(focus)) _focus.SelectedItem = focus;
+        _autoAi.Checked = autoAi;
+
+        _prefs.Mode = _mode.SelectedItem?.ToString() ?? "Balanced";
+        _prefs.Role = _role.SelectedItem?.ToString() ?? "Flex";
+        _prefs.Focus = _focus.SelectedItem?.ToString() ?? "More kills";
+        _prefs.AutoAi = _autoAi.Checked;
+        UserSettingsStore.Save(_prefs);
+
+        if (!string.IsNullOrWhiteSpace(_current.Map))
+            RefreshUi();
     }
 
     private void PreferencesChanged()
