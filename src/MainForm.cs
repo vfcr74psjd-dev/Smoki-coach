@@ -29,6 +29,8 @@ public sealed class MainForm : Form
     private readonly Label _gsiHealth = new();
     private readonly Label _aiHealth = new();
     private readonly FlowLayoutPanel _roundTimeline = new();
+    private TableLayoutPanel? _liveLeftLayout;
+    private bool _liveLayoutExpanded;
     private readonly Label _faceitElo = new();
     private readonly Label _faceitLevel = new();
     private readonly Label _faceitAvgKills = new();
@@ -419,12 +421,14 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 4,
             Margin = new Padding(0, 0, 8, 0)
         };
+        _liveLeftLayout = left;
         left.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 238));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 126));
 
         var statsGrid = new TableLayoutPanel
         {
@@ -582,9 +586,9 @@ public sealed class MainForm : Form
             RowCount = 4,
             Margin = new Padding(8, 0, 0, 0)
         };
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 132));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 238));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 128));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 224));
         right.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var buyCard = MakeCard();
@@ -631,8 +635,8 @@ public sealed class MainForm : Form
             RowCount = 3,
             Margin = Padding.Empty
         };
-        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
-        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
         faceitLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         faceitLayout.Controls.Add(new Label
         {
@@ -681,10 +685,10 @@ public sealed class MainForm : Form
             RowCount = 5,
             Margin = Padding.Empty
         };
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         setupLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         setupLayout.Controls.Add(new Label
         {
@@ -846,6 +850,8 @@ public sealed class MainForm : Form
         root.Controls.Add(workspace, 1, 0);
 
         Controls.Add(root);
+        _liveLayoutExpanded = true;
+        SetLiveLayoutExpanded(false);
         ResumeLayout(true);
     }
 
@@ -903,24 +909,28 @@ public sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 2,
             Margin = new Padding(0, 1, 5, 1),
-            Padding = new Padding(5, 2, 5, 2),
+            Padding = new Padding(6, 3, 6, 3),
             BackColor = Color.FromArgb(13, 18, 26)
         };
-        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 17));
+        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
         metric.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         metric.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 6.8f, FontStyle.Bold),
+            AutoSize = false,
+            Font = new Font("Segoe UI", 6.6f, FontStyle.Bold),
             ForeColor = Color.FromArgb(92, 106, 128),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
 
         value.Text = "—";
         value.Dock = DockStyle.Fill;
-        value.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+        value.AutoSize = false;
+        value.Margin = Padding.Empty;
+        value.Padding = Padding.Empty;
+        value.Font = new Font("Segoe UI", 10, FontStyle.Bold);
         value.ForeColor = Color.White;
         value.TextAlign = ContentAlignment.MiddleLeft;
         metric.Controls.Add(value, 0, 1);
@@ -935,7 +945,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             Margin = Padding.Empty,
-            Padding = new Padding(0, 4, 0, 4)
+            Padding = new Padding(0, 2, 0, 2)
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -1133,7 +1143,7 @@ public sealed class MainForm : Form
             _aiHealth.Text = "● FAST AI READY";
             _aiHealth.ForeColor = Color.FromArgb(126, 240, 174);
             if (_latestAiAdvice == "AI coach čaka na nastavitev.")
-                _latestAiAdvice = "Local AI je na voljo. V Local AI meniju klikni Prepare Local AI, nato se plan ustvari ob začetku runde.";
+                _latestAiAdvice = "Instant plan je pripravljen. Ko CS2 pošlje novo rundo, se pokaže takoj; Local AI ga nato v ozadju samo izboljša.";
         }
         else
         {
@@ -1553,8 +1563,33 @@ public sealed class MainForm : Form
                     : Color.FromArgb(164, 174, 191);
     }
 
+    private void SetLiveLayoutExpanded(bool expanded)
+    {
+        if (_liveLeftLayout == null || _liveLayoutExpanded == expanded)
+            return;
+
+        _liveLayoutExpanded = expanded;
+
+        if (expanded)
+        {
+            _liveLeftLayout.RowStyles[1] = new RowStyle(SizeType.Percent, 100);
+            _liveLeftLayout.RowStyles[2] = new RowStyle(SizeType.Absolute, 116);
+            _liveLeftLayout.RowStyles[3] = new RowStyle(SizeType.Absolute, 0);
+        }
+        else
+        {
+            _liveLeftLayout.RowStyles[1] = new RowStyle(SizeType.Absolute, 238);
+            _liveLeftLayout.RowStyles[2] = new RowStyle(SizeType.Absolute, 104);
+            _liveLeftLayout.RowStyles[3] = new RowStyle(SizeType.Percent, 100);
+        }
+
+        _liveLeftLayout.PerformLayout();
+    }
+
     private void RefreshUi()
     {
+        SetLiveLayoutExpanded(true);
+
         if (_phoneServer != null)
             _phoneUrl.Text = "Phone: " + _phoneServer.GetLocalUrl();
 
