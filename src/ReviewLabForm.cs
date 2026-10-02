@@ -178,6 +178,9 @@ public sealed class ReviewLabForm : Form
                 return;
             }
 
+            // Manual Review Lab imports are also added to the local heatmap history.
+            HeatMapStore.AddFromResult(picker.FileName, _nickname, result);
+
             foreach (var d in result.Deaths)
             {
                 var item = new ListViewItem(d.Round.ToString());
