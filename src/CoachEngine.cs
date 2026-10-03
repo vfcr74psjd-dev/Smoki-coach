@@ -363,7 +363,7 @@ public static class CoachEngine
         var bStops = Stops(bRounds);
 
         string defensePart;
-        string confidence;
+        string defenseConfidence;
 
         if (aRounds.Count >= 2 || bRounds.Count >= 2)
         {
@@ -379,27 +379,27 @@ public static class CoachEngine
             {
                 defensePart =
                     $"A defense stronger • stopped {aStops}/{aRounds.Count}";
-                confidence = aRounds.Count >= 4 ? "HIGH" : "MEDIUM";
+                defenseConfidence = aRounds.Count >= 4 ? "HIGH" : "MEDIUM";
             }
             else if (bRounds.Count >= 2 &&
                      (aRounds.Count < 2 || bRate > aRate + 0.20))
             {
                 defensePart =
                     $"B defense stronger • stopped {bStops}/{bRounds.Count}";
-                confidence = bRounds.Count >= 4 ? "HIGH" : "MEDIUM";
+                defenseConfidence = bRounds.Count >= 4 ? "HIGH" : "MEDIUM";
             }
             else
             {
                 defensePart =
                     $"defense balanced • A {aStops}/{Math.Max(1,aRounds.Count)} stops • B {bStops}/{Math.Max(1,bRounds.Count)} stops";
-                confidence = recent.Count >= 5 ? "MEDIUM" : "LOW";
+                defenseConfidence = recent.Count >= 5 ? "MEDIUM" : "LOW";
             }
         }
         else
         {
             defensePart =
                 $"learning CT setup • A samples {aRounds.Count} • B samples {bRounds.Count}";
-            confidence = "LOW";
+            defenseConfidence = "LOW";
         }
 
         var enemyCtWins = recent.Count(r => r.Won == false);
@@ -411,7 +411,7 @@ public static class CoachEngine
                     : "";
 
         return
-            $"{defensePart}{pressure} • sample {recent.Count}/8 • confidence {confidence}";
+            $"{defensePart}{pressure} • sample {recent.Count}/8 • confidence {defenseConfidence}";
     }
 
     private static string[] CtPositionOptions(string map, string intent)
