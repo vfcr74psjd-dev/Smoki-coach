@@ -869,7 +869,7 @@ public sealed class MainForm : Form
         }
 
         Resize += (_,__) => ApplyResponsiveLayout();
-        DpiChanged += (_,__) => BeginInvoke(ApplyResponsiveLayout);
+        DpiChanged += (_,__) => BeginInvoke((Action)ApplyResponsiveLayout);
 
         Controls.Add(root);
         ApplyResponsiveLayout();
