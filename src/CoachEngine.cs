@@ -133,10 +133,12 @@ public static class CoachEngine
         var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
         var variant = Math.Abs((s.Round ?? 0) % 3);
 
+        if (string.IsNullOrWhiteSpace(intent))
+            intent = AutoRoundIntent(s, rounds);
+
         var recentAtIntent = rounds
             .TakeLast(8)
             .Where(r =>
-                !string.IsNullOrWhiteSpace(intent) &&
                 string.Equals(
                     NormalizeRoundIntent(r.Intent),
                     intent,
@@ -156,8 +158,8 @@ public static class CoachEngine
 
         if (options.Length == 0)
             return ct
-                ? "anchor site • prvi kontakt + varen umik"
-                : "drugi kontakt • ostani tradeable";
+                ? $"{intent} site • prvi kontakt + varen umik"
+                : $"{intent} route • drugi kontakt + trade";
 
         var index = Math.Abs(variant + failed) % options.Length;
 
@@ -171,6 +173,56 @@ public static class CoachEngine
         }
 
         return options[index];
+    }
+
+    public static string AutoRoundIntent(
+        GameSnapshot s,
+        IReadOnlyList<RoundRecord> rounds)
+    {
+        var recent = rounds.TakeLast(8).ToList();
+        var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+
+        if (recent.Count == 0)
+            return (s.Round ?? 0) % 2 == 0 ? "A" : "B";
+
+        int ScoreSite(string site)
+        {
+            var siteRounds = recent
+                .Where(r => string.Equals(
+                    NormalizeRoundIntent(r.Intent),
+                    site,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (siteRounds.Count == 0)
+                return 1;
+
+            var losses = siteRounds.Count(r => r.Won == false);
+            var deaths = siteRounds.Count(r => r.DeathsRound > 0);
+            var wins = siteRounds.Count(r => r.Won == true);
+            var survivedWins = siteRounds.Count(r => r.Won == true && r.Survived);
+
+            // CT: reinforce a site that has recently leaked rounds.
+            // T: favor the side that has recently produced wins/survival.
+            return ct
+                ? losses * 4 + deaths * 2 - wins - survivedWins
+                : wins * 3 + survivedWins * 2 - losses * 2 - deaths;
+        }
+
+        var a = ScoreSite("A");
+        var b = ScoreSite("B");
+
+        if (a == b)
+        {
+            var lastSite = NormalizeRoundIntent(recent.LastOrDefault()?.Intent);
+
+            if (lastSite == "A") return "B";
+            if (lastSite == "B") return "A";
+
+            return (s.Round ?? 0) % 2 == 0 ? "A" : "B";
+        }
+
+        return a > b ? "A" : "B";
     }
 
     private static string[] CtPositionOptions(string map, string intent)
