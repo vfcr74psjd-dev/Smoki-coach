@@ -21,7 +21,6 @@ public sealed class MainForm : Form
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
     private AutoDemoInboxService? _demoInbox;
-    private GameOverlayForm? _gameOverlay;
     private Cs2ChatIntentWatcher? _chatIntentWatcher;
     private readonly Dictionary<int, string> _roundIntents = new();
     private readonly Label _phoneUrl = new();
@@ -86,7 +85,13 @@ public sealed class MainForm : Form
 
         BuildUi();
 
-        _gameOverlay = new GameOverlayForm();
+        // External in-game overlay is intentionally disabled for stability.
+        // Keep the setting pinned to Off so older profiles cannot recreate it.
+        if (!string.Equals(_prefs.OverlayMode, "Off", StringComparison.OrdinalIgnoreCase))
+        {
+            _prefs.OverlayMode = "Off";
+            UserSettingsStore.Save(_prefs);
+        }
 
         _server.SnapshotReceived += OnSnapshot;
         _server.Start();
@@ -130,7 +135,6 @@ public sealed class MainForm : Form
 
         Shown += async (_,__) =>
         {
-            _gameOverlay?.ApplyMode(_prefs.OverlayMode);
             UpdateGameOverlay();
 
             await CheckForUpdatesSilentAsync();
@@ -149,8 +153,6 @@ public sealed class MainForm : Form
             if (_chatIntentWatcher != null)
                 _chatIntentWatcher.IntentDetected -= OnChatIntentDetected;
             _chatIntentWatcher?.Dispose();
-            _gameOverlay?.Close();
-            _gameOverlay?.Dispose();
             _server.Dispose();
         };
     }
@@ -1031,9 +1033,14 @@ public sealed class MainForm : Form
             }
         }), 1, 2);
 
-        grid.Controls.Add(ToolButton("GAME OVERLAY", "Click-through CS2 HUD • F8 toggle", (_,__) =>
+        grid.Controls.Add(ToolButton("OVERLAY DISABLED", "Disabled for CS2 stability", (_,__) =>
         {
-            ShowOverlaySettings(dialog);
+            MessageBox.Show(
+                "In-game overlay je trenutno izklopljen zaradi stabilnosti CS2.\n\n" +
+                "Live coach ostane v glavnem appu in na phone companionu.",
+                "Sm0ki Solo Coach",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }), 0, 3);
 
 
@@ -1048,38 +1055,12 @@ public sealed class MainForm : Form
         dialog.ShowDialog(this);
     }
 
-    private void ShowOverlaySettings(Form owner)
-    {
-        if (_gameOverlay == null)
-            return;
-
-        using var settings = new OverlaySettingsForm(
-            _prefs.OverlayMode,
-            _gameOverlay.HotkeyRegistered,
-            _gameOverlay.HotkeyDisplay);
-
-        if (settings.ShowDialog(owner) != DialogResult.OK)
-            return;
-
-        _prefs.OverlayMode = settings.SelectedMode;
-        UserSettingsStore.Save(_prefs);
-
-        _gameOverlay.ApplyMode(_prefs.OverlayMode);
-        _gameOverlay.PositionBelowKillFeed();
-        UpdateGameOverlay();
-    }
-
     private void UpdateGameOverlay()
     {
-        if (_gameOverlay == null)
-            return;
-
+        // Keep the modern live coach panel synced. External game overlay is
+        // intentionally disabled so this method never creates or touches a
+        // second topmost window while CS2 is running.
         _planView.Advice = _latestAiAdvice;
-
-        _gameOverlay.UpdateData(
-            _current,
-            _latestAiAdvice,
-            _aiStatus.Text);
     }
 
     private Button MakeNavButton(string text, bool active, EventHandler click)
@@ -1824,7 +1805,6 @@ public sealed class MainForm : Form
             _lastGsiUtc = DateTime.UtcNow;
             _previous = _current;
             _current = s;
-            _gameOverlay?.SetGameActive(!string.IsNullOrWhiteSpace(s.Map));
 
             if (_trackedRound == s.Round)
             {
