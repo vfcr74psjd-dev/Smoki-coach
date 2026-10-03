@@ -19,6 +19,14 @@ public sealed class GameSnapshot
     public int? Assists { get; set; }
     public string Weapon { get; set; } = "";
     public string PrimaryWeapon { get; set; } = "";
+    public string BombState { get; set; } = "";
+    public float? BombPositionX { get; set; }
+    public float? BombPositionY { get; set; }
+    public float? BombPositionZ { get; set; }
+    public bool HasBombPosition =>
+        BombPositionX.HasValue &&
+        BombPositionY.HasValue &&
+        BombPositionZ.HasValue;
     public float? PositionX { get; set; }
     public float? PositionY { get; set; }
     public float? PositionZ { get; set; }
@@ -40,4 +48,7 @@ public sealed class RoundRecord
     public string WeaponEnd { get; set; } = "";
     public string Intent { get; set; } = "";
     public string PositionPlan { get; set; } = "";
+    public bool BombPlanted { get; set; }
+    public string BombSite { get; set; } = "";
+    public double? BombPlantSeconds { get; set; }
 }

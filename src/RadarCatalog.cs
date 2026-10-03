@@ -33,8 +33,59 @@ public static class RadarCatalog
                 Base + "de_vertigo_radar_psd.png", Base + "de_vertigo_lower_radar_psd.png", 11700)
         };
 
+
+    // Official overview bomb-site markers, normalized to the 1024x1024 radar.
+    // Anubis currently does not expose A/B site markers in its overview metadata,
+    // so we intentionally leave it out instead of guessing.
+    private static readonly Dictionary<string, (PointF A, PointF B)> BombSites =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["de_ancient"] = (new PointF(0.31f, 0.25f), new PointF(0.80f, 0.40f)),
+            ["de_dust2"] = (new PointF(0.80f, 0.16f), new PointF(0.21f, 0.12f)),
+            ["de_inferno"] = (new PointF(0.81f, 0.69f), new PointF(0.49f, 0.22f)),
+            ["de_mirage"] = (new PointF(0.54f, 0.76f), new PointF(0.23f, 0.28f)),
+            ["de_nuke"] = (new PointF(0.58f, 0.48f), new PointF(0.58f, 0.58f)),
+            ["de_overpass"] = (new PointF(0.55f, 0.23f), new PointF(0.70f, 0.31f)),
+            ["de_train"] = (new PointF(0.63f, 0.49f), new PointF(0.52f, 0.76f)),
+            ["de_vertigo"] = (new PointF(0.705f, 0.585f), new PointF(0.222f, 0.223f))
+        };
+
     public static RadarDefinition? Get(string map)
         => Maps.TryGetValue(map ?? "", out var value) ? value : null;
+
+    public static string BombSiteFromWorld(
+        string map,
+        float x,
+        float y,
+        float z)
+    {
+        if (string.Equals(map, "de_nuke", StringComparison.OrdinalIgnoreCase))
+            return z < -495 ? "B" : "A";
+
+        var def = Get(map);
+        if (def == null || !BombSites.TryGetValue(map ?? "", out var sites))
+            return "";
+
+        var point = WorldToRadar(def, x, y);
+
+        static double Distance(PointF a, PointF b)
+        {
+            var dx = a.X - b.X;
+            var dy = a.Y - b.Y;
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        var aDistance = Distance(point, sites.A);
+        var bDistance = Distance(point, sites.B);
+        var nearest = Math.Min(aDistance, bDistance);
+
+        // A planted bomb should be close to the official site marker.
+        // Refuse to classify uncertain points rather than fabricate a site.
+        if (nearest > 0.18)
+            return "";
+
+        return aDistance <= bDistance ? "A" : "B";
+    }
 
     public static PointF WorldToRadar(RadarDefinition def, float x, float y)
     {

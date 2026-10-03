@@ -350,6 +350,24 @@ public sealed class GsiServer : IDisposable
             s.RoundWinTeam = StrProp(rnd, "win_team");
         }
 
+        if (root.TryGetProperty("bomb", out var bomb) &&
+            bomb.ValueKind == JsonValueKind.Object)
+        {
+            s.BombState = StrProp(bomb, "state");
+
+            var rawBombPosition = StrProp(bomb, "position");
+            if (TryParseVector3(
+                    rawBombPosition,
+                    out var bx,
+                    out var by,
+                    out var bz))
+            {
+                s.BombPositionX = bx;
+                s.BombPositionY = by;
+                s.BombPositionZ = bz;
+            }
+        }
+
         s.Timestamp = DateTime.UtcNow;
         return s;
     }
