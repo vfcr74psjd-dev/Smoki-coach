@@ -27,6 +27,7 @@ public sealed class MainForm : Form
     private readonly Label _phoneUrl = new();
     private readonly Button _updateButton = new();
     private readonly Label _aiText = new();
+    private readonly CoachPlanView _planView = new();
     private readonly Label _aiStatus = new();
     private readonly Label _liveContext = new();
     private readonly Label _profileBadge = new();
@@ -64,6 +65,7 @@ public sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _uiPulseTimer = new();
     private DateTime _lastGsiUtc = DateTime.MinValue;
     private bool _pulseBright;
+    private string _matchReviewShownKey = "";
 
     private GameSnapshot _current = new();
     private GameSnapshot? _previous;
@@ -165,6 +167,10 @@ public sealed class MainForm : Form
     {
         SuspendLayout();
         Controls.Clear();
+        _presetButtons.Clear();
+        _stats.Clear();
+
+        BackColor = Color.FromArgb(9, 10, 12);
 
         var root = new TableLayoutPanel
         {
@@ -173,30 +179,33 @@ public sealed class MainForm : Form
             RowCount = 1,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = Color.FromArgb(9, 11, 13)
+            BackColor = Color.FromArgb(9, 10, 12)
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 214));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 188));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        // LEFT NAVIGATION
+        // COMPACT NAVIGATION
         var sidebar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 6,
             Margin = Padding.Empty,
-            Padding = new Padding(14, 16, 14, 14),
-            BackColor = Color.FromArgb(14, 16, 18)
+            Padding = new Padding(12, 14, 12, 12),
+            BackColor = Color.FromArgb(13, 14, 16)
         };
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
 
-        var brand = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
-        // CS2 ACCENT STRIP
+        var brand = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty
+        };
         brand.Controls.Add(new Panel
         {
             Dock = DockStyle.Left,
@@ -206,60 +215,47 @@ public sealed class MainForm : Form
         brand.Controls.Add(new Label
         {
             Text = "SM0KI",
-            Left = 2,
-            Top = 5,
-            Width = 170,
-            Height = 35,
-            Font = new Font("Segoe UI", 22, FontStyle.Bold),
+            Left = 12,
+            Top = 3,
+            Width = 150,
+            Height = 30,
+            Font = new Font("Segoe UI", 20, FontStyle.Bold),
             ForeColor = Color.White
         });
         brand.Controls.Add(new Label
         {
-            Text = "SOLO COACH  /  PRO",
-            Left = 4,
-            Top = 44,
-            Width = 180,
+            Text = "SOLO COACH",
+            Left = 14,
+            Top = 36,
+            Width = 145,
             Height = 20,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(255, 156, 44)
         });
         sidebar.Controls.Add(brand, 0, 0);
 
         var profileCard = MakeCard();
-        profileCard.Margin = new Padding(0, 2, 0, 10);
-        profileCard.Padding = new Padding(12, 9, 12, 8);
-        var profileLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty
-        };
-        profileLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
-        profileLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
-        _profileBadge.Text = string.IsNullOrWhiteSpace(_profile.Nickname) ? "PLAYER" : _profile.Nickname;
+        profileCard.Margin = new Padding(0, 0, 0, 8);
+        profileCard.Padding = new Padding(12, 7, 12, 7);
+        profileCard.Cursor = Cursors.Hand;
+        profileCard.Click += (_,__) => EditProfile();
+
+        _profileBadge.Text = string.IsNullOrWhiteSpace(_profile.Nickname)
+            ? "PLAYER"
+            : _profile.Nickname;
         _profileBadge.Dock = DockStyle.Fill;
-        _profileBadge.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+        _profileBadge.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
         _profileBadge.ForeColor = Color.White;
-        _profileBadge.TextAlign = ContentAlignment.BottomLeft;
-        profileLayout.Controls.Add(_profileBadge, 0, 0);
-        profileLayout.Controls.Add(new Label
-        {
-            Text = "LOCAL PLAYER PROFILE",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.TopLeft,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(108, 121, 143)
-        }, 0, 1);
-        profileCard.Controls.Add(profileLayout);
+        _profileBadge.TextAlign = ContentAlignment.MiddleLeft;
+        profileCard.Controls.Add(_profileBadge);
         sidebar.Controls.Add(profileCard, 0, 1);
 
         sidebar.Controls.Add(new Label
         {
             Text = "WORKSPACE",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(91, 104, 126),
+            Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(98, 104, 114),
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(4, 0, 0, 0)
         }, 0, 2);
@@ -273,16 +269,14 @@ public sealed class MainForm : Form
             Padding = new Padding(0, 4, 0, 0)
         };
 
-        nav.Controls.Add(MakeNavButton("LIVE COACH", true, (_,__) => { }));
-
-        nav.Controls.Add(MakeNavButton("HEAT MAP", false, (_,__) =>
+        nav.Controls.Add(MakeNavButton("LIVE", true, (_,__) => { }));
+        nav.Controls.Add(MakeNavButton("HEATMAP", false, (_,__) =>
         {
             if (_demoInbox == null) return;
             var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
             using var dialog = new HeatMapForm(nickname, _demoInbox);
             dialog.ShowDialog(this);
         }));
-
         nav.Controls.Add(MakeNavButton("PROGRESS", false, async (_,__) =>
         {
             await LoadFaceitSnapshotAsync();
@@ -293,13 +287,12 @@ public sealed class MainForm : Form
                 _faceitSnapshot);
             dialog.ShowDialog(this);
         }));
-
         nav.Controls.Add(MakeNavButton("TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
 
         var health = MakeCard();
         health.Margin = new Padding(0, 8, 0, 8);
-        health.Padding = new Padding(12, 8, 12, 8);
+        health.Padding = new Padding(12, 9, 12, 9);
         var healthLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -307,38 +300,39 @@ public sealed class MainForm : Form
             RowCount = 4,
             Margin = Padding.Empty
         };
-        healthLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        healthLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
         healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33));
         healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33));
         healthLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 34));
+
         healthLayout.Controls.Add(new Label
         {
-            Text = "SYSTEM HEALTH",
+            Text = "SYSTEM",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(99, 112, 134)
+            Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(96, 102, 112)
         }, 0, 0);
 
         _gsiHealth.Text = "● GSI WAITING";
         _gsiHealth.Dock = DockStyle.Fill;
-        _gsiHealth.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-        _gsiHealth.ForeColor = Color.FromArgb(244, 155, 121);
+        _gsiHealth.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+        _gsiHealth.ForeColor = Color.FromArgb(235, 112, 100);
         _gsiHealth.TextAlign = ContentAlignment.MiddleLeft;
         healthLayout.Controls.Add(_gsiHealth, 0, 1);
 
-        _aiHealth.Text = "● FAST AI CHECK";
+        _aiHealth.Text = "● AI CHECK";
         _aiHealth.Dock = DockStyle.Fill;
-        _aiHealth.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-        _aiHealth.ForeColor = Color.FromArgb(160, 170, 187);
+        _aiHealth.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+        _aiHealth.ForeColor = Color.FromArgb(145, 151, 159);
         _aiHealth.TextAlign = ContentAlignment.MiddleLeft;
         healthLayout.Controls.Add(_aiHealth, 0, 2);
 
-        _faceitHealth.Text = FaceitSettingsStore.HasKey ? "● FACEIT CHECK" : "● FACEIT OFF";
+        _faceitHealth.Text = FaceitSettingsStore.HasKey
+            ? "● FACEIT CHECK"
+            : "● FACEIT OFF";
         _faceitHealth.Dock = DockStyle.Fill;
-        _faceitHealth.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-        _faceitHealth.ForeColor = FaceitSettingsStore.HasKey
-            ? Color.FromArgb(160, 170, 187)
-            : Color.FromArgb(95, 106, 124);
+        _faceitHealth.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+        _faceitHealth.ForeColor = Color.FromArgb(145, 151, 159);
         _faceitHealth.TextAlign = ContentAlignment.MiddleLeft;
         healthLayout.Controls.Add(_faceitHealth, 0, 3);
 
@@ -347,17 +341,17 @@ public sealed class MainForm : Form
 
         sidebar.Controls.Add(new Label
         {
-            Text = $"v{AppUpdater.CurrentVersion}  •  {AppUpdater.InstallMode}  •  LOCAL / PRIVATE",
+            Text = $"v{AppUpdater.CurrentVersion}  •  LOCAL",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f),
-            ForeColor = Color.FromArgb(73, 84, 103),
+            Font = new Font("Segoe UI", 7f),
+            ForeColor = Color.FromArgb(74, 80, 90),
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(4, 0, 0, 0)
         }, 0, 5);
 
         root.Controls.Add(sidebar, 0, 0);
 
-        // MAIN LIVE COACH WORKSPACE
+        // MAIN WORKSPACE
         var workspace = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -365,25 +359,25 @@ public sealed class MainForm : Form
             RowCount = 4,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = Color.FromArgb(9, 11, 13)
+            BackColor = Color.FromArgb(9, 10, 12)
         };
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
         workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
 
         var top = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 1,
-            Padding = new Padding(24, 14, 24, 8),
+            Padding = new Padding(22, 12, 22, 8),
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(13, 15, 17)
+            BackColor = Color.FromArgb(12, 13, 15)
         };
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
 
         var liveTitle = new TableLayoutPanel
         {
@@ -392,8 +386,8 @@ public sealed class MainForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        liveTitle.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
-        liveTitle.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        liveTitle.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
+        liveTitle.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
         liveTitle.Controls.Add(new Label
         {
             Text = "LIVE COACH",
@@ -405,121 +399,81 @@ public sealed class MainForm : Form
 
         _liveContext.Text = "Waiting for CS2 telemetry…";
         _liveContext.Dock = DockStyle.Fill;
-        _liveContext.Font = new Font("Segoe UI", 9);
-        _liveContext.ForeColor = Color.FromArgb(123, 137, 159);
+        _liveContext.Font = new Font("Segoe UI", 8.8f);
+        _liveContext.ForeColor = Color.FromArgb(130, 137, 147);
         _liveContext.TextAlign = ContentAlignment.TopLeft;
         liveTitle.Controls.Add(_liveContext, 0, 1);
         top.Controls.Add(liveTitle, 0, 0);
 
         _status.Text = "WAITING";
         _status.Dock = DockStyle.Fill;
-        _status.Margin = new Padding(8, 13, 8, 13);
+        _status.Margin = new Padding(8, 12, 8, 12);
         _status.TextAlign = ContentAlignment.MiddleCenter;
-        _status.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-        _status.ForeColor = Color.FromArgb(248, 174, 143);
-        _status.BackColor = Color.FromArgb(54, 34, 31);
+        _status.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+        _status.ForeColor = Color.FromArgb(235, 112, 100);
+        _status.BackColor = Color.FromArgb(42, 27, 26);
         top.Controls.Add(_status, 1, 0);
 
         _updateButton.Text = "UPDATE";
-        StyleButton(_updateButton, false);
+        StyleButton(_updateButton, true);
         _updateButton.Dock = DockStyle.Fill;
-        _updateButton.Margin = new Padding(8, 13, 0, 13);
+        _updateButton.Margin = new Padding(8, 12, 0, 12);
         _updateButton.Click += async (_,__) => await CheckForUpdatesAsync();
         top.Controls.Add(_updateButton, 2, 0);
         workspace.Controls.Add(top, 0, 0);
 
-        // QUICK PRESETS
-        var presets = new TableLayoutPanel
+        // SINGLE-LINE LIVE METRICS
+        var statStrip = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 8,
             RowCount = 1,
-            Padding = new Padding(24, 10, 24, 10),
+            Padding = new Padding(18, 8, 18, 8),
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(9, 11, 13)
+            BackColor = Color.FromArgb(9, 10, 12)
         };
-        presets.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
-        presets.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 8; i++)
+            statStrip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12.5f));
 
-        presets.Controls.Add(new Label
-        {
-            Text = "COACH PRESET",
-            Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(99, 113, 135),
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 0);
+        string[] statKeys = { "map", "side", "round", "score", "kills", "deaths", "kd", "money" };
+        string[] statTitles = { "MAP", "SIDE", "ROUND", "SCORE", "KILLS", "DEATHS", "K / D", "MONEY" };
 
-        var presetFlow = new FlowLayoutPanel
+        for (int i = 0; i < statKeys.Length; i++)
         {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Margin = Padding.Empty,
-            Padding = Padding.Empty
-        };
-        presetFlow.Controls.Add(MakePresetButton("MORE KILLS", "More Kills"));
-        presetFlow.Controls.Add(MakePresetButton("ENTRY", "Entry"));
-        presetFlow.Controls.Add(MakePresetButton("SURVIVAL", "Survival"));
-        presetFlow.Controls.Add(MakePresetButton("UTILITY", "Utility"));
-        presetFlow.Controls.Add(MakePresetButton("CLUTCH", "Clutch"));
-        presets.Controls.Add(presetFlow, 1, 0);
-        workspace.Controls.Add(presets, 0, 1);
+            var label = new Label();
+            _stats[statKeys[i]] = label;
+            var metric = MakeMiniMetric(statTitles[i], label);
+            metric.Margin = new Padding(i == 0 ? 0 : 4, 0, i == 7 ? 0 : 4, 0);
+            statStrip.Controls.Add(metric, i, 0);
+        }
+        workspace.Controls.Add(statStrip, 0, 1);
 
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(24, 4, 24, 14),
+            Padding = new Padding(18, 4, 18, 12),
             Margin = Padding.Empty
         };
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68));
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
 
-        // LEFT / primary live information.
+        // HERO COACH COLUMN
         var left = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
-            Margin = new Padding(0, 0, 8, 0)
+            RowCount = 3,
+            Margin = new Padding(0, 0, 7, 0)
         };
-        _liveLeftLayout = left;
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 238));
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-        var statsGrid = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 4,
-            RowCount = 2,
-            Margin = Padding.Empty
-        };
-        for (int i=0;i<4;i++) statsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        statsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        statsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-
-        _stats.Clear();
-        var statItems = new[]
-        {
-            ("map","MAP"), ("side","SIDE"), ("round","ROUND"), ("score","SCORE"),
-            ("kills","KILLS"), ("deaths","DEATHS"), ("kd","K / D"), ("money","MONEY")
-        };
-        for (int i=0;i<statItems.Length;i++)
-        {
-            var card = MakeStatCard(statItems[i].Item2, out var value);
-            card.Margin = new Padding(i % 4 == 0 ? 0 : 5, 4, i % 4 == 3 ? 0 : 5, 4);
-            _stats[statItems[i].Item1] = value;
-            statsGrid.Controls.Add(card, i % 4, i / 4);
-        }
-        left.Controls.Add(statsGrid, 0, 0);
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
 
         var planCard = MakeCard();
-        planCard.Margin = new Padding(0, 7, 0, 7);
-        planCard.Padding = new Padding(22, 16, 22, 18);
+        planCard.Margin = new Padding(0, 0, 0, 7);
+        planCard.Padding = new Padding(18, 14, 18, 14);
 
         var planLayout = new TableLayoutPanel
         {
@@ -528,10 +482,10 @@ public sealed class MainForm : Form
             RowCount = 4,
             Margin = Padding.Empty
         };
-        planLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-        planLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        planLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        planLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         planLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        planLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        planLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
 
         var planHeader = new TableLayoutPanel
         {
@@ -543,37 +497,33 @@ public sealed class MainForm : Form
         planHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         planHeader.Controls.Add(new Label
         {
-            Text = "NEXT ROUND PLAN",
+            Text = "NEXT ROUND",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(119, 130, 151),
-            TextAlign = ContentAlignment.MiddleLeft
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(116, 122, 132)
         }, 0, 0);
 
         _aiStatus.Text = "FAST PLAN";
         _aiStatus.AutoSize = true;
         _aiStatus.Anchor = AnchorStyles.Right;
-        _aiStatus.Font = new Font("Segoe UI", 8, FontStyle.Bold);
-        _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
+        _aiStatus.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+        _aiStatus.ForeColor = Color.FromArgb(112, 214, 151);
         planHeader.Controls.Add(_aiStatus, 1, 0);
         planLayout.Controls.Add(planHeader, 0, 0);
 
         planLayout.Controls.Add(new Label
         {
-            Text = "WIN THE NEXT ROUND",
+            Text = "ONE CLEAR PLAN. PLAY IT.",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 17, FontStyle.Bold),
+            Font = new Font("Segoe UI", 16.5f, FontStyle.Bold),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 1);
 
-        _aiText.Text = "CS2 še ni poslal trenutne runde. Ko se match začne, bo plan tukaj takoj.";
-        _aiText.Dock = DockStyle.Fill;
-        _aiText.Font = new Font("Segoe UI", 11.5f, FontStyle.Regular);
-        _aiText.ForeColor = Color.FromArgb(220, 226, 235);
-        _aiText.Padding = new Padding(0, 8, 0, 4);
-        _aiText.AutoEllipsis = true;
-        planLayout.Controls.Add(_aiText, 0, 2);
+        _planView.Dock = DockStyle.Fill;
+        _planView.Margin = Padding.Empty;
+        _planView.Advice = _latestAiAdvice;
+        planLayout.Controls.Add(_planView, 0, 2);
 
         var noteLayout = new TableLayoutPanel
         {
@@ -581,46 +531,47 @@ public sealed class MainForm : Form
             ColumnCount = 2,
             Margin = Padding.Empty
         };
-        noteLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+        noteLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
         noteLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         noteLayout.Controls.Add(new Label
         {
-            Text = "COACH NOTE",
+            Text = "COACH",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 7f, FontStyle.Bold),
             ForeColor = Color.FromArgb(255, 156, 44),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
+
         _tip.Dock = DockStyle.Fill;
         _tip.Font = new Font("Segoe UI", 8.5f);
-        _tip.ForeColor = Color.FromArgb(145, 156, 174);
-        _tip.AutoEllipsis = true;
+        _tip.ForeColor = Color.FromArgb(145, 151, 159);
         _tip.TextAlign = ContentAlignment.MiddleLeft;
+        _tip.AutoEllipsis = true;
         noteLayout.Controls.Add(_tip, 1, 0);
         planLayout.Controls.Add(noteLayout, 0, 3);
 
         planCard.Controls.Add(planLayout);
-        left.Controls.Add(planCard, 0, 1);
+        left.Controls.Add(planCard, 0, 0);
 
         var timelineCard = MakeCard();
-        timelineCard.Margin = new Padding(0, 7, 0, 0);
-        timelineCard.Padding = new Padding(18, 12, 18, 12);
+        timelineCard.Margin = new Padding(0, 0, 0, 7);
+        timelineCard.Padding = new Padding(14, 10, 14, 10);
         var timelineLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 2,
             Margin = Padding.Empty
         };
         timelineLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
-        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         timelineLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
         timelineLayout.Controls.Add(new Label
         {
-            Text = "ROUND TIMELINE",
+            Text = "ROUND FLOW",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(112, 124, 145)
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(105, 112, 122)
         }, 0, 0);
 
         _roundTimeline.Dock = DockStyle.Fill;
@@ -628,72 +579,128 @@ public sealed class MainForm : Form
         _roundTimeline.WrapContents = false;
         _roundTimeline.AutoScroll = true;
         _roundTimeline.Margin = Padding.Empty;
-        _roundTimeline.Padding = new Padding(0, 4, 0, 0);
+        _roundTimeline.Padding = new Padding(0, 8, 0, 0);
         _roundTimeline.Controls.Add(
-            MakeRoundPill("READY\n—",
-                Color.FromArgb(31, 36, 47),
-                Color.FromArgb(132, 144, 163)));
+            MakeRoundPill(
+                "READY\n—",
+                Color.FromArgb(27, 29, 32),
+                Color.FromArgb(135, 142, 152)));
         timelineLayout.Controls.Add(_roundTimeline, 0, 1);
 
+        timelineCard.Controls.Add(timelineLayout);
+        left.Controls.Add(timelineCard, 0, 1);
+
+        var sessionCard = MakeCard();
+        sessionCard.Margin = Padding.Empty;
+        sessionCard.Padding = new Padding(14, 8, 14, 8);
         _sessionText.Text = SessionInsight();
         _sessionText.Dock = DockStyle.Fill;
         _sessionText.Font = new Font("Segoe UI", 8.5f);
-        _sessionText.ForeColor = Color.FromArgb(137, 149, 168);
+        _sessionText.ForeColor = Color.FromArgb(139, 146, 156);
         _sessionText.TextAlign = ContentAlignment.MiddleLeft;
-        timelineLayout.Controls.Add(_sessionText, 0, 2);
-        timelineCard.Controls.Add(timelineLayout);
-        left.Controls.Add(timelineCard, 0, 2);
+        _sessionText.AutoEllipsis = true;
+        sessionCard.Controls.Add(_sessionText);
+        left.Controls.Add(sessionCard, 0, 2);
 
-        // RIGHT / action stack.
+        // SECONDARY RAIL
         var right = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
-            Margin = new Padding(8, 0, 0, 0)
+            RowCount = 3,
+            Margin = new Padding(7, 0, 0, 0)
         };
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 128));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 224));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 246));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
         right.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var buyCard = MakeCard();
-        buyCard.Margin = new Padding(0, 4, 0, 7);
-        buyCard.Padding = new Padding(18, 14, 18, 14);
-        var buyLayout = new TableLayoutPanel
+        var setupCard = MakeCard();
+        setupCard.Margin = new Padding(0, 0, 0, 7);
+        setupCard.Padding = new Padding(14, 12, 14, 10);
+
+        var setupLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 6,
             Margin = Padding.Empty
         };
-        buyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
-        buyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
-        buyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        buyLayout.Controls.Add(new Label
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        setupLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        setupLayout.Controls.Add(new Label
         {
-            Text = "BUY RECOMMENDATION",
+            Text = "QUICK COACH",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(111, 123, 144)
+            ForeColor = Color.FromArgb(112, 119, 129)
         }, 0, 0);
-        _buyTitle.Text = "WAITING";
-        _buyTitle.Dock = DockStyle.Fill;
-        _buyTitle.Font = new Font("Segoe UI", 16, FontStyle.Bold);
-        _buyTitle.ForeColor = Color.White;
-        _buyTitle.TextAlign = ContentAlignment.MiddleLeft;
-        buyLayout.Controls.Add(_buyTitle, 0, 1);
-        _buyText.Dock = DockStyle.Fill;
-        _buyText.Font = new Font("Segoe UI", 8.5f);
-        _buyText.ForeColor = Color.FromArgb(166, 177, 194);
-        _buyText.AutoEllipsis = true;
-        buyLayout.Controls.Add(_buyText, 0, 2);
-        buyCard.Controls.Add(buyLayout);
-        right.Controls.Add(buyCard, 0, 0);
+
+        var presetFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 3, 0, 2)
+        };
+        presetFlow.Controls.Add(MakePresetButton("KILLS", "More Kills"));
+        presetFlow.Controls.Add(MakePresetButton("ENTRY", "Entry"));
+        presetFlow.Controls.Add(MakePresetButton("SAFE", "Survival"));
+        presetFlow.Controls.Add(MakePresetButton("UTIL", "Utility"));
+        presetFlow.Controls.Add(MakePresetButton("CLUTCH", "Clutch"));
+        setupLayout.Controls.Add(presetFlow, 0, 1);
+
+        _mode.Items.Clear();
+        _mode.Items.AddRange(new object[] { "Balanced", "Aggressive", "Safe" });
+        _mode.SelectedItem = _prefs.Mode;
+        if (_mode.SelectedIndex < 0) _mode.SelectedIndex = 0;
+        ConfigureCombo(_mode);
+        _mode.SelectedIndexChanged += (_,__) => PreferencesChanged();
+        setupLayout.Controls.Add(MakeCompactSelector("MODE", _mode), 0, 2);
+
+        _role.Items.Clear();
+        _role.Items.AddRange(new object[] { "Flex", "Entry", "Lurk", "Support", "Anchor" });
+        _role.SelectedItem = _prefs.Role;
+        if (_role.SelectedIndex < 0) _role.SelectedIndex = 0;
+        ConfigureCombo(_role);
+        _role.SelectedIndexChanged += (_,__) => PreferencesChanged();
+        setupLayout.Controls.Add(MakeCompactSelector("ROLE", _role), 0, 3);
+
+        _focus.Items.Clear();
+        _focus.Items.AddRange(new object[]
+        {
+            "More kills",
+            "Survive & trade",
+            "Entry impact",
+            "Utility impact",
+            "Clutch / late round"
+        });
+        _focus.SelectedItem = _prefs.Focus;
+        if (_focus.SelectedIndex < 0) _focus.SelectedIndex = 0;
+        ConfigureCombo(_focus);
+        _focus.SelectedIndexChanged += (_,__) => PreferencesChanged();
+        setupLayout.Controls.Add(MakeCompactSelector("FOCUS", _focus), 0, 4);
+
+        _autoAi.Text = " Auto AI refine";
+        _autoAi.Checked = _prefs.AutoAi;
+        _autoAi.Dock = DockStyle.Fill;
+        _autoAi.ForeColor = Color.FromArgb(180, 186, 195);
+        _autoAi.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+        _autoAi.CheckedChanged += (_,__) => PreferencesChanged();
+        setupLayout.Controls.Add(_autoAi, 0, 5);
+
+        setupCard.Controls.Add(setupLayout);
+        right.Controls.Add(setupCard, 0, 0);
 
         var faceitCard = MakeCard();
-        faceitCard.Margin = new Padding(0, 7, 0, 7);
-        faceitCard.Padding = new Padding(14, 10, 14, 10);
+        faceitCard.Margin = new Padding(0, 0, 0, 7);
+        faceitCard.Padding = new Padding(12, 10, 12, 10);
+
         var faceitLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -702,14 +709,15 @@ public sealed class MainForm : Form
             Margin = Padding.Empty
         };
         faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
-        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         faceitLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
         faceitLayout.Controls.Add(new Label
         {
-            Text = "FACEIT PERFORMANCE",
+            Text = "FACEIT",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(111, 123, 144)
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(112, 119, 129)
         }, 0, 0);
 
         var faceitMetrics = new TableLayoutPanel
@@ -723,17 +731,17 @@ public sealed class MainForm : Form
             faceitMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
 
         faceitMetrics.Controls.Add(MakeMiniMetric("ELO", _faceitElo), 0, 0);
-        faceitMetrics.Controls.Add(MakeMiniMetric("LEVEL", _faceitLevel), 1, 0);
+        faceitMetrics.Controls.Add(MakeMiniMetric("LVL", _faceitLevel), 1, 0);
         faceitMetrics.Controls.Add(MakeMiniMetric("AVG K", _faceitAvgKills), 2, 0);
-        faceitMetrics.Controls.Add(MakeMiniMetric("K / D", _faceitKd), 3, 0);
+        faceitMetrics.Controls.Add(MakeMiniMetric("K/D", _faceitKd), 3, 0);
         faceitLayout.Controls.Add(faceitMetrics, 0, 1);
 
         _faceitTrend.Text = FaceitSettingsStore.HasKey
-            ? "Loading FACEIT snapshot…"
-            : "Connect FACEIT to add ELO + recent form.";
+            ? "Loading FACEIT…"
+            : "Connect FACEIT in Tools.";
         _faceitTrend.Dock = DockStyle.Fill;
-        _faceitTrend.Font = new Font("Segoe UI", 8, FontStyle.Bold);
-        _faceitTrend.ForeColor = Color.FromArgb(139, 151, 170);
+        _faceitTrend.Font = new Font("Segoe UI", 7.8f);
+        _faceitTrend.ForeColor = Color.FromArgb(132, 139, 149);
         _faceitTrend.TextAlign = ContentAlignment.MiddleLeft;
         _faceitTrend.AutoEllipsis = true;
         faceitLayout.Controls.Add(_faceitTrend, 0, 2);
@@ -741,79 +749,10 @@ public sealed class MainForm : Form
         faceitCard.Controls.Add(faceitLayout);
         right.Controls.Add(faceitCard, 0, 1);
 
-        var setupCard = MakeCard();
-        setupCard.Margin = new Padding(0, 7, 0, 7);
-        setupCard.Padding = new Padding(18, 12, 18, 12);
-        var setupLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 5,
-            Margin = Padding.Empty
-        };
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        setupLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        setupLayout.Controls.Add(new Label
-        {
-            Text = "COACH SETUP",
-            Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(111, 123, 144)
-        }, 0, 0);
-
-        _mode.Items.Clear();
-        _mode.Items.AddRange(new object[] { "Balanced", "Aggressive", "Safe" });
-        _mode.SelectedItem = _prefs.Mode;
-        if (_mode.SelectedIndex < 0) _mode.SelectedIndex = 0;
-        ConfigureCombo(_mode);
-        _mode.SelectedIndexChanged += (_,__) => PreferencesChanged();
-        setupLayout.Controls.Add(MakeCompactSelector("MODE", _mode), 0, 1);
-
-        _role.Items.Clear();
-        _role.Items.AddRange(new object[] { "Flex", "Entry", "Lurk", "Support", "Anchor" });
-        _role.SelectedItem = _prefs.Role;
-        if (_role.SelectedIndex < 0) _role.SelectedIndex = 0;
-        ConfigureCombo(_role);
-        _role.SelectedIndexChanged += (_,__) => PreferencesChanged();
-        setupLayout.Controls.Add(MakeCompactSelector("ROLE", _role), 0, 2);
-
-        _focus.Items.Clear();
-        _focus.Items.AddRange(new object[]
-        {
-            "More kills", "Survive & trade", "Entry impact",
-            "Utility impact", "Clutch / late round"
-        });
-        _focus.SelectedItem = _prefs.Focus;
-        if (_focus.SelectedIndex < 0) _focus.SelectedIndex = 0;
-        ConfigureCombo(_focus);
-        _focus.SelectedIndexChanged += (_,__) => PreferencesChanged();
-        setupLayout.Controls.Add(MakeCompactSelector("FOCUS", _focus), 0, 3);
-
-        var setupFooter = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            Margin = Padding.Empty
-        };
-        setupFooter.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-
-        _autoAi.Text = " Auto AI refine";
-        _autoAi.Checked = _prefs.AutoAi;
-        _autoAi.Dock = DockStyle.Fill;
-        _autoAi.ForeColor = Color.FromArgb(191, 201, 215);
-        _autoAi.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-        _autoAi.CheckedChanged += (_,__) => PreferencesChanged();
-        setupFooter.Controls.Add(_autoAi, 0, 0);
-        setupLayout.Controls.Add(setupFooter, 0, 4);
-        setupCard.Controls.Add(setupLayout);
-        right.Controls.Add(setupCard, 0, 2);
-
         var recentCard = MakeCard();
-        recentCard.Margin = new Padding(0, 7, 0, 0);
-        recentCard.Padding = new Padding(18, 12, 18, 12);
+        recentCard.Margin = Padding.Empty;
+        recentCard.Padding = new Padding(14, 10, 14, 10);
+
         var recentLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -821,26 +760,28 @@ public sealed class MainForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        recentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        recentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
         recentLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
         recentLayout.Controls.Add(new Label
         {
-            Text = "RECENT ROUND IMPACT",
+            Text = "RECENT IMPACT",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            ForeColor = Color.FromArgb(111, 123, 144)
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(112, 119, 129)
         }, 0, 0);
 
         _history.Dock = DockStyle.Fill;
-        _history.BackColor = Color.FromArgb(14, 16, 18);
-        _history.ForeColor = Color.FromArgb(204, 212, 224);
+        _history.BackColor = Color.FromArgb(18, 20, 22);
+        _history.ForeColor = Color.FromArgb(202, 207, 214);
         _history.BorderStyle = BorderStyle.None;
         _history.IntegralHeight = false;
-        _history.Font = new Font("Cascadia Mono", 9);
-        _history.Items.Add("Waiting for first completed round.");
+        _history.Font = new Font("Cascadia Mono", 8.5f);
+        _history.Items.Add("Waiting for completed rounds.");
         recentLayout.Controls.Add(_history, 0, 1);
+
         recentCard.Controls.Add(recentLayout);
-        right.Controls.Add(recentCard, 0, 3);
+        right.Controls.Add(recentCard, 0, 2);
 
         content.Controls.Add(left, 0, 0);
         content.Controls.Add(right, 1, 0);
@@ -850,28 +791,25 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(24, 3, 24, 3),
-            Margin = Padding.Empty,
-            BackColor = Color.FromArgb(9, 11, 13)
+            Padding = new Padding(20, 2, 20, 2),
+            Margin = Padding.Empty
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 106));
 
-        _phoneUrl.Visible = false;
         footer.Controls.Add(new Label
         {
-            Text = "INSTANT PLAN → OPTIONAL AI REFINE • NO HIDDEN ENEMY DATA",
+            Text = "POSITION → EXPECT → DO  •  PAST-PATTERN PREDICTION ONLY",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(67, 78, 96),
+            Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(70, 76, 86),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
 
-        var refreshGsi = MakeButton("REFRESH GSI", 112, false);
+        var refreshGsi = MakeButton("REFRESH GSI", 100, false);
         refreshGsi.Dock = DockStyle.Fill;
-        refreshGsi.Height = 24;
-        refreshGsi.Margin = new Padding(4, 0, 4, 0);
-        refreshGsi.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+        refreshGsi.Margin = new Padding(2, 0, 0, 0);
+        refreshGsi.Font = new Font("Segoe UI", 7.2f, FontStyle.Bold);
         refreshGsi.Click += (_,__) =>
         {
             var p = GsiInstaller.TryInstall();
@@ -883,14 +821,18 @@ public sealed class MainForm : Form
         };
         footer.Controls.Add(refreshGsi, 1, 0);
 
+        _phoneUrl.Visible = false;
 
         workspace.Controls.Add(footer, 0, 3);
         root.Controls.Add(workspace, 1, 0);
 
         Controls.Add(root);
+
+        _buyTitle.Text = "WAITING";
+        _buyText.Text = "";
+        _aiText.Text = _latestAiAdvice;
+
         UpdatePresetSelection(DetectCurrentPreset());
-        _liveLayoutExpanded = true;
-        SetLiveLayoutExpanded(false);
         ResumeLayout(true);
     }
 
@@ -1141,6 +1083,8 @@ public sealed class MainForm : Form
         if (_gameOverlay == null)
             return;
 
+        _planView.Advice = _latestAiAdvice;
+
         _gameOverlay.UpdateData(
             _current,
             _latestAiAdvice,
@@ -1152,21 +1096,21 @@ public sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
-            Width = 180,
-            Height = 42,
+            Width = 160,
+            Height = 38,
             FlatStyle = FlatStyle.Flat,
             TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(14, 0, 0, 0),
+            Padding = new Padding(12, 0, 0, 0),
             Margin = new Padding(0, 2, 0, 2),
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            ForeColor = active ? Color.White : Color.FromArgb(153, 164, 181),
-            BackColor = active ? Color.FromArgb(52, 34, 20) : Color.FromArgb(14, 16, 18),
+            Font = new Font("Segoe UI", 8.3f, FontStyle.Bold),
+            ForeColor = active ? Color.White : Color.FromArgb(145, 151, 159),
+            BackColor = active ? Color.FromArgb(38, 31, 23) : Color.FromArgb(13, 14, 16),
             Cursor = Cursors.Hand,
             TabStop = false
         };
         button.FlatAppearance.BorderSize = active ? 1 : 0;
         button.FlatAppearance.BorderColor = Color.FromArgb(255, 156, 44);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(28, 33, 44);
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(24, 26, 29);
         button.Click += click;
         return button;
     }
@@ -1177,11 +1121,11 @@ public sealed class MainForm : Form
         {
             Text = text,
             Tag = preset,
-            Width = 116,
-            Height = 36,
+            Width = 76,
+            Height = 26,
             FlatStyle = FlatStyle.Flat,
-            Margin = new Padding(0, 0, 8, 0),
-            Font = new Font("Segoe UI", 8, FontStyle.Bold),
+            Margin = new Padding(0, 0, 5, 4),
+            Font = new Font("Segoe UI", 7.2f, FontStyle.Bold),
             ForeColor = Color.FromArgb(202, 210, 223),
             BackColor = Color.FromArgb(20, 22, 24),
             Cursor = Cursors.Hand,
@@ -1440,27 +1384,31 @@ public sealed class MainForm : Form
     {
         b.Height = 32;
         b.FlatStyle = FlatStyle.Flat;
-        b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.BorderSize = 1;
+        b.FlatAppearance.BorderColor = primary
+            ? Color.FromArgb(255, 156, 44)
+            : Color.FromArgb(43, 46, 50);
         b.Cursor = Cursors.Hand;
-        b.Font = new Font("Segoe UI", 9, FontStyle.Bold);
-        b.BackColor = primary ? Color.FromArgb(104,92,255) : Color.FromArgb(27,33,44);
-        b.ForeColor = Color.White;
+        b.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        b.BackColor = primary
+            ? Color.FromArgb(255, 156, 44)
+            : Color.FromArgb(21, 23, 26);
+        b.ForeColor = primary ? Color.Black : Color.White;
+        b.FlatAppearance.MouseOverBackColor = primary
+            ? Color.FromArgb(255, 174, 72)
+            : Color.FromArgb(29, 32, 36);
     }
 
     private Panel MakeCard()
     {
-        var p = new Panel
+        return new ModernCardPanel
         {
-            BackColor = Color.FromArgb(20, 22, 24),
+            BackColor = Color.FromArgb(18, 20, 22),
+            BorderColor = Color.FromArgb(42, 45, 49),
+            Radius = 14,
             Margin = new Padding(4),
             Dock = DockStyle.Fill
         };
-        p.Paint += (_,e) =>
-        {
-            using var pen = new Pen(Color.FromArgb(57, 51, 44));
-            e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0,p.Width-1), Math.Max(0,p.Height-1));
-        };
-        return p;
     }
 
     private Label Header(string t) => new()
