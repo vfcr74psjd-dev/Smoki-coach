@@ -264,13 +264,6 @@ public sealed class MainForm : Form
         };
 
         nav.Controls.Add(MakeNavButton("LIVE", true, (_,__) => { }));
-        nav.Controls.Add(MakeNavButton("HEATMAP", false, (_,__) =>
-        {
-            if (_demoInbox == null) return;
-            var nickname = FaceitSettingsStore.LoadNickname() ?? _profile.Nickname;
-            using var dialog = new HeatMapForm(nickname, _demoInbox);
-            dialog.ShowDialog(this);
-        }));
         nav.Controls.Add(MakeNavButton("PROGRESS", false, async (_,__) =>
         {
             await LoadFaceitSnapshotAsync();
@@ -1006,7 +999,7 @@ public sealed class MainForm : Form
             history.ShowDialog(dialog);
         }), 0, 1);
 
-        grid.Controls.Add(ToolButton("PHONE COMPANION", "Private LAN dashboard", (_,__) =>
+        grid.Controls.Add(ToolButton("PHONE LIVE COACH", "Round-by-round AI coach on your phone", (_,__) =>
         {
             if (_phoneServer == null) return;
             using var qr = new PhoneQrForm(_phoneServer.GetLocalUrl());
