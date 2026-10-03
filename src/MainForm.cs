@@ -1463,7 +1463,7 @@ public sealed class MainForm : Form
             : Color.FromArgb(126, 240, 174);
         UpdateGameOverlay();
 
-        if (!_aiCoach.IsConfigured)
+        if (!_autoAi.Checked || !_aiCoach.IsConfigured)
             return;
 
         _aiCts?.Cancel();
@@ -1910,10 +1910,14 @@ public sealed class MainForm : Form
             RefreshUi();
             TryShowMatchReview(s);
 
-            if (requestAi && _autoAi.Checked)
+            if (requestAi)
             {
                 _lastAiRound = s.Round;
                 _lastAiMap = s.Map;
+
+                // Always regenerate the deterministic round plan so POSITION,
+                // EXPECT, BUY, DO and ADAPT advance every round. Auto AI only
+                // controls the optional local-model refinement.
                 _ = RefreshAiCoachAsync(s);
             }
         });

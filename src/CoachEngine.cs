@@ -255,6 +255,7 @@ public static class CoachEngine
         IReadOnlyList<RoundRecord> rounds)
     {
         var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+
         var recent = rounds
             .Where(r => string.Equals(
                 r.Side,
@@ -263,45 +264,64 @@ public static class CoachEngine
             .TakeLast(8)
             .ToList();
 
-        if (recent.Count < 2)
-            return "premalo podatkov • standard setup • confidence LOW";
+        if (recent.Count == 0)
+            return "learning pattern • 0/8 rounds • confidence LOW";
 
         if (ct)
         {
             var plants = recent
-                .Where(r =>
-                    r.BombPlanted &&
-                    (r.BombSite == "A" || r.BombSite == "B"))
+                .Where(r => r.BombPlanted)
                 .ToList();
 
-            var timedPlants = recent
-                .Where(r => r.BombPlanted && r.BombPlantSeconds.HasValue)
+            var knownSites = plants
+                .Where(r => r.BombSite is "A" or "B")
                 .ToList();
 
-            string sitePart;
-            string confidence;
+            var enemyWins = recent.Count(r => r.Won == false);
+            var plantRate = (int)Math.Round(
+                100.0 * plants.Count / recent.Count);
 
-            if (plants.Count >= 2)
+            var sitePart = "site unknown";
+            var confidence = "LOW";
+
+            if (knownSites.Count >= 2)
             {
-                var a = plants.Count(r => r.BombSite == "A");
-                var b = plants.Count(r => r.BombSite == "B");
-                var diff = Math.Abs(a - b);
+                var a = knownSites.Count(r => r.BombSite == "A");
+                var b = knownSites.Count(r => r.BombSite == "B");
 
-                sitePart = a == b
-                    ? $"A/B split {a}:{b}"
-                    : a > b
-                        ? $"A pressure {a}/{plants.Count} plants"
-                        : $"B pressure {b}/{plants.Count} plants";
+                if (a == b)
+                {
+                    sitePart = $"A/B split {a}:{b}";
+                    confidence = knownSites.Count >= 4 ? "MEDIUM" : "LOW";
+                }
+                else
+                {
+                    var site = a > b ? "A" : "B";
+                    var dominant = Math.Max(a, b);
+                    sitePart = $"{site} pressure {dominant}/{knownSites.Count} known plants";
 
-                confidence = plants.Count >= 4 && diff >= 2
-                    ? "HIGH"
-                    : "MEDIUM";
+                    confidence =
+                        knownSites.Count >= 4 &&
+                        Math.Abs(a - b) >= 2
+                            ? "HIGH"
+                            : "MEDIUM";
+                }
+
+                var lastTwo = knownSites.TakeLast(2).ToList();
+                if (lastTwo.Count == 2 &&
+                    lastTwo[0].BombSite == lastTwo[1].BombSite)
+                {
+                    sitePart += $" • repeat {lastTwo[1].BombSite}";
+                }
             }
-            else
+            else if (knownSites.Count == 1)
             {
-                sitePart = "site trend še ni dovolj jasen";
-                confidence = "LOW";
+                sitePart = $"last known plant {knownSites[0].BombSite}";
             }
+
+            var timedPlants = plants
+                .Where(r => r.BombPlantSeconds.HasValue)
+                .ToList();
 
             var tempoPart = "";
             if (timedPlants.Count >= 2)
@@ -309,14 +329,24 @@ public static class CoachEngine
                 var fast = timedPlants.Count(r => r.BombPlantSeconds <= 40);
                 var late = timedPlants.Count(r => r.BombPlantSeconds >= 70);
 
-                tempoPart = fast >= Math.Max(2, late + 1)
-                    ? " • fast execute tendency"
-                    : late >= Math.Max(2, fast + 1)
-                        ? " • slow/late tendency"
-                        : " • mixed tempo";
+                tempoPart =
+                    fast >= Math.Max(2, late + 1)
+                        ? " • fast tendency"
+                        : late >= Math.Max(2, fast + 1)
+                            ? " • late tendency"
+                            : " • mixed tempo";
             }
 
-            return $"{sitePart}{tempoPart} • confidence {confidence}";
+            var conversionPart =
+                enemyWins >= Math.Ceiling(recent.Count * 0.65)
+                    ? " • enemy converting well"
+                    : enemyWins <= Math.Floor(recent.Count * 0.35)
+                        ? " • enemy conversion low"
+                        : "";
+
+            return
+                $"{sitePart}{tempoPart}{conversionPart} • " +
+                $"plants {plantRate}% • sample {recent.Count}/8 • confidence {confidence}";
         }
 
         var aRounds = recent
@@ -332,28 +362,56 @@ public static class CoachEngine
         var aStops = Stops(aRounds);
         var bStops = Stops(bRounds);
 
+        string defensePart;
+        string confidence;
+
         if (aRounds.Count >= 2 || bRounds.Count >= 2)
         {
+            var aRate = aRounds.Count == 0
+                ? 0
+                : (double)aStops / aRounds.Count;
+            var bRate = bRounds.Count == 0
+                ? 0
+                : (double)bStops / bRounds.Count;
+
             if (aRounds.Count >= 2 &&
-                (bRounds.Count < 2 ||
-                 (double)aStops / aRounds.Count >
-                 (double)bStops / Math.Max(1, bRounds.Count) + 0.20))
+                (bRounds.Count < 2 || aRate > bRate + 0.20))
             {
-                return $"A defense močnejša • stopped {aStops}/{aRounds.Count} hits • confidence MEDIUM";
+                defensePart =
+                    $"A defense stronger • stopped {aStops}/{aRounds.Count}";
+                confidence = aRounds.Count >= 4 ? "HIGH" : "MEDIUM";
             }
-
-            if (bRounds.Count >= 2 &&
-                (aRounds.Count < 2 ||
-                 (double)bStops / bRounds.Count >
-                 (double)aStops / Math.Max(1, aRounds.Count) + 0.20))
+            else if (bRounds.Count >= 2 &&
+                     (aRounds.Count < 2 || bRate > aRate + 0.20))
             {
-                return $"B defense močnejša • stopped {bStops}/{bRounds.Count} hits • confidence MEDIUM";
+                defensePart =
+                    $"B defense stronger • stopped {bStops}/{bRounds.Count}";
+                confidence = bRounds.Count >= 4 ? "HIGH" : "MEDIUM";
             }
-
-            return "obramba deluje uravnoteženo • spremeni timing/site • confidence LOW";
+            else
+            {
+                defensePart =
+                    $"defense balanced • A {aStops}/{Math.Max(1,aRounds.Count)} stops • B {bStops}/{Math.Max(1,bRounds.Count)} stops";
+                confidence = recent.Count >= 5 ? "MEDIUM" : "LOW";
+            }
+        }
+        else
+        {
+            defensePart =
+                $"learning CT setup • A samples {aRounds.Count} • B samples {bRounds.Count}";
+            confidence = "LOW";
         }
 
-        return "premalo site podatkov • pričakuj standard CT setup • confidence LOW";
+        var enemyCtWins = recent.Count(r => r.Won == false);
+        var pressure =
+            enemyCtWins >= Math.Ceiling(recent.Count * 0.65)
+                ? " • CT defense winning"
+                : enemyCtWins <= Math.Floor(recent.Count * 0.35)
+                    ? " • CT defense vulnerable"
+                    : "";
+
+        return
+            $"{defensePart}{pressure} • sample {recent.Count}/8 • confidence {confidence}";
     }
 
     private static string[] CtPositionOptions(string map, string intent)
