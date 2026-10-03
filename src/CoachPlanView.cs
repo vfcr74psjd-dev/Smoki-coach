@@ -26,8 +26,13 @@ public sealed class CoachPlanView : Control
 
     public CoachPlanView()
     {
+        SetStyle(
+            ControlStyles.UserPaint |
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer,
+            true);
         DoubleBuffered = true;
-        BackColor = Color.Transparent;
+        BackColor = Color.FromArgb(18, 20, 22);
         MinimumSize = new Size(420, 260);
     }
 
