@@ -9,6 +9,10 @@ public sealed class CoachPreferences
     public string Focus { get; set; } = "More kills";
     public bool AutoAi { get; set; } = true;
     public string OverlayMode { get; set; } = "Minimal";
+    public bool OverlayCustomPlacement { get; set; }
+    public int OverlayX { get; set; } = -1;
+    public int OverlayY { get; set; } = -1;
+    public float OverlayScale { get; set; } = 1.0f;
 }
 
 public static class UserSettingsStore

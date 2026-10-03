@@ -79,6 +79,12 @@ public sealed class MainForm : Form
         BuildUi();
 
         _gameOverlay = new GameOverlayForm();
+        _gameOverlay.LayoutSaved += OnOverlayLayoutSaved;
+        _gameOverlay.ApplySavedLayout(
+            _prefs.OverlayCustomPlacement,
+            _prefs.OverlayX,
+            _prefs.OverlayY,
+            _prefs.OverlayScale);
 
         _server.SnapshotReceived += OnSnapshot;
         _server.Start();
@@ -128,6 +134,8 @@ public sealed class MainForm : Form
             _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
             _demoInbox?.Dispose();
+            if (_gameOverlay != null)
+                _gameOverlay.LayoutSaved -= OnOverlayLayoutSaved;
             _gameOverlay?.Close();
             _gameOverlay?.Dispose();
             _server.Dispose();
@@ -1028,9 +1036,10 @@ public sealed class MainForm : Form
             ShowOverlaySettings(dialog);
         }), 0, 3);
 
-        grid.Controls.Add(ToolButton("OVERLAY MODE", $"Current: {_prefs.OverlayMode}", (_,__) =>
+        grid.Controls.Add(ToolButton("EDIT OVERLAY", "Drag position • wheel changes size", (_,__) =>
         {
-            ShowOverlaySettings(dialog);
+            dialog.Close();
+            BeginOverlayLayoutEdit();
         }), 1, 3);
 
         root.Controls.Add(grid, 0, 1);
@@ -1042,6 +1051,45 @@ public sealed class MainForm : Form
 
         dialog.Controls.Add(root);
         dialog.ShowDialog(this);
+    }
+
+    private void BeginOverlayLayoutEdit()
+    {
+        if (_gameOverlay == null)
+            return;
+
+        if (_prefs.OverlayMode == "Off")
+        {
+            _prefs.OverlayMode = "Minimal";
+            UserSettingsStore.Save(_prefs);
+            _gameOverlay.ApplyMode(_prefs.OverlayMode);
+        }
+
+        UpdateGameOverlay();
+        _gameOverlay.BeginLayoutEdit();
+    }
+
+    private void OnOverlayLayoutSaved(Point location, float scale)
+    {
+        _prefs.OverlayCustomPlacement = true;
+        _prefs.OverlayX = location.X;
+        _prefs.OverlayY = location.Y;
+        _prefs.OverlayScale = scale;
+        UserSettingsStore.Save(_prefs);
+    }
+
+    private void ResetOverlayLayout()
+    {
+        if (_gameOverlay == null)
+            return;
+
+        _prefs.OverlayCustomPlacement = false;
+        _prefs.OverlayX = -1;
+        _prefs.OverlayY = -1;
+        _prefs.OverlayScale = 1.0f;
+        UserSettingsStore.Save(_prefs);
+
+        _gameOverlay.ResetLayout();
     }
 
     private void ShowOverlaySettings(Form owner)
@@ -1061,6 +1109,11 @@ public sealed class MainForm : Form
         UserSettingsStore.Save(_prefs);
 
         _gameOverlay.ApplyMode(_prefs.OverlayMode);
+        _gameOverlay.ApplySavedLayout(
+            _prefs.OverlayCustomPlacement,
+            _prefs.OverlayX,
+            _prefs.OverlayY,
+            _prefs.OverlayScale);
         UpdateGameOverlay();
     }
 

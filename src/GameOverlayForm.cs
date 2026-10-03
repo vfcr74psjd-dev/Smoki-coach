@@ -33,6 +33,13 @@ public sealed class GameOverlayForm : Form
     private string _lastMap = "";
     private bool _hotkeyRegistered;
     private Keys _hotkeyKey = Keys.None;
+    private bool _editMode;
+    private float _scale = 1.0f;
+    private Point _editStartLocation;
+    private float _editStartScale = 1.0f;
+    private bool _customPlacement;
+
+    public event Action<Point, float>? LayoutSaved;
 
     public bool HotkeyRegistered => _hotkeyRegistered;
     public string HotkeyDisplay => _hotkeyRegistered ? _hotkeyKey.ToString() : "Unavailable";
@@ -66,14 +73,18 @@ public sealed class GameOverlayForm : Form
         UpdateRegion();
     }
 
-    protected override bool ShowWithoutActivation => true;
+    protected override bool ShowWithoutActivation => !_editMode;
 
     protected override CreateParams CreateParams
     {
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WsExTransparent | WsExToolWindow | WsExNoActivate;
+            cp.ExStyle |= WsExToolWindow;
+
+            if (!_editMode)
+                cp.ExStyle |= WsExTransparent | WsExNoActivate;
+
             return cp;
         }
     }
@@ -111,6 +122,24 @@ public sealed class GameOverlayForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        const int wmNcHitTest = 0x0084;
+        const int wmMouseWheel = 0x020A;
+        const int htCaption = 2;
+
+        if (_editMode && m.Msg == wmNcHitTest)
+        {
+            m.Result = (IntPtr)htCaption;
+            return;
+        }
+
+        if (_editMode && m.Msg == wmMouseWheel)
+        {
+            var raw = m.WParam.ToInt64();
+            var delta = unchecked((short)((raw >> 16) & 0xFFFF));
+            SetOverlayScale(_scale + (delta > 0 ? 0.05f : -0.05f), keepCenter: true);
+            return;
+        }
+
         if (m.Msg == WmHotkey && m.WParam.ToInt32() == HotkeyId)
         {
             ToggleTemporaryVisibility();
@@ -118,6 +147,38 @@ public sealed class GameOverlayForm : Form
         }
 
         base.WndProc(ref m);
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (_editMode)
+        {
+            if (keyData == Keys.Enter)
+            {
+                CommitLayoutEdit();
+                return true;
+            }
+
+            if (keyData == Keys.Escape)
+            {
+                CancelLayoutEdit();
+                return true;
+            }
+
+            if (keyData is Keys.Add or Keys.Oemplus)
+            {
+                SetOverlayScale(_scale + 0.05f, keepCenter: true);
+                return true;
+            }
+
+            if (keyData is Keys.Subtract or Keys.OemMinus)
+            {
+                SetOverlayScale(_scale - 0.05f, keepCenter: true);
+                return true;
+            }
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     public void ApplyMode(string? mode)
@@ -129,9 +190,13 @@ public sealed class GameOverlayForm : Form
         }
 
         _mode = mode is "Full" or "Off" ? mode : "Minimal";
-        Height = _mode == "Full" ? 218 : 158;
+        ApplyScaledSize(keepCenter: false);
         UpdateRegion();
-        PositionSafeArea();
+
+        if (!_customPlacement)
+            PositionSafeArea();
+        else
+            ClampToVisibleScreen();
 
         if (_mode == "Off")
         {
@@ -162,9 +227,10 @@ public sealed class GameOverlayForm : Form
     private void RefreshVisibility()
     {
         var shouldShow =
-            _mode != "Off" &&
-            !_temporarilyHidden &&
-            _gameActive;
+            _editMode ||
+            (_mode != "Off" &&
+             !_temporarilyHidden &&
+             _gameActive);
 
         if (!shouldShow)
         {
@@ -172,7 +238,11 @@ public sealed class GameOverlayForm : Form
             return;
         }
 
-        PositionSafeArea();
+        if (!_customPlacement && !_editMode)
+            PositionSafeArea();
+        else
+            ClampToVisibleScreen();
+
         if (!Visible)
             Show();
 
@@ -221,6 +291,127 @@ public sealed class GameOverlayForm : Form
         Invalidate();
     }
 
+    public void ApplySavedLayout(bool customPlacement, int x, int y, float scale)
+    {
+        _customPlacement = customPlacement;
+        _scale = Math.Clamp(scale, 0.70f, 1.60f);
+        ApplyScaledSize(keepCenter: false);
+
+        if (_customPlacement && x >= 0 && y >= 0)
+        {
+            Location = new Point(x, y);
+            ClampToVisibleScreen();
+        }
+        else
+        {
+            _customPlacement = false;
+            PositionSafeArea();
+        }
+
+        UpdateRegion();
+        Invalidate();
+    }
+
+    public void BeginLayoutEdit()
+    {
+        if (_editMode)
+            return;
+
+        _editMode = true;
+        _editStartLocation = Location;
+        _editStartScale = _scale;
+        _customPlacement = true;
+        _temporarilyHidden = false;
+
+        RecreateHandle();
+        RefreshVisibility();
+        Activate();
+        Focus();
+        Invalidate();
+    }
+
+    public void ResetLayout()
+    {
+        _customPlacement = false;
+        _scale = 1.0f;
+        ApplyScaledSize(keepCenter: false);
+        PositionSafeArea();
+        UpdateRegion();
+        Invalidate();
+    }
+
+    private void CommitLayoutEdit()
+    {
+        if (!_editMode)
+            return;
+
+        _customPlacement = true;
+        ClampToVisibleScreen();
+        var savedLocation = Location;
+        var savedScale = _scale;
+
+        _editMode = false;
+        RecreateHandle();
+        RefreshVisibility();
+        Invalidate();
+
+        LayoutSaved?.Invoke(savedLocation, savedScale);
+    }
+
+    private void CancelLayoutEdit()
+    {
+        if (!_editMode)
+            return;
+
+        Location = _editStartLocation;
+        _scale = _editStartScale;
+        ApplyScaledSize(keepCenter: false);
+
+        _editMode = false;
+        RecreateHandle();
+        RefreshVisibility();
+        Invalidate();
+    }
+
+    private void SetOverlayScale(float scale, bool keepCenter)
+    {
+        var oldCenter = new Point(
+            Left + Width / 2,
+            Top + Height / 2);
+
+        _scale = Math.Clamp(scale, 0.70f, 1.60f);
+        ApplyScaledSize(keepCenter: false);
+
+        if (keepCenter)
+        {
+            Location = new Point(
+                oldCenter.X - Width / 2,
+                oldCenter.Y - Height / 2);
+        }
+
+        ClampToVisibleScreen();
+        UpdateRegion();
+        Invalidate();
+    }
+
+    private void ApplyScaledSize(bool keepCenter)
+    {
+        var baseHeight = _mode == "Full" ? 218 : 158;
+        Size = new Size(
+            Math.Max(399, (int)Math.Round(570 * _scale)),
+            Math.Max(_mode == "Full" ? 153 : 111, (int)Math.Round(baseHeight * _scale)));
+    }
+
+    private void ClampToVisibleScreen()
+    {
+        var screen = Screen.FromRectangle(Bounds).WorkingArea;
+
+        var x = Math.Clamp(Left, screen.Left, Math.Max(screen.Left, screen.Right - Width));
+        var y = Math.Clamp(Top, screen.Top, Math.Max(screen.Top, screen.Bottom - Height));
+
+        Location = new Point(x, y);
+    }
+
     public void PositionSafeArea()
     {
         var screen = Screen.PrimaryScreen?.WorkingArea
@@ -257,7 +448,11 @@ public sealed class GameOverlayForm : Form
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+        g.ScaleTransform(_scale, _scale);
+        var logicalWidth = Math.Max(1, (int)Math.Round(ClientSize.Width / _scale));
+        var logicalHeight = Math.Max(1, (int)Math.Round(ClientSize.Height / _scale));
+
+        var rect = new Rectangle(0, 0, logicalWidth - 1, logicalHeight - 1);
         using var panelBrush = new SolidBrush(Panel);
         using var borderPen = new Pen(Border, 1);
         using var shape = RoundedRect(rect, 13);
@@ -272,16 +467,19 @@ public sealed class GameOverlayForm : Form
 
         var accentAlpha = pulsing ? 150 + (int)(105 * pulse) : 220;
         using var accentBrush = new SolidBrush(Color.FromArgb(accentAlpha, Orange));
-        g.FillRectangle(accentBrush, 0, 0, 4, Height);
+        g.FillRectangle(accentBrush, 0, 0, 4, logicalHeight);
 
-        DrawHeader(g);
+        DrawHeader(g, logicalWidth);
         DrawAdvice(g, pulsing ? elapsed : 1000);
 
         if (_mode == "Full")
-            DrawStats(g);
+            DrawStats(g, logicalWidth, logicalHeight);
+
+        if (_editMode)
+            DrawEditOverlay(g, logicalWidth, logicalHeight);
     }
 
-    private void DrawHeader(Graphics g)
+    private void DrawHeader(Graphics g, int logicalWidth)
     {
         using var brandFont = new Font("Segoe UI", 9f, FontStyle.Bold);
         using var smallFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
@@ -303,11 +501,11 @@ public sealed class GameOverlayForm : Form
             _aiStatus,
             smallFont,
             _aiStatus.Contains("AI", StringComparison.OrdinalIgnoreCase) ? greenBrush : mutedBrush,
-            Width - statusSize.Width - 18,
+            logicalWidth - statusSize.Width - 18,
             13);
 
         using var separator = new Pen(Color.FromArgb(45, 48, 51));
-        g.DrawLine(separator, 18, 34, Width - 18, 34);
+        g.DrawLine(separator, 18, 34, logicalWidth - 18, 34);
     }
 
     private void DrawAdvice(Graphics g, double elapsedMs)
@@ -341,11 +539,11 @@ public sealed class GameOverlayForm : Form
         }
     }
 
-    private void DrawStats(Graphics g)
+    private void DrawStats(Graphics g, int logicalWidth, int logicalHeight)
     {
         var top = 150;
         using var separator = new Pen(Color.FromArgb(45, 48, 51));
-        g.DrawLine(separator, 18, top - 4, Width - 18, top - 4);
+        g.DrawLine(separator, 18, top - 4, logicalWidth - 18, top - 4);
 
         var kills = _snapshot.Kills ?? 0;
         var deaths = _snapshot.Deaths ?? 0;
@@ -366,7 +564,7 @@ public sealed class GameOverlayForm : Form
         using var labelBrush = new SolidBrush(Muted);
         using var valueBrush = new SolidBrush(Color.White);
 
-        var cellWidth = (Width - 36f) / items.Length;
+        var cellWidth = (logicalWidth - 36f) / items.Length;
         for (var i = 0; i < items.Length; i++)
         {
             var x = 18 + i * cellWidth;
@@ -380,7 +578,33 @@ public sealed class GameOverlayForm : Form
             ? $"{_hotkeyKey}  HIDE / SHOW"
             : "HOTKEY UNAVAILABLE";
         var hintSize = g.MeasureString(hotkeyHint, hintFont);
-        g.DrawString(hotkeyHint, hintFont, hintBrush, Width - hintSize.Width - 18, Height - 20);
+        g.DrawString(hotkeyHint, hintFont, hintBrush, logicalWidth - hintSize.Width - 18, logicalHeight - 20);
+    }
+
+    private void DrawEditOverlay(Graphics g, int logicalWidth, int logicalHeight)
+    {
+        using var veil = new SolidBrush(Color.FromArgb(92, 0, 0, 0));
+        using var border = new Pen(Orange, 2);
+        using var titleFont = new Font("Segoe UI", 11f, FontStyle.Bold);
+        using var smallFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        using var white = new SolidBrush(Color.White);
+        using var orange = new SolidBrush(Orange);
+
+        g.FillRectangle(veil, 0, 0, logicalWidth, logicalHeight);
+        g.DrawRectangle(border, 1, 1, logicalWidth - 3, logicalHeight - 3);
+
+        var title = "EDIT OVERLAY";
+        var hint = $"DRAG TO MOVE  •  WHEEL / +/- SIZE  •  {Math.Round(_scale * 100)}%";
+        var save = "ENTER SAVE  •  ESC CANCEL";
+
+        var titleSize = g.MeasureString(title, titleFont);
+        var hintSize = g.MeasureString(hint, smallFont);
+        var saveSize = g.MeasureString(save, smallFont);
+
+        var centerY = logicalHeight / 2f;
+        g.DrawString(title, titleFont, orange, (logicalWidth - titleSize.Width) / 2f, centerY - 30);
+        g.DrawString(hint, smallFont, white, (logicalWidth - hintSize.Width) / 2f, centerY);
+        g.DrawString(save, smallFont, white, (logicalWidth - saveSize.Width) / 2f, centerY + 22);
     }
 
     private static List<string> ParseAdvice(string advice)
