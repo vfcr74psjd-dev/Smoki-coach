@@ -33,13 +33,7 @@ public sealed class GameOverlayForm : Form
     private string _lastMap = "";
     private bool _hotkeyRegistered;
     private Keys _hotkeyKey = Keys.None;
-    private bool _editMode;
     private float _scale = 1.0f;
-    private Point _editStartLocation;
-    private float _editStartScale = 1.0f;
-    private bool _customPlacement;
-
-    public event Action<Point, float>? LayoutSaved;
 
     public bool HotkeyRegistered => _hotkeyRegistered;
     public string HotkeyDisplay => _hotkeyRegistered ? _hotkeyKey.ToString() : "Unavailable";
@@ -73,18 +67,14 @@ public sealed class GameOverlayForm : Form
         UpdateRegion();
     }
 
-    protected override bool ShowWithoutActivation => !_editMode;
+    protected override bool ShowWithoutActivation => true;
 
     protected override CreateParams CreateParams
     {
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WsExToolWindow;
-
-            if (!_editMode)
-                cp.ExStyle |= WsExTransparent | WsExNoActivate;
-
+            cp.ExStyle |= WsExTransparent | WsExToolWindow | WsExNoActivate;
             return cp;
         }
     }
@@ -122,24 +112,6 @@ public sealed class GameOverlayForm : Form
 
     protected override void WndProc(ref Message m)
     {
-        const int wmNcHitTest = 0x0084;
-        const int wmMouseWheel = 0x020A;
-        const int htCaption = 2;
-
-        if (_editMode && m.Msg == wmNcHitTest)
-        {
-            m.Result = (IntPtr)htCaption;
-            return;
-        }
-
-        if (_editMode && m.Msg == wmMouseWheel)
-        {
-            var raw = m.WParam.ToInt64();
-            var delta = unchecked((short)((raw >> 16) & 0xFFFF));
-            SetOverlayScale(_scale + (delta > 0 ? 0.05f : -0.05f), keepCenter: true);
-            return;
-        }
-
         if (m.Msg == WmHotkey && m.WParam.ToInt32() == HotkeyId)
         {
             ToggleTemporaryVisibility();
@@ -147,38 +119,6 @@ public sealed class GameOverlayForm : Form
         }
 
         base.WndProc(ref m);
-    }
-
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-    {
-        if (_editMode)
-        {
-            if (keyData == Keys.Enter)
-            {
-                CommitLayoutEdit();
-                return true;
-            }
-
-            if (keyData == Keys.Escape)
-            {
-                CancelLayoutEdit();
-                return true;
-            }
-
-            if (keyData is Keys.Add or Keys.Oemplus)
-            {
-                SetOverlayScale(_scale + 0.05f, keepCenter: true);
-                return true;
-            }
-
-            if (keyData is Keys.Subtract or Keys.OemMinus)
-            {
-                SetOverlayScale(_scale - 0.05f, keepCenter: true);
-                return true;
-            }
-        }
-
-        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     public void ApplyMode(string? mode)
@@ -190,13 +130,10 @@ public sealed class GameOverlayForm : Form
         }
 
         _mode = mode is "Full" or "Off" ? mode : "Minimal";
+        _scale = 1.0f;
         ApplyScaledSize(keepCenter: false);
         UpdateRegion();
-
-        if (!_customPlacement)
-            PositionSafeArea();
-        else
-            ClampToVisibleScreen();
+        PositionBelowKillFeed();
 
         if (_mode == "Off")
         {
@@ -227,10 +164,9 @@ public sealed class GameOverlayForm : Form
     private void RefreshVisibility()
     {
         var shouldShow =
-            _editMode ||
-            (_mode != "Off" &&
-             !_temporarilyHidden &&
-             _gameActive);
+            _mode != "Off" &&
+            !_temporarilyHidden &&
+            _gameActive;
 
         if (!shouldShow)
         {
@@ -238,10 +174,7 @@ public sealed class GameOverlayForm : Form
             return;
         }
 
-        if (!_customPlacement && !_editMode)
-            PositionSafeArea();
-        else
-            ClampToVisibleScreen();
+        PositionBelowKillFeed();
 
         if (!Visible)
             Show();
@@ -291,107 +224,31 @@ public sealed class GameOverlayForm : Form
         Invalidate();
     }
 
-    public void ApplySavedLayout(bool customPlacement, int x, int y, float scale)
+    public void PositionBelowKillFeed()
     {
-        _customPlacement = customPlacement;
-        _scale = Math.Clamp(scale, 0.70f, 1.60f);
-        ApplyScaledSize(keepCenter: false);
+        var screen = Screen.PrimaryScreen?.WorkingArea
+                     ?? new Rectangle(0, 0, 1920, 1080);
 
-        if (_customPlacement && x >= 0 && y >= 0)
-        {
-            Location = new Point(x, y);
-            ClampToVisibleScreen();
-        }
-        else
-        {
-            _customPlacement = false;
-            PositionSafeArea();
-        }
+        // Fixed HUD position: right side, below the usual CS2 kill-feed zone.
+        // 20% of screen height gives ~280px on a 1440p display and ~216px on 1080p.
+        var topOffset = Math.Max(
+            180,
+            (int)Math.Round(screen.Height * 0.20));
 
-        UpdateRegion();
-        Invalidate();
-    }
+        var x = Math.Max(
+            screen.Left + 12,
+            screen.Right - Width - 28);
 
-    public void BeginLayoutEdit()
-    {
-        if (_editMode)
-            return;
+        var maxY = Math.Max(
+            screen.Top + 12,
+            screen.Bottom - Height - 72);
 
-        _editMode = true;
-        _editStartLocation = Location;
-        _editStartScale = _scale;
-        _customPlacement = true;
-        _temporarilyHidden = false;
+        var y = Math.Clamp(
+            screen.Top + topOffset,
+            screen.Top + 12,
+            maxY);
 
-        RecreateHandle();
-        RefreshVisibility();
-        Activate();
-        Focus();
-        Invalidate();
-    }
-
-    public void ResetLayout()
-    {
-        _customPlacement = false;
-        _scale = 1.0f;
-        ApplyScaledSize(keepCenter: false);
-        PositionSafeArea();
-        UpdateRegion();
-        Invalidate();
-    }
-
-    private void CommitLayoutEdit()
-    {
-        if (!_editMode)
-            return;
-
-        _customPlacement = true;
-        ClampToVisibleScreen();
-        var savedLocation = Location;
-        var savedScale = _scale;
-
-        _editMode = false;
-        RecreateHandle();
-        RefreshVisibility();
-        Invalidate();
-
-        LayoutSaved?.Invoke(savedLocation, savedScale);
-    }
-
-    private void CancelLayoutEdit()
-    {
-        if (!_editMode)
-            return;
-
-        Location = _editStartLocation;
-        _scale = _editStartScale;
-        ApplyScaledSize(keepCenter: false);
-
-        _editMode = false;
-        RecreateHandle();
-        RefreshVisibility();
-        Invalidate();
-    }
-
-    private void SetOverlayScale(float scale, bool keepCenter)
-    {
-        var oldCenter = new Point(
-            Left + Width / 2,
-            Top + Height / 2);
-
-        _scale = Math.Clamp(scale, 0.70f, 1.60f);
-        ApplyScaledSize(keepCenter: false);
-
-        if (keepCenter)
-        {
-            Location = new Point(
-                oldCenter.X - Width / 2,
-                oldCenter.Y - Height / 2);
-        }
-
-        ClampToVisibleScreen();
-        UpdateRegion();
-        Invalidate();
+        Location = new Point(x, y);
     }
 
     private void ApplyScaledSize(bool keepCenter)
@@ -399,28 +256,9 @@ public sealed class GameOverlayForm : Form
         var baseHeight = _mode == "Full" ? 282 : 222;
         Size = new Size(
             Math.Max(399, (int)Math.Round(570 * _scale)),
-            Math.Max(_mode == "Full" ? 197 : 155, (int)Math.Round(baseHeight * _scale)));
-    }
-
-    private void ClampToVisibleScreen()
-    {
-        var screen = Screen.FromRectangle(Bounds).WorkingArea;
-
-        var x = Math.Clamp(Left, screen.Left, Math.Max(screen.Left, screen.Right - Width));
-        var y = Math.Clamp(Top, screen.Top, Math.Max(screen.Top, screen.Bottom - Height));
-
-        Location = new Point(x, y);
-    }
-
-    public void PositionSafeArea()
-    {
-        var screen = Screen.PrimaryScreen?.WorkingArea
-                     ?? new Rectangle(0, 0, 1920, 1080);
-
-        // Bottom-center stays clear of CS2's kill feed, radar, health and ammo HUD.
-        Location = new Point(
-            screen.Left + Math.Max(12, (screen.Width - Width) / 2),
-            Math.Max(screen.Top + 12, screen.Bottom - Height - 92));
+            Math.Max(
+                _mode == "Full" ? 197 : 155,
+                (int)Math.Round(baseHeight * _scale)));
     }
 
     private void UpdateRegion()
@@ -474,9 +312,6 @@ public sealed class GameOverlayForm : Form
 
         if (_mode == "Full")
             DrawStats(g, logicalWidth, logicalHeight);
-
-        if (_editMode)
-            DrawEditOverlay(g, logicalWidth, logicalHeight);
     }
 
     private void DrawHeader(Graphics g, int logicalWidth)
@@ -654,32 +489,6 @@ public sealed class GameOverlayForm : Form
             : "HOTKEY UNAVAILABLE";
         var hintSize = g.MeasureString(hotkeyHint, hintFont);
         g.DrawString(hotkeyHint, hintFont, hintBrush, logicalWidth - hintSize.Width - 18, logicalHeight - 20);
-    }
-
-    private void DrawEditOverlay(Graphics g, int logicalWidth, int logicalHeight)
-    {
-        using var veil = new SolidBrush(Color.FromArgb(92, 0, 0, 0));
-        using var border = new Pen(Orange, 2);
-        using var titleFont = new Font("Segoe UI", 11f, FontStyle.Bold);
-        using var smallFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-        using var white = new SolidBrush(Color.White);
-        using var orange = new SolidBrush(Orange);
-
-        g.FillRectangle(veil, 0, 0, logicalWidth, logicalHeight);
-        g.DrawRectangle(border, 1, 1, logicalWidth - 3, logicalHeight - 3);
-
-        var title = "EDIT OVERLAY";
-        var hint = $"DRAG TO MOVE  •  WHEEL / +/- SIZE  •  {Math.Round(_scale * 100)}%";
-        var save = "ENTER SAVE  •  ESC CANCEL";
-
-        var titleSize = g.MeasureString(title, titleFont);
-        var hintSize = g.MeasureString(hint, smallFont);
-        var saveSize = g.MeasureString(save, smallFont);
-
-        var centerY = logicalHeight / 2f;
-        g.DrawString(title, titleFont, orange, (logicalWidth - titleSize.Width) / 2f, centerY - 30);
-        g.DrawString(hint, smallFont, white, (logicalWidth - hintSize.Width) / 2f, centerY);
-        g.DrawString(save, smallFont, white, (logicalWidth - saveSize.Width) / 2f, centerY + 22);
     }
 
     private static List<string> ParseAdvice(string advice)
