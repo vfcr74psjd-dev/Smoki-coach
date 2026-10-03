@@ -63,7 +63,7 @@ public sealed class GameOverlayForm : Form
             Invalidate();
         };
 
-        PositionSafeArea();
+        PositionBelowKillFeed();
         UpdateRegion();
     }
 
