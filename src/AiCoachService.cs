@@ -268,6 +268,7 @@ public sealed class AiCoachService
         IReadOnlyList<RoundRecord> rounds,
         string mode,
         string playerName,
+        string intent,
         CancellationToken cancellationToken = default)
     {
         var model = await ResolveModelAsync(cancellationToken);
@@ -297,14 +298,16 @@ public sealed class AiCoachService
             $"CS2 solo coach for {safePlayerName}. Slovenian. Give ONLY minimal commands for the NEXT round. " +
             "Use ONLY supplied state; never guess enemy positions. Adapt strongly to previous W/L, survival, carried primary gun, score, side and money. " +
             "If primary is present, NEVER recommend buying another primary gun; preserve it and only top up armor/utility/kit. " +
-            "Exactly 3 lines and nothing else: BUY:, DO:, ADAPT:. " +
+            "Exactly 4 lines and nothing else: BUY:, POSITION:, DO:, ADAPT:. " +
             "BUY must be a realistic short purchase/save recommendation from current inventory and money. " +
-            "DO must be one short sequence using arrows, e.g. mid control → trade → reposition. " +
-            "ADAPT must explicitly react to the recent round result. Max 35 words total. No explanations.\n" +
+            "POSITION is supplied by the app playbook; do not invent another position. " +
+            "DO must be one short sequence that fits POSITION, using arrows. " +
+            "ADAPT must explicitly react to recent results. Max 48 words total. No explanations.\n" +
             $"STATE map={CoachEngine.PrettyMap(s.Map)}({s.Map}); side={s.Team}; " +
             $"round={roundNumber}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
             $"money={s.Money ?? 0}; active={s.Weapon}; primary={s.PrimaryWeapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; helmet={s.Helmet}; " +
-            $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; " +
+            $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; intent={CoachEngine.NormalizeRoundIntent(intent)}; " +
+            $"position={CoachEngine.PositionPlan(s, intent, rounds)}; " +
             $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}; variation={variationSeed}.";
 
         var payload = new
@@ -335,26 +338,32 @@ public sealed class AiCoachService
             !string.IsNullOrWhiteSpace(output.GetString()))
             return NormalizeRoundAdvice(
                 StripThinking(output.GetString()!),
-                CoachEngine.RoundBuyPlan(s));
+                CoachEngine.RoundBuyPlan(s),
+                CoachEngine.PositionPlan(s, intent, rounds));
 
         throw new InvalidOperationException("Local AI odgovor ni vseboval besedila.");
     }
 
-    private static string NormalizeRoundAdvice(string text, string deterministicBuy)
+    private static string NormalizeRoundAdvice(
+        string text,
+        string deterministicBuy,
+        string deterministicPosition)
     {
         var lines = text
             .Replace("\r", "")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(x =>
                 x.StartsWith("BUY:", StringComparison.OrdinalIgnoreCase) ||
+                x.StartsWith("POSITION:", StringComparison.OrdinalIgnoreCase) ||
                 x.StartsWith("DO:", StringComparison.OrdinalIgnoreCase) ||
                 x.StartsWith("ADAPT:", StringComparison.OrdinalIgnoreCase))
-            .Take(3)
+            .Take(4)
             .ToList();
 
-        if (lines.Count == 3)
+        if (lines.Count == 4)
         {
             lines[0] = "BUY: " + deterministicBuy;
+            lines[1] = "POSITION: " + deterministicPosition;
             return string.Join("\n", lines);
         }
 
@@ -364,7 +373,10 @@ public sealed class AiCoachService
         if (compact.Length > 180)
             compact = compact[..180].TrimEnd() + "…";
 
-        return "BUY: " + deterministicBuy + "\nDO: " + compact + "\nADAPT: use previous round result";
+        return "BUY: " + deterministicBuy +
+               "\nPOSITION: " + deterministicPosition +
+               "\nDO: " + compact +
+               "\nADAPT: use previous round result";
     }
 
     private static string StripThinking(string text)

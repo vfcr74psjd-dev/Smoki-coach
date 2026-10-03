@@ -22,6 +22,8 @@ public sealed class MainForm : Form
     private PhoneDashboardServer? _phoneServer;
     private AutoDemoInboxService? _demoInbox;
     private GameOverlayForm? _gameOverlay;
+    private Cs2ChatIntentWatcher? _chatIntentWatcher;
+    private readonly Dictionary<int, string> _roundIntents = new();
     private readonly Label _phoneUrl = new();
     private readonly Button _updateButton = new();
     private readonly Label _aiText = new();
@@ -116,6 +118,16 @@ public sealed class MainForm : Form
         if (path == null)
             _status.Text = "OFFLINE • GSI NOT INSTALLED";
 
+        var chatLogPath = GsiInstaller.TryEnableChatLog();
+        if (!string.IsNullOrWhiteSpace(chatLogPath))
+        {
+            _chatIntentWatcher = new Cs2ChatIntentWatcher(
+                chatLogPath,
+                () => FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
+            _chatIntentWatcher.IntentDetected += OnChatIntentDetected;
+            _chatIntentWatcher.Start();
+        }
+
         Shown += async (_,__) =>
         {
             _gameOverlay?.ApplyMode(_prefs.OverlayMode);
@@ -134,6 +146,9 @@ public sealed class MainForm : Form
             _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
             _demoInbox?.Dispose();
+            if (_chatIntentWatcher != null)
+                _chatIntentWatcher.IntentDetected -= OnChatIntentDetected;
+            _chatIntentWatcher?.Dispose();
             if (_gameOverlay != null)
                 _gameOverlay.LayoutSaved -= OnOverlayLayoutSaved;
             _gameOverlay?.Close();
@@ -1514,7 +1529,8 @@ public sealed class MainForm : Form
             _mode.SelectedItem?.ToString() ?? "Balanced",
             _role.SelectedItem?.ToString() ?? "Flex",
             _focus.SelectedItem?.ToString() ?? "More kills",
-            _rounds.ToList()
+            _rounds.ToList(),
+            GetRoundIntent(snapshot.Round)
         );
 
         _latestAiAdvice = instant;
@@ -1544,6 +1560,7 @@ public sealed class MainForm : Form
                 _rounds.ToList(),
                 $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"}",
                 _profile.Nickname,
+                GetRoundIntent(snapshot.Round),
                 requestToken
             );
 
@@ -1790,6 +1807,7 @@ public sealed class MainForm : Form
                 ArchiveCurrentSession(_previous.Map, _previous);
                 _sessionStartedUtc = DateTime.UtcNow;
                 _rounds.Clear();
+                _roundIntents.Clear();
                 _trackedRound = s.Round;
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
@@ -1814,6 +1832,7 @@ public sealed class MainForm : Form
                     ArchiveCurrentSession(_previous.Map, _previous);
                     _sessionStartedUtc = DateTime.UtcNow;
                     _rounds.Clear();
+                    _roundIntents.Clear();
                 }
                 else
                 {
@@ -1835,7 +1854,12 @@ public sealed class MainForm : Form
                         Survived = _trackedRoundLastHealth > 0,
                         WeaponEnd = _trackedRoundLastHealth > 0
                             ? _trackedRoundPrimaryWeapon
-                            : ""
+                            : "",
+                        Intent = GetRoundIntent(pr),
+                        PositionPlan = CoachEngine.PositionPlan(
+                            _previous,
+                            GetRoundIntent(pr),
+                            _rounds)
                     });
                     while (_rounds.Count > 40) _rounds.RemoveAt(0);
                 }
@@ -1862,6 +1886,53 @@ public sealed class MainForm : Form
                 _ = RefreshAiCoachAsync(s);
             }
         });
+    }
+
+    private string GetRoundIntent(int? round)
+    {
+        if (round is not int r)
+            return "";
+
+        return _roundIntents.TryGetValue(r, out var intent)
+            ? CoachEngine.NormalizeRoundIntent(intent)
+            : "";
+    }
+
+    private void OnChatIntentDetected(string intent)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnChatIntentDetected(intent));
+            return;
+        }
+
+        intent = CoachEngine.NormalizeRoundIntent(intent);
+        if (string.IsNullOrWhiteSpace(intent) || _current.Round is not int currentRound)
+            return;
+
+        var targetRound = string.Equals(
+            _current.RoundPhase,
+            "over",
+            StringComparison.OrdinalIgnoreCase)
+            ? currentRound + 1
+            : currentRound;
+
+        _roundIntents[targetRound] = intent;
+
+        foreach (var old in _roundIntents.Keys
+                     .Where(x => x < currentRound - 2)
+                     .ToList())
+        {
+            _roundIntents.Remove(old);
+        }
+
+        _aiStatus.Text = $"CHAT {intent} • POSITION";
+        _aiStatus.ForeColor = Color.FromArgb(255, 156, 44);
+
+        if (targetRound == currentRound && _autoAi.Checked)
+            _ = RefreshAiCoachAsync(_current, true);
+
+        RefreshUi();
     }
 
     private async Task LoadFaceitSnapshotAsync(bool force = false)
@@ -1996,8 +2067,10 @@ public sealed class MainForm : Form
         var roundText = _current.Round is int currentRound ? $"R{currentRound + 1}" : "—";
         var scoreText = $"{_current.CtScore?.ToString() ?? "—"}:{_current.TScore?.ToString() ?? "—"}";
 
+        var liveIntent = GetRoundIntent(_current.Round);
         _liveContext.Text =
-            $"{prettyMap.ToUpperInvariant()}  •  {(_current.Team ?? "—")}  •  {roundText}  •  SCORE {scoreText}  •  {CoachEngine.ClassifyRound(_current).ToUpperInvariant()}";
+            $"{prettyMap.ToUpperInvariant()}  •  {(_current.Team ?? "—")}  •  {roundText}  •  SCORE {scoreText}  •  {CoachEngine.ClassifyRound(_current).ToUpperInvariant()}" +
+            (string.IsNullOrWhiteSpace(liveIntent) ? "" : $"  •  CHAT {liveIntent}");
 
         _stats["map"].Text = prettyMap;
         _stats["side"].Text = string.IsNullOrWhiteSpace(_current.Team) ? "—" : _current.Team;

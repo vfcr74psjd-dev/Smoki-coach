@@ -38,4 +38,6 @@ public sealed class RoundRecord
     public bool? Won { get; set; }
     public bool Survived { get; set; }
     public string WeaponEnd { get; set; } = "";
+    public string Intent { get; set; } = "";
+    public string PositionPlan { get; set; } = "";
 }

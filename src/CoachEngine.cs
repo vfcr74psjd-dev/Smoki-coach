@@ -101,14 +101,150 @@ public static class CoachEngine
         string mode,
         string role,
         string focus,
-        IReadOnlyList<RoundRecord> rounds)
+        IReadOnlyList<RoundRecord> rounds,
+        string intent)
     {
         var variant = Math.Abs((s.Round ?? 0) % 3);
         var buy = RoundBuyPlan(s);
+        var position = PositionPlan(s, intent, rounds);
         var action = CompactActionPlan(s, role, focus, variant, rounds);
         var adapt = CompactAdaptPlan(rounds, mode);
 
-        return $"BUY: {buy}\nDO: {action}\nADAPT: {adapt}";
+        return $"BUY: {buy}\nPOSITION: {position}\nDO: {action}\nADAPT: {adapt}";
+    }
+
+    public static string NormalizeRoundIntent(string? raw)
+    {
+        var value = (raw ?? "").Trim().ToUpperInvariant();
+        return value switch
+        {
+            "A" => "A",
+            "B" => "B",
+            _ => ""
+        };
+    }
+
+    public static string PositionPlan(
+        GameSnapshot s,
+        string intent,
+        IReadOnlyList<RoundRecord> rounds)
+    {
+        intent = NormalizeRoundIntent(intent);
+        var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+        var variant = Math.Abs((s.Round ?? 0) % 3);
+
+        var recentAtIntent = rounds
+            .TakeLast(8)
+            .Where(r =>
+                !string.IsNullOrWhiteSpace(intent) &&
+                string.Equals(
+                    NormalizeRoundIntent(r.Intent),
+                    intent,
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var failed = recentAtIntent.Count(r =>
+            r.Won == false ||
+            r.DeathsRound > 0);
+
+        var lastPosition = recentAtIntent
+            .LastOrDefault()?.PositionPlan ?? "";
+
+        var options = ct
+            ? CtPositionOptions(s.Map, intent)
+            : TPositionOptions(s.Map, intent);
+
+        if (options.Length == 0)
+            return ct
+                ? "anchor site • prvi kontakt + varen umik"
+                : "drugi kontakt • ostani tradeable";
+
+        var index = Math.Abs(variant + failed) % options.Length;
+
+        if (options.Length > 1 &&
+            string.Equals(
+                options[index],
+                lastPosition,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            index = (index + 1) % options.Length;
+        }
+
+        return options[index];
+    }
+
+    private static string[] CtPositionOptions(string map, string intent)
+    {
+        return (map, intent) switch
+        {
+            ("de_mirage", "B") => new[] { "B apps • bench/van off-angle", "short • cat info + fall back", "market • door/window crossfire" },
+            ("de_mirage", "A") => new[] { "ticket • A ramp line + escape", "jungle • connector trade angle", "triple/default • site crossfire" },
+
+            ("de_inferno", "B") => new[] { "banana • car/coffins delay", "coffins • anti-exec crossfire", "CT • passive B retake angle" },
+            ("de_inferno", "A") => new[] { "pit • apps/short crossfire", "site • default/new box trade", "library/long • rotate-ready angle" },
+
+            ("de_dust2", "B") => new[] { "B window • tunnels info", "B doors • crossfire + escape", "back plat • passive anti-rush" },
+            ("de_dust2", "A") => new[] { "A long • car/site support", "cat • short info + fall back", "A site • ramp/goose crossfire" },
+
+            ("de_nuke", "B") => new[] { "ramp • first contact + fall lower", "B site • decon crossfire", "control/decon • late anti-plant angle" },
+            ("de_nuke", "A") => new[] { "hut • close info + fall", "rafters • A crossfire", "main • outside/A rotate angle" },
+
+            ("de_ancient", "B") => new[] { "cave • first contact + fall", "B site • pillar crossfire", "CT • passive B retake angle" },
+            ("de_ancient", "A") => new[] { "donut • mid/A trade", "A site • default crossfire", "temple • passive anti-exec" },
+
+            ("de_anubis", "B") => new[] { "B connector • water trade", "B site • back-site crossfire", "CT • passive B retake angle" },
+            ("de_anubis", "A") => new[] { "A main • early info + fall", "A site • default crossfire", "heaven/connector • rotate-ready angle" },
+
+            ("de_overpass", "B") => new[] { "monster • pillar/short crossfire", "short B • info + fall", "B site • barrels/pillar anchor" },
+            ("de_overpass", "A") => new[] { "bathrooms • info + fall", "long A • passive line", "A site • truck/bank crossfire" },
+
+            ("de_vertigo", "B") => new[] { "B stairs • first contact + fall", "B site • back-site crossfire", "mid/B rotate • passive support" },
+            ("de_vertigo", "A") => new[] { "A ramp • sandbags support", "A site • default crossfire", "elevator/short • rotate-ready angle" },
+
+            ("de_train", "B") => new[] { "B upper • first contact + fall", "B lower • crossfire", "B site • passive anchor" },
+            ("de_train", "A") => new[] { "A main • info + fall", "ivy • long angle + escape", "connector • site trade/rotate" },
+
+            (_, "B") => new[] { "B site • first contact + varen umik", "B rotate angle • drugi kontakt" },
+            (_, "A") => new[] { "A site • first contact + varen umik", "A rotate angle • drugi kontakt" },
+            _ => Array.Empty<string>()
+        };
+    }
+
+    private static string[] TPositionOptions(string map, string intent)
+    {
+        return (map, intent) switch
+        {
+            ("de_mirage", "B") => new[] { "B apps • drugi kontakt za trade", "underpass → short • pozni split", "apps exit • utility support" },
+            ("de_mirage", "A") => new[] { "A ramp • drugi kontakt", "palace • pozni trade", "connector • split support" },
+
+            ("de_inferno", "B") => new[] { "banana • drugi kontakt", "logs/car • utility support", "banana late • trade za execute" },
+            ("de_inferno", "A") => new[] { "apps • drugi kontakt", "short • trade entry", "long • late split support" },
+
+            ("de_dust2", "B") => new[] { "upper tunnels • drugi kontakt", "B tunnels • flash + trade", "mid → B • split support" },
+            ("de_dust2", "A") => new[] { "long • drugi kontakt", "short • cat trade", "A ramp • post-entry support" },
+
+            ("de_nuke", "B") => new[] { "ramp • drugi kontakt", "secret • lower split support", "decon • late trade" },
+            ("de_nuke", "A") => new[] { "hut • drugi kontakt", "squeaky • utility trade", "main • A split support" },
+
+            ("de_ancient", "B") => new[] { "B ramp • drugi kontakt", "cave • trade support", "mid → B • split timing" },
+            ("de_ancient", "A") => new[] { "A main • drugi kontakt", "donut • split support", "A main late • utility trade" },
+
+            ("de_anubis", "B") => new[] { "B main • drugi kontakt", "water • split support", "connector • late trade" },
+            ("de_anubis", "A") => new[] { "A main • drugi kontakt", "mid → A • split support", "A main late • utility trade" },
+
+            ("de_overpass", "B") => new[] { "monster • drugi kontakt", "short B • split support", "water • late trade" },
+            ("de_overpass", "A") => new[] { "bathrooms • drugi kontakt", "long A • trade support", "connector → A • late split" },
+
+            ("de_vertigo", "B") => new[] { "B stairs • drugi kontakt", "mid → B • split support", "B execute • utility trade" },
+            ("de_vertigo", "A") => new[] { "A ramp • drugi kontakt", "short • split support", "ramp late • utility trade" },
+
+            ("de_train", "B") => new[] { "B upper • drugi kontakt", "B lower • trade support", "connector route • late split" },
+            ("de_train", "A") => new[] { "A main • drugi kontakt", "ivy • split support", "connector • late trade" },
+
+            (_, "B") => new[] { "B route • drugi kontakt + trade" },
+            (_, "A") => new[] { "A route • drugi kontakt + trade" },
+            _ => Array.Empty<string>()
+        };
     }
 
     public static string RoundBuyPlan(GameSnapshot s)
