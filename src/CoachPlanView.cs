@@ -33,7 +33,7 @@ public sealed class CoachPlanView : Control
             true);
         DoubleBuffered = true;
         BackColor = Color.FromArgb(18, 20, 22);
-        MinimumSize = new Size(420, 260);
+        MinimumSize = new Size(260, 150);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -44,9 +44,23 @@ public sealed class CoachPlanView : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
+        // Draw in a 260px logical-height canvas, then scale down when Windows
+        // DPI / a smaller window leaves less room. This keeps every section
+        // visible instead of letting WinForms clip the bottom half.
+        const float logicalHeight = 260f;
+        var availableHeight = Math.Max(1f, ClientSize.Height - 2f);
+        var scale = Math.Min(1f, availableHeight / logicalHeight);
+        scale = Math.Max(0.58f, scale);
+
+        g.ScaleTransform(scale, scale);
+
+        var logicalWidth = Math.Max(
+            220,
+            (int)Math.Floor(ClientSize.Width / scale));
+
         var data = Parse(_advice);
         var pad = 8;
-        var width = Math.Max(10, ClientSize.Width - pad * 2);
+        var width = Math.Max(10, logicalWidth - pad * 2);
         var y = 4;
 
         DrawPrimary(g, new Rectangle(pad, y, width, 72),
@@ -67,7 +81,7 @@ public sealed class CoachPlanView : Control
             Orange);
         y += 48;
 
-        var half = (width - 8) / 2;
+        var half = Math.Max(80, (width - 8) / 2);
         DrawSlim(g, new Rectangle(pad, y, half, 52),
             "BUY",
             data["BUY"],
