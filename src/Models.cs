@@ -18,6 +18,7 @@ public sealed class GameSnapshot
     public int? Deaths { get; set; }
     public int? Assists { get; set; }
     public string Weapon { get; set; } = "";
+    public string PrimaryWeapon { get; set; } = "";
     public float? PositionX { get; set; }
     public float? PositionY { get; set; }
     public float? PositionZ { get; set; }
@@ -34,4 +35,7 @@ public sealed class RoundRecord
     public int MoneyEnd { get; set; }
     public int KillsRound { get; set; }
     public int DeathsRound { get; set; }
+    public bool? Won { get; set; }
+    public bool Survived { get; set; }
+    public string WeaponEnd { get; set; } = "";
 }

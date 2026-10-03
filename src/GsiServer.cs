@@ -255,6 +255,20 @@ public sealed class GsiServer : IDisposable
             && float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out z);
     }
 
+    private static int PrimaryWeaponPriority(string weapon)
+    {
+        var w = (weapon ?? "").ToLowerInvariant();
+
+        if (w is "awp" or "scar20" or "g3sg1") return 100;
+        if (w is "ak47" or "m4a1" or "m4a1_silencer" or "aug" or "sg556") return 95;
+        if (w is "famas" or "galilar") return 90;
+        if (w is "ssg08") return 85;
+        if (w is "mp9" or "mac10" or "mp7" or "mp5sd" or "ump45" or "p90" or "bizon") return 70;
+        if (w is "nova" or "xm1014" or "mag7" or "sawedoff") return 60;
+        if (w is "m249" or "negev") return 55;
+        return 0;
+    }
+
     private static GameSnapshot Parse(JsonElement root)
     {
         var s = new GameSnapshot();
@@ -293,15 +307,28 @@ public sealed class GsiServer : IDisposable
             if (p.TryGetProperty("weapons", out var weapons) &&
                 weapons.ValueKind == JsonValueKind.Object)
             {
+                var owned = new List<string>();
+
                 foreach (var w in weapons.EnumerateObject())
                 {
-                    if (w.Value.ValueKind == JsonValueKind.Object &&
-                        StrProp(w.Value, "state") == "active")
-                    {
-                        s.Weapon = StrProp(w.Value, "name").Replace("weapon_", "");
-                        break;
-                    }
+                    if (w.Value.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    var name = StrProp(w.Value, "name")
+                        .Replace("weapon_", "", StringComparison.OrdinalIgnoreCase);
+
+                    if (string.IsNullOrWhiteSpace(name))
+                        continue;
+
+                    owned.Add(name);
+
+                    if (StrProp(w.Value, "state") == "active")
+                        s.Weapon = name;
                 }
+
+                s.PrimaryWeapon = owned
+                    .OrderByDescending(PrimaryWeaponPriority)
+                    .FirstOrDefault(x => PrimaryWeaponPriority(x) > 0) ?? "";
             }
         }
 

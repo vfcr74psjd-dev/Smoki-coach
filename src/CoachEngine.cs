@@ -23,9 +23,11 @@ public static class CoachEngine
         if (s.Round is 0 or 12) return "Pistol";
 
         var money = s.Money ?? 0;
-        var w = (s.Weapon ?? "").ToLowerInvariant();
+        var w = (string.IsNullOrWhiteSpace(s.PrimaryWeapon) ? s.Weapon : s.PrimaryWeapon)
+            .ToLowerInvariant();
 
-        if (w.Contains("ak47") || w.Contains("m4a1") || w.Contains("awp") ||
+        if (!string.IsNullOrWhiteSpace(s.PrimaryWeapon) ||
+            w.Contains("ak47") || w.Contains("m4a1") || w.Contains("awp") ||
             w.Contains("aug") || w.Contains("sg556"))
             return "Full buy";
 
@@ -46,6 +48,9 @@ public static class CoachEngine
                 ? ("Pistol", "Balanced: armor za duel ali kit + utility za support. Ne razbij economyja z naključnimi pistol nakupi.")
                 : ("Pistol", "Balanced: armor za opening/trade ali utility + P250 samo, če imaš jasen entry plan.");
         }
+
+        if (!string.IsNullOrWhiteSpace(s.PrimaryWeapon))
+            return ("Keep " + PrettyWeapon(s.PrimaryWeapon), RoundBuyPlan(s));
 
         if (money >= 4000 || roundType == "Full buy")
         {
@@ -99,14 +104,14 @@ public static class CoachEngine
         IReadOnlyList<RoundRecord> rounds)
     {
         var variant = Math.Abs((s.Round ?? 0) % 3);
-        var buy = CompactBuyPlan(s);
-        var action = CompactActionPlan(s, role, focus, variant);
+        var buy = RoundBuyPlan(s);
+        var action = CompactActionPlan(s, role, focus, variant, rounds);
         var adapt = CompactAdaptPlan(rounds, mode);
 
         return $"BUY: {buy}\nDO: {action}\nADAPT: {adapt}";
     }
 
-    private static string CompactBuyPlan(GameSnapshot s)
+    public static string RoundBuyPlan(GameSnapshot s)
     {
         var money = s.Money ?? 0;
         var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
@@ -116,6 +121,25 @@ public static class CoachEngine
             return ct
                 ? (money >= 800 ? "kevlar • ali kit + flash, če igraš support" : "brez force-a")
                 : (money >= 800 ? "kevlar • ali smoke + flash + P250 za utility plan" : "brez force-a");
+
+        if (!string.IsNullOrWhiteSpace(s.PrimaryWeapon))
+        {
+            var gun = PrettyWeapon(s.PrimaryWeapon);
+            var armor = s.Armor ?? 0;
+            var helmet = s.Helmet == true;
+
+            if (armor < 40)
+                return $"KEEP {gun} • kupi armor • nato smoke/flash";
+
+            if (ct)
+                return helmet
+                    ? $"KEEP {gun} • smoke + flash/kit • brez novega primaryja"
+                    : $"KEEP {gun} • helmet po potrebi + smoke/kit";
+
+            return helmet
+                ? $"KEEP {gun} • smoke + molly/flash • brez novega primaryja"
+                : $"KEEP {gun} • helmet + utility";
+        }
 
         if (money < 1500)
             return "eco • P250 samo, če ne pokvari naslednjega full buyja";
@@ -141,11 +165,19 @@ public static class CoachEngine
         GameSnapshot s,
         string role,
         string focus,
-        int variant)
+        int variant,
+        IReadOnlyList<RoundRecord> rounds)
     {
         var mapStep = CompactMapStep(s.Map, s.Team, variant);
+        var last = rounds.LastOrDefault();
+        var protectedCarry =
+            last?.Won == true &&
+            last.Survived &&
+            !string.IsNullOrWhiteSpace(s.PrimaryWeapon);
 
-        var roleStep = role switch
+        var roleStep = protectedCarry
+            ? $"protect {PrettyWeapon(s.PrimaryWeapon)} • igraj tradeable drugi kontakt"
+            : role switch
         {
             "Entry" => "entry samo s tradeom",
             "Lurk" => "vzemi info, nato pravočasno joinaj",
@@ -176,6 +208,18 @@ public static class CoachEngine
                 ? "1 kontroliran opening duel • brez drugega dry peeka"
                 : "prvi duel naj bo tradeable • oceni kontakt";
 
+        if (last.Won == true && last.Survived && !string.IsNullOrWhiteSpace(last.WeaponEnd))
+            return $"W + survived {PrettyWeapon(last.WeaponEnd)} → ohrani gun • manj hero riska";
+
+        if (last.Won == false && last.Survived && !string.IsNullOrWhiteSpace(last.WeaponEnd))
+            return $"L + saved {PrettyWeapon(last.WeaponEnd)} → igraj okoli saved guna • tradeable";
+
+        if (last.Won == true && !last.Survived)
+            return "prejšnja W, ampak si umrl → izkoristi win economy • brez nepotrebnega openerja";
+
+        if (last.Won == false && !last.Survived)
+            return "prejšnja L + death → spremeni opening timing • manj early riska";
+
         if (last.KillsRound == 0 && last.DeathsRound > 0)
             return "prejšnja 0K/1D → manj early riska • igraj drugi kontakt";
 
@@ -189,6 +233,35 @@ public static class CoachEngine
             return "prejšnja 0K/0D → bodi bližje prvemu tradeu";
 
         return $"prejšnja {last.KillsRound}K/{last.DeathsRound}D → isti plan • drugačen timing";
+    }
+
+    public static string PrettyWeapon(string weapon)
+    {
+        var w = (weapon ?? "").Trim().ToLowerInvariant();
+        return w switch
+        {
+            "ak47" => "AK-47",
+            "m4a1" => "M4A4",
+            "m4a1_silencer" => "M4A1-S",
+            "awp" => "AWP",
+            "ssg08" => "SSG 08",
+            "galilar" => "Galil",
+            "famas" => "FAMAS",
+            "sg556" => "SG 553",
+            "aug" => "AUG",
+            "mp9" => "MP9",
+            "mac10" => "MAC-10",
+            "ump45" => "UMP-45",
+            "mp5sd" => "MP5-SD",
+            "mp7" => "MP7",
+            "p90" => "P90",
+            "bizon" => "PP-Bizon",
+            "xm1014" => "XM1014",
+            "mag7" => "MAG-7",
+            "sawedoff" => "Sawed-Off",
+            "nova" => "Nova",
+            _ => string.IsNullOrWhiteSpace(weapon) ? "gun" : weapon.ToUpperInvariant()
+        };
     }
 
     private static string CompactMapStep(string map, string side, int variant)
