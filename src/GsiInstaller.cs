@@ -37,7 +37,7 @@ public static class GsiInstaller
         " }\n" +
         "}\n";
 
-    public static string? TryInstall()
+    public static string? FindConfigDirectory()
     {
         var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
@@ -51,17 +51,66 @@ public static class GsiInstaller
             @"E:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive\game\csgo\cfg",
         };
 
-        foreach (var dir in candidates)
+        return candidates.FirstOrDefault(Directory.Exists);
+    }
+
+    public static string? TryInstall()
+    {
+        var dir = FindConfigDirectory();
+        if (string.IsNullOrWhiteSpace(dir))
+            return null;
+
+        try
         {
-            if (!Directory.Exists(dir)) continue;
-            try
-            {
-                var path = Path.Combine(dir, "gamestate_integration_sm0ki72.cfg");
-                File.WriteAllText(path, ConfigText, Encoding.UTF8);
-                return path;
-            }
-            catch { }
+            var path = Path.Combine(dir, "gamestate_integration_sm0ki72.cfg");
+            File.WriteAllText(path, ConfigText, Encoding.UTF8);
+            return path;
         }
-        return null;
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static string? TryEnableChatLog()
+    {
+        var cfgDir = FindConfigDirectory();
+        if (string.IsNullOrWhiteSpace(cfgDir))
+            return null;
+
+        try
+        {
+            var coachCfg = Path.Combine(cfgDir, "sm0ki_coach_chat.cfg");
+            File.WriteAllText(
+                coachCfg,
+                "con_logfile \"console.log\"\n",
+                Encoding.UTF8);
+
+            var autoexec = Path.Combine(cfgDir, "autoexec.cfg");
+            var current = File.Exists(autoexec)
+                ? File.ReadAllText(autoexec, Encoding.UTF8)
+                : "";
+
+            const string marker = "exec sm0ki_coach_chat.cfg";
+            if (!current.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            {
+                var prefix = current.Length == 0 || current.EndsWith("\n") ? "" : "\n";
+                File.AppendAllText(
+                    autoexec,
+                    prefix +
+                    "\n// Sm0ki Solo Coach: local chat intent log\n" +
+                    marker + "\n",
+                    Encoding.UTF8);
+            }
+
+            var csgoDir = Directory.GetParent(cfgDir)?.FullName;
+            return string.IsNullOrWhiteSpace(csgoDir)
+                ? null
+                : Path.Combine(csgoDir, "console.log");
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
