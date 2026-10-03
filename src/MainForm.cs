@@ -361,17 +361,17 @@ public sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(9, 10, 12)
         };
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
         var top = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 1,
-            Padding = new Padding(22, 12, 22, 8),
+            Padding = new Padding(22, 10, 22, 6),
             Margin = Padding.Empty,
             BackColor = Color.FromArgb(12, 13, 15)
         };
@@ -386,20 +386,20 @@ public sealed class MainForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        liveTitle.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
-        liveTitle.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
+        liveTitle.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        liveTitle.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         liveTitle.Controls.Add(new Label
         {
             Text = "LIVE COACH",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 18, FontStyle.Bold),
+            Font = new Font("Segoe UI", 17, FontStyle.Bold),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.BottomLeft
         }, 0, 0);
 
         _liveContext.Text = "Waiting for CS2 telemetry…";
         _liveContext.Dock = DockStyle.Fill;
-        _liveContext.Font = new Font("Segoe UI", 8.8f);
+        _liveContext.Font = new Font("Segoe UI", 8.2f);
         _liveContext.ForeColor = Color.FromArgb(130, 137, 147);
         _liveContext.TextAlign = ContentAlignment.TopLeft;
         liveTitle.Controls.Add(_liveContext, 0, 1);
@@ -612,8 +612,8 @@ public sealed class MainForm : Form
             AutoScroll = true,
             AutoScrollMinSize = new Size(0, 430)
         };
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 246));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 236));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));
         right.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var setupCard = MakeCard();
@@ -710,8 +710,8 @@ public sealed class MainForm : Form
             RowCount = 3,
             Margin = Padding.Empty
         };
-        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
-        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        faceitLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         faceitLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         faceitLayout.Controls.Add(new Label
@@ -810,7 +810,8 @@ public sealed class MainForm : Form
 
         var refreshGsi = MakeButton("REFRESH GSI", 100, false);
         refreshGsi.Dock = DockStyle.Fill;
-        refreshGsi.Margin = new Padding(2, 0, 0, 0);
+        refreshGsi.Margin = new Padding(2, 4, 0, 4);
+        refreshGsi.MinimumSize = new Size(100, 28);
         refreshGsi.Font = new Font("Segoe UI", 7.2f, FontStyle.Bold);
         refreshGsi.Click += (_,__) =>
         {
@@ -837,9 +838,9 @@ public sealed class MainForm : Form
             // actual pixels even on 125/150% Windows scaling.
             root.ColumnStyles[0].Width = w < 1320 ? 166 : 188;
 
-            workspace.RowStyles[0].Height = h < 820 ? 68 : 76;
-            workspace.RowStyles[1].Height = h < 820 ? 72 : 86;
-            workspace.RowStyles[3].Height = h < 820 ? 26 : 30;
+            workspace.RowStyles[0].Height = h < 820 ? 86 : 94;
+            workspace.RowStyles[1].Height = h < 820 ? 74 : 82;
+            workspace.RowStyles[3].Height = 44;
 
             if (w < 1320)
             {
@@ -857,8 +858,8 @@ public sealed class MainForm : Form
             left.RowStyles[1].Height = h < 820 ? 90 : 110;
             left.RowStyles[2].Height = h < 820 ? 50 : 64;
 
-            right.RowStyles[0].Height = h < 820 ? 220 : 246;
-            right.RowStyles[1].Height = h < 820 ? 112 : 138;
+            right.RowStyles[0].Height = h < 820 ? 214 : 236;
+            right.RowStyles[1].Height = h < 820 ? 154 : 168;
 
             // Header buttons must not squeeze the live context at higher DPI.
             top.ColumnStyles[1].Width = w < 1320 ? 108 : 122;
@@ -1239,8 +1240,8 @@ public sealed class MainForm : Form
             Padding = new Padding(6, 3, 6, 3),
             BackColor = Color.FromArgb(16, 18, 20)
         };
-        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
-        metric.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
+        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
 
         metric.Controls.Add(new Label
         {
@@ -1257,7 +1258,7 @@ public sealed class MainForm : Form
         value.AutoSize = false;
         value.Margin = Padding.Empty;
         value.Padding = Padding.Empty;
-        value.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+        value.Font = new Font("Segoe UI", 9.4f, FontStyle.Bold);
         value.ForeColor = Color.White;
         value.TextAlign = ContentAlignment.MiddleLeft;
         metric.Controls.Add(value, 0, 1);
