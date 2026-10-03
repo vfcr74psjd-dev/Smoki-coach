@@ -8,7 +8,7 @@ public sealed class CoachPreferences
     public string Role { get; set; } = "Flex";
     public string Focus { get; set; } = "More kills";
     public bool AutoAi { get; set; } = true;
-    public string OverlayMode { get; set; } = "Minimal";
+    public string OverlayMode { get; set; } = "Off";
     public bool OverlayCustomPlacement { get; set; }
     public int OverlayX { get; set; } = -1;
     public int OverlayY { get; set; } = -1;

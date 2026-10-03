@@ -887,7 +887,6 @@ public sealed class MainForm : Form
 
         if (age <= TimeSpan.FromSeconds(12))
         {
-            _gameOverlay?.SetGameActive(!string.IsNullOrWhiteSpace(_current.Map));
             _status.Text = "GSI LIVE";
             _status.ForeColor = Color.FromArgb(126, 240, 174);
             _status.BackColor = _pulseBright
@@ -901,7 +900,6 @@ public sealed class MainForm : Form
         }
         else if (_lastGsiUtc != DateTime.MinValue)
         {
-            _gameOverlay?.SetGameActive(false);
             _status.Text = "GSI WAITING";
             _status.ForeColor = Color.FromArgb(244, 155, 121);
             _status.BackColor = Color.FromArgb(52, 35, 31);
