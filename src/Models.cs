@@ -5,6 +5,7 @@ public sealed class GameSnapshot
     public string PlayerName { get; set; } = "";
     public string Team { get; set; } = "";
     public string Map { get; set; } = "";
+    public string MapPhase { get; set; } = "";
     public int? Round { get; set; }
     public string RoundPhase { get; set; } = "";
     public string RoundWinTeam { get; set; } = "";

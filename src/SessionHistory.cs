@@ -17,6 +17,9 @@ public sealed class SessionSummary
     public int SurvivalRounds { get; set; }
     public int CtScore { get; set; }
     public int TScore { get; set; }
+    public string BestArea { get; set; } = "";
+    public string TroubleArea { get; set; } = "";
+    public string NextFocus { get; set; } = "";
 
     public double KillsPerRound => Rounds > 0 ? (double)Kills / Rounds : 0;
     public double SurvivalRate => Rounds > 0 ? 100.0 * SurvivalRounds / Rounds : 0;

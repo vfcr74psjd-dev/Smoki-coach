@@ -335,6 +335,7 @@ public sealed class GsiServer : IDisposable
         if (root.TryGetProperty("map", out var map))
         {
             s.Map = StrProp(map, "name");
+            s.MapPhase = StrProp(map, "phase");
             s.Round = IntProp(map, "round");
 
             if (map.TryGetProperty("team_ct", out var ct))
