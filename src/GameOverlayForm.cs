@@ -23,7 +23,7 @@ public sealed class GameOverlayForm : Form
 
     private readonly System.Windows.Forms.Timer _animation = new();
     private GameSnapshot _snapshot = new();
-    private string _advice = "BUY: waiting for CS2\nPOSITION: auto\nDO: waiting for round data\nADAPT: —";
+    private string _advice = "BUY: waiting for CS2\nPOSITION: auto\nEXPECT: learning enemy pattern\nDO: waiting for round data\nADAPT: —";
     private string _aiStatus = "FAST PLAN";
     private string _mode = "Minimal";
     private bool _temporarilyHidden;
@@ -264,7 +264,7 @@ public sealed class GameOverlayForm : Form
 
         _snapshot = snapshot;
         _advice = string.IsNullOrWhiteSpace(advice)
-            ? "BUY: —\nPOSITION: —\nDO: —\nADAPT: —"
+            ? "BUY: —\nPOSITION: —\nEXPECT: —\nDO: —\nADAPT: —"
             : advice.Trim();
         _aiStatus = string.IsNullOrWhiteSpace(aiStatus) ? "FAST PLAN" : aiStatus.Trim();
 
@@ -396,10 +396,10 @@ public sealed class GameOverlayForm : Form
 
     private void ApplyScaledSize(bool keepCenter)
     {
-        var baseHeight = _mode == "Full" ? 250 : 190;
+        var baseHeight = _mode == "Full" ? 282 : 222;
         Size = new Size(
             Math.Max(399, (int)Math.Round(570 * _scale)),
-            Math.Max(_mode == "Full" ? 175 : 133, (int)Math.Round(baseHeight * _scale)));
+            Math.Max(_mode == "Full" ? 197 : 155, (int)Math.Round(baseHeight * _scale)));
     }
 
     private void ClampToVisibleScreen()
@@ -511,7 +511,7 @@ public sealed class GameOverlayForm : Form
     private void DrawAdvice(Graphics g, double elapsedMs)
     {
         var lines = ParseAdvice(_advice);
-        var reveal = elapsedMs < 90 ? 1 : elapsedMs < 180 ? 2 : elapsedMs < 270 ? 3 : 4;
+        var reveal = elapsedMs < 75 ? 1 : elapsedMs < 150 ? 2 : elapsedMs < 225 ? 3 : elapsedMs < 300 ? 4 : 5;
 
         using var labelFont = new Font("Segoe UI", 8.3f, FontStyle.Bold);
         using var textFont = new Font("Segoe UI", 9.4f, FontStyle.Regular);
@@ -521,9 +521,9 @@ public sealed class GameOverlayForm : Form
 
         var y = 46f;
         var rowHeight = 31f;
-        var labels = new[] { "BUY", "POSITION", "DO", "ADAPT" };
+        var labels = new[] { "BUY", "POSITION", "EXPECT", "DO", "ADAPT" };
 
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 5; i++)
         {
             if (i >= reveal)
                 break;
@@ -533,15 +533,15 @@ public sealed class GameOverlayForm : Form
             if (colon >= 0)
                 value = value[(colon + 1)..].Trim();
 
-            g.DrawString(labels[i], labelFont, i == 3 ? mutedBrush : orangeBrush, 18, y + 1);
-            g.DrawString(value, textFont, i == 3 ? mutedBrush : textBrush, 94, y);
+            g.DrawString(labels[i], labelFont, i == 4 ? mutedBrush : orangeBrush, 18, y + 1);
+            g.DrawString(value, textFont, i == 4 ? mutedBrush : textBrush, 94, y);
             y += rowHeight;
         }
     }
 
     private void DrawStats(Graphics g, int logicalWidth, int logicalHeight)
     {
-        var top = 182;
+        var top = 214;
         using var separator = new Pen(Color.FromArgb(45, 48, 51));
         g.DrawLine(separator, 18, top - 4, logicalWidth - 18, top - 4);
 
@@ -615,7 +615,7 @@ public sealed class GameOverlayForm : Form
             .ToList();
 
         var ordered = new List<string>();
-        foreach (var prefix in new[] { "BUY:", "POSITION:", "DO:", "ADAPT:" })
+        foreach (var prefix in new[] { "BUY:", "POSITION:", "EXPECT:", "DO:", "ADAPT:" })
         {
             var found = lines.FirstOrDefault(x =>
                 x.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
@@ -623,18 +623,18 @@ public sealed class GameOverlayForm : Form
                 ordered.Add(found);
         }
 
-        if (ordered.Count == 4)
+        if (ordered.Count == 5)
             return ordered;
 
         foreach (var line in lines)
         {
-            if (ordered.Count >= 4)
+            if (ordered.Count >= 5)
                 break;
             if (!ordered.Contains(line))
                 ordered.Add(line);
         }
 
-        while (ordered.Count < 4)
+        while (ordered.Count < 5)
             ordered.Add("—");
 
         return ordered;

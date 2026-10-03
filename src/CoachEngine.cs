@@ -107,10 +107,11 @@ public static class CoachEngine
         var variant = Math.Abs((s.Round ?? 0) % 3);
         var buy = RoundBuyPlan(s);
         var position = PositionPlan(s, intent, rounds);
+        var expectation = EnemyExpectation(s, rounds);
         var action = CompactActionPlan(s, role, focus, variant, rounds);
         var adapt = CompactAdaptPlan(rounds, mode);
 
-        return $"BUY: {buy}\nPOSITION: {position}\nDO: {action}\nADAPT: {adapt}";
+        return $"BUY: {buy}\nPOSITION: {position}\nEXPECT: {expectation}\nDO: {action}\nADAPT: {adapt}";
     }
 
     public static string NormalizeRoundIntent(string? raw)
@@ -185,6 +186,30 @@ public static class CoachEngine
         if (recent.Count == 0)
             return (s.Round ?? 0) % 2 == 0 ? "A" : "B";
 
+        if (ct)
+        {
+            var observedPlants = recent
+                .Where(r =>
+                    r.BombPlanted &&
+                    (r.BombSite == "A" || r.BombSite == "B"))
+                .ToList();
+
+            if (observedPlants.Count >= 2)
+            {
+                var aWeight = observedPlants
+                    .Select((r, i) => (Round: r, Weight: i + 1))
+                    .Where(x => x.Round.BombSite == "A")
+                    .Sum(x => x.Weight);
+                var bWeight = observedPlants
+                    .Select((r, i) => (Round: r, Weight: i + 1))
+                    .Where(x => x.Round.BombSite == "B")
+                    .Sum(x => x.Weight);
+
+                if (aWeight != bWeight)
+                    return aWeight > bWeight ? "A" : "B";
+            }
+        }
+
         int ScoreSite(string site)
         {
             var siteRounds = recent
@@ -223,6 +248,112 @@ public static class CoachEngine
         }
 
         return a > b ? "A" : "B";
+    }
+
+    public static string EnemyExpectation(
+        GameSnapshot s,
+        IReadOnlyList<RoundRecord> rounds)
+    {
+        var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+        var recent = rounds
+            .Where(r => string.Equals(
+                r.Side,
+                s.Team,
+                StringComparison.OrdinalIgnoreCase))
+            .TakeLast(8)
+            .ToList();
+
+        if (recent.Count < 2)
+            return "premalo podatkov • standard setup • confidence LOW";
+
+        if (ct)
+        {
+            var plants = recent
+                .Where(r =>
+                    r.BombPlanted &&
+                    (r.BombSite == "A" || r.BombSite == "B"))
+                .ToList();
+
+            var timedPlants = recent
+                .Where(r => r.BombPlanted && r.BombPlantSeconds.HasValue)
+                .ToList();
+
+            string sitePart;
+            string confidence;
+
+            if (plants.Count >= 2)
+            {
+                var a = plants.Count(r => r.BombSite == "A");
+                var b = plants.Count(r => r.BombSite == "B");
+                var diff = Math.Abs(a - b);
+
+                sitePart = a == b
+                    ? $"A/B split {a}:{b}"
+                    : a > b
+                        ? $"A pressure {a}/{plants.Count} plants"
+                        : $"B pressure {b}/{plants.Count} plants";
+
+                confidence = plants.Count >= 4 && diff >= 2
+                    ? "HIGH"
+                    : "MEDIUM";
+            }
+            else
+            {
+                sitePart = "site trend še ni dovolj jasen";
+                confidence = "LOW";
+            }
+
+            var tempoPart = "";
+            if (timedPlants.Count >= 2)
+            {
+                var fast = timedPlants.Count(r => r.BombPlantSeconds <= 40);
+                var late = timedPlants.Count(r => r.BombPlantSeconds >= 70);
+
+                tempoPart = fast >= Math.Max(2, late + 1)
+                    ? " • fast execute tendency"
+                    : late >= Math.Max(2, fast + 1)
+                        ? " • slow/late tendency"
+                        : " • mixed tempo";
+            }
+
+            return $"{sitePart}{tempoPart} • confidence {confidence}";
+        }
+
+        var aRounds = recent
+            .Where(r => NormalizeRoundIntent(r.Intent) == "A")
+            .ToList();
+        var bRounds = recent
+            .Where(r => NormalizeRoundIntent(r.Intent) == "B")
+            .ToList();
+
+        static int Stops(List<RoundRecord> siteRounds)
+            => siteRounds.Count(r => r.Won == false);
+
+        var aStops = Stops(aRounds);
+        var bStops = Stops(bRounds);
+
+        if (aRounds.Count >= 2 || bRounds.Count >= 2)
+        {
+            if (aRounds.Count >= 2 &&
+                (bRounds.Count < 2 ||
+                 (double)aStops / aRounds.Count >
+                 (double)bStops / Math.Max(1, bRounds.Count) + 0.20))
+            {
+                return $"A defense močnejša • stopped {aStops}/{aRounds.Count} hits • confidence MEDIUM";
+            }
+
+            if (bRounds.Count >= 2 &&
+                (aRounds.Count < 2 ||
+                 (double)bStops / bRounds.Count >
+                 (double)aStops / Math.Max(1, aRounds.Count) + 0.20))
+            {
+                return $"B defense močnejša • stopped {bStops}/{bRounds.Count} hits • confidence MEDIUM";
+            }
+
+            return "obramba deluje uravnoteženo • spremeni timing/site • confidence LOW";
+        }
+
+        return "premalo site podatkov • pričakuj standard CT setup • confidence LOW";
     }
 
     private static string[] CtPositionOptions(string map, string intent)

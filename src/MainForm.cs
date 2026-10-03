@@ -56,6 +56,10 @@ public sealed class MainForm : Form
     private string _trackedRoundWinTeam = "";
     private string _trackedRoundPrimaryWeapon = "";
     private int _trackedRoundLastHealth = 0;
+    private DateTime _trackedRoundLiveStartedUtc = DateTime.MinValue;
+    private bool _trackedBombPlanted;
+    private string _trackedBombSite = "";
+    private double? _trackedBombPlantSeconds;
     private DateTime _sessionStartedUtc = DateTime.UtcNow;
     private readonly System.Windows.Forms.Timer _uiPulseTimer = new();
     private DateTime _lastGsiUtc = DateTime.MinValue;
@@ -1795,6 +1799,8 @@ public sealed class MainForm : Form
 
                 if ((s.Health ?? 0) > 0 && !string.IsNullOrWhiteSpace(s.PrimaryWeapon))
                     _trackedRoundPrimaryWeapon = s.PrimaryWeapon;
+
+                TrackRoundPatternSnapshot(s);
             }
 
             bool mapChanged =
@@ -1814,6 +1820,7 @@ public sealed class MainForm : Form
                 _trackedRoundWinTeam = s.RoundWinTeam;
                 _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
                 _trackedRoundLastHealth = s.Health ?? 0;
+                ResetRoundPatternTracking(s);
             }
             else if (_trackedRound == null && s.Round is int initialRound)
             {
@@ -1823,6 +1830,7 @@ public sealed class MainForm : Form
                 _trackedRoundWinTeam = s.RoundWinTeam;
                 _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
                 _trackedRoundLastHealth = s.Health ?? 0;
+                ResetRoundPatternTracking(s);
             }
 
             if (!mapChanged && _previous.Round is int pr && s.Round is int cr && pr != cr)
@@ -1861,7 +1869,10 @@ public sealed class MainForm : Form
                         PositionPlan = CoachEngine.PositionPlan(
                             _previous,
                             GetRoundIntent(pr),
-                            _rounds)
+                            _rounds),
+                        BombPlanted = _trackedBombPlanted,
+                        BombSite = _trackedBombSite,
+                        BombPlantSeconds = _trackedBombPlantSeconds
                     });
                     while (_rounds.Count > 40) _rounds.RemoveAt(0);
                 }
@@ -1872,6 +1883,7 @@ public sealed class MainForm : Form
                 _trackedRoundWinTeam = s.RoundWinTeam;
                 _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
                 _trackedRoundLastHealth = s.Health ?? 0;
+                ResetRoundPatternTracking(s);
             }
 
             bool requestAi =
@@ -1888,6 +1900,62 @@ public sealed class MainForm : Form
                 _ = RefreshAiCoachAsync(s);
             }
         });
+    }
+
+    private void ResetRoundPatternTracking(GameSnapshot snapshot)
+    {
+        _trackedRoundLiveStartedUtc =
+            string.Equals(
+                snapshot.RoundPhase,
+                "live",
+                StringComparison.OrdinalIgnoreCase)
+                ? DateTime.UtcNow
+                : DateTime.MinValue;
+
+        _trackedBombPlanted = false;
+        _trackedBombSite = "";
+        _trackedBombPlantSeconds = null;
+
+        TrackRoundPatternSnapshot(snapshot);
+    }
+
+    private void TrackRoundPatternSnapshot(GameSnapshot snapshot)
+    {
+        if (_trackedRoundLiveStartedUtc == DateTime.MinValue &&
+            string.Equals(
+                snapshot.RoundPhase,
+                "live",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _trackedRoundLiveStartedUtc = DateTime.UtcNow;
+        }
+
+        if (!string.Equals(
+                snapshot.BombState,
+                "planted",
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _trackedBombPlanted = true;
+
+        if (_trackedBombPlantSeconds == null &&
+            _trackedRoundLiveStartedUtc != DateTime.MinValue)
+        {
+            _trackedBombPlantSeconds = Math.Clamp(
+                (DateTime.UtcNow - _trackedRoundLiveStartedUtc).TotalSeconds,
+                0,
+                120);
+        }
+
+        if (string.IsNullOrWhiteSpace(_trackedBombSite) &&
+            snapshot.HasBombPosition)
+        {
+            _trackedBombSite = RadarCatalog.BombSiteFromWorld(
+                snapshot.Map,
+                snapshot.BombPositionX!.Value,
+                snapshot.BombPositionY!.Value,
+                snapshot.BombPositionZ!.Value);
+        }
     }
 
     private string GetRoundIntent(int? round)

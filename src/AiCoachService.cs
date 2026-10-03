@@ -281,7 +281,11 @@ public sealed class AiCoachService
                 var gun = string.IsNullOrWhiteSpace(r.WeaponEnd)
                     ? ""
                     : $",gun={CoachEngine.PrettyWeapon(r.WeaponEnd)}";
-                return $"R{r.Round + 1}:{outcome},{r.KillsRound}K/{r.DeathsRound}D,{life}{gun}";
+                var plant = r.BombPlanted
+                    ? $",plant={(string.IsNullOrWhiteSpace(r.BombSite) ? "?" : r.BombSite)}@" +
+                      (r.BombPlantSeconds.HasValue ? $"{r.BombPlantSeconds:0}s" : "?")
+                    : ",no-plant";
+                return $"R{r.Round + 1}:{outcome},{r.KillsRound}K/{r.DeathsRound}D,{life}{gun}{plant}";
             })
             .ToArray();
 
@@ -298,16 +302,18 @@ public sealed class AiCoachService
             $"CS2 solo coach for {safePlayerName}. Slovenian. Give ONLY minimal commands for the NEXT round. " +
             "Use ONLY supplied state; never guess enemy positions. Adapt strongly to previous W/L, survival, carried primary gun, score, side and money. " +
             "If primary is present, NEVER recommend buying another primary gun; preserve it and only top up armor/utility/kit. " +
-            "Exactly 4 lines and nothing else: BUY:, POSITION:, DO:, ADAPT:. " +
+            "Exactly 5 lines and nothing else: BUY:, POSITION:, EXPECT:, DO:, ADAPT:. " +
             "BUY must be a realistic short purchase/save recommendation from current inventory and money. " +
             "POSITION is supplied by the app playbook; do not invent another position. " +
-            "DO must be one short sequence that fits POSITION, using arrows. " +
-            "ADAPT must explicitly react to recent results. Max 48 words total. No explanations.\n" +
+            "EXPECT is a past-pattern tendency supplied by the app; never state it as certain or claim live enemy knowledge. " +
+            "DO must be one short sequence that fits POSITION and EXPECT, using arrows. " +
+            "ADAPT must explicitly react to recent results. Max 62 words total. No explanations.\n" +
             $"STATE map={CoachEngine.PrettyMap(s.Map)}({s.Map}); side={s.Team}; " +
             $"round={roundNumber}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
             $"money={s.Money ?? 0}; active={s.Weapon}; primary={s.PrimaryWeapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; helmet={s.Helmet}; " +
             $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; intent={CoachEngine.NormalizeRoundIntent(intent)}; " +
             $"position={CoachEngine.PositionPlan(s, intent, rounds)}; " +
+            $"expect={CoachEngine.EnemyExpectation(s, rounds)}; " +
             $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}; variation={variationSeed}.";
 
         var payload = new
@@ -339,7 +345,8 @@ public sealed class AiCoachService
             return NormalizeRoundAdvice(
                 StripThinking(output.GetString()!),
                 CoachEngine.RoundBuyPlan(s),
-                CoachEngine.PositionPlan(s, intent, rounds));
+                CoachEngine.PositionPlan(s, intent, rounds),
+                CoachEngine.EnemyExpectation(s, rounds));
 
         throw new InvalidOperationException("Local AI odgovor ni vseboval besedila.");
     }
@@ -347,7 +354,8 @@ public sealed class AiCoachService
     private static string NormalizeRoundAdvice(
         string text,
         string deterministicBuy,
-        string deterministicPosition)
+        string deterministicPosition,
+        string deterministicExpectation)
     {
         var lines = text
             .Replace("\r", "")
@@ -355,15 +363,17 @@ public sealed class AiCoachService
             .Where(x =>
                 x.StartsWith("BUY:", StringComparison.OrdinalIgnoreCase) ||
                 x.StartsWith("POSITION:", StringComparison.OrdinalIgnoreCase) ||
+                x.StartsWith("EXPECT:", StringComparison.OrdinalIgnoreCase) ||
                 x.StartsWith("DO:", StringComparison.OrdinalIgnoreCase) ||
                 x.StartsWith("ADAPT:", StringComparison.OrdinalIgnoreCase))
-            .Take(4)
+            .Take(5)
             .ToList();
 
-        if (lines.Count == 4)
+        if (lines.Count == 5)
         {
             lines[0] = "BUY: " + deterministicBuy;
             lines[1] = "POSITION: " + deterministicPosition;
+            lines[2] = "EXPECT: " + deterministicExpectation;
             return string.Join("\n", lines);
         }
 
@@ -375,6 +385,7 @@ public sealed class AiCoachService
 
         return "BUY: " + deterministicBuy +
                "\nPOSITION: " + deterministicPosition +
+               "\nEXPECT: " + deterministicExpectation +
                "\nDO: " + compact +
                "\nADAPT: use previous round result";
     }
