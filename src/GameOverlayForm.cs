@@ -14,12 +14,12 @@ public sealed class GameOverlayForm : Form
     private const int HotkeyId = 0x534D;
     private const uint ModNoRepeat = 0x4000;
 
-    private static readonly Color Bg = Color.FromArgb(12, 14, 16);
-    private static readonly Color Panel = Color.FromArgb(20, 22, 24);
-    private static readonly Color Border = Color.FromArgb(71, 61, 51);
+    private static readonly Color Bg = Color.FromArgb(10, 11, 13);
+    private static readonly Color Panel = Color.FromArgb(15, 17, 19);
+    private static readonly Color Border = Color.FromArgb(48, 51, 55);
     private static readonly Color Orange = Color.FromArgb(255, 156, 44);
     private static readonly Color Green = Color.FromArgb(112, 214, 151);
-    private static readonly Color Muted = Color.FromArgb(150, 157, 166);
+    private static readonly Color Muted = Color.FromArgb(143, 149, 158);
 
     private readonly System.Windows.Forms.Timer _animation = new();
     private GameSnapshot _snapshot = new();
@@ -54,7 +54,7 @@ public sealed class GameOverlayForm : Form
         StartPosition = FormStartPosition.Manual;
         BackColor = Bg;
         ForeColor = Color.White;
-        Opacity = 0.94;
+        Opacity = 0.97;
         DoubleBuffered = true;
         AutoScaleMode = AutoScaleMode.Dpi;
         Width = 570;
@@ -511,37 +511,112 @@ public sealed class GameOverlayForm : Form
     private void DrawAdvice(Graphics g, double elapsedMs)
     {
         var lines = ParseAdvice(_advice);
-        var reveal = elapsedMs < 75 ? 1 : elapsedMs < 150 ? 2 : elapsedMs < 225 ? 3 : elapsedMs < 300 ? 4 : 5;
 
-        using var labelFont = new Font("Segoe UI", 8.3f, FontStyle.Bold);
-        using var textFont = new Font("Segoe UI", 9.4f, FontStyle.Regular);
-        using var orangeBrush = new SolidBrush(Orange);
-        using var textBrush = new SolidBrush(Color.FromArgb(235, 237, 240));
-        using var mutedBrush = new SolidBrush(Color.FromArgb(178, 184, 192));
-
-        var y = 46f;
-        var rowHeight = 31f;
-        var labels = new[] { "BUY", "POSITION", "EXPECT", "DO", "ADAPT" };
-
-        for (var i = 0; i < 5; i++)
+        string Value(string prefix)
         {
-            if (i >= reveal)
-                break;
+            var line = lines.FirstOrDefault(x =>
+                x.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase));
 
-            var value = i < lines.Count ? lines[i] : "—";
-            var colon = value.IndexOf(':');
-            if (colon >= 0)
-                value = value[(colon + 1)..].Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                return "—";
 
-            g.DrawString(labels[i], labelFont, i == 4 ? mutedBrush : orangeBrush, 18, y + 1);
-            g.DrawString(value, textFont, i == 4 ? mutedBrush : textBrush, 94, y);
-            y += rowHeight;
+            var colon = line.IndexOf(':');
+            return colon >= 0 ? line[(colon + 1)..].Trim() : line;
+        }
+
+        var revealExpect = elapsedMs >= 90;
+        var revealDo = elapsedMs >= 170;
+        var revealBottom = elapsedMs >= 250;
+
+        using var labelFont = new Font("Segoe UI", 7.2f, FontStyle.Bold);
+        using var positionFont = new Font("Segoe UI", 11.5f, FontStyle.Bold);
+        using var doFont = new Font("Segoe UI", 9.7f, FontStyle.Bold);
+        using var textFont = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+        using var orangeBrush = new SolidBrush(Orange);
+        using var textBrush = new SolidBrush(Color.FromArgb(238, 240, 243));
+        using var mutedBrush = new SolidBrush(Muted);
+        using var warmPanel = new SolidBrush(Color.FromArgb(35, 29, 23));
+        using var softPanel = new SolidBrush(Color.FromArgb(22, 24, 27));
+        using var softBorder = new Pen(Color.FromArgb(47, 50, 54));
+
+        void RoundedFill(Rectangle rect, Brush brush)
+        {
+            using var path = RoundedRect(rect, 10);
+            g.FillPath(brush, path);
+            g.DrawPath(softBorder, path);
+        }
+
+        using var noWrap = new StringFormat
+        {
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap
+        };
+
+        var positionRect = new Rectangle(14, 42, 542, 54);
+        RoundedFill(positionRect, warmPanel);
+        g.DrawString("POSITION", labelFont, orangeBrush, 26, 50);
+        g.DrawString(
+            Value("POSITION"),
+            positionFont,
+            textBrush,
+            new RectangleF(26, 67, 516, 24),
+            noWrap);
+
+        if (revealExpect)
+        {
+            g.DrawString("EXPECT", labelFont, orangeBrush, 18, 105);
+            g.DrawString(
+                Value("EXPECT"),
+                textFont,
+                mutedBrush,
+                new RectangleF(82, 103, 468, 22),
+                noWrap);
+        }
+
+        if (revealDo)
+        {
+            var doRect = new Rectangle(14, 130, 542, 48);
+            RoundedFill(doRect, softPanel);
+            g.DrawString("DO", labelFont, orangeBrush, 26, 138);
+            g.DrawString(
+                Value("DO"),
+                doFont,
+                textBrush,
+                new RectangleF(58, 136, 484, 28),
+                noWrap);
+        }
+
+        if (revealBottom)
+        {
+            var gap = 8;
+            var half = (542 - gap) / 2;
+            var buyRect = new Rectangle(14, 184, half, 28);
+            var adaptRect = new Rectangle(14 + half + gap, 184, half, 28);
+
+            RoundedFill(buyRect, softPanel);
+            RoundedFill(adaptRect, softPanel);
+
+            g.DrawString("BUY", labelFont, orangeBrush, buyRect.Left + 10, buyRect.Top + 7);
+            g.DrawString(
+                Value("BUY"),
+                textFont,
+                textBrush,
+                new RectangleF(buyRect.Left + 44, buyRect.Top + 5, buyRect.Width - 52, 20),
+                noWrap);
+
+            g.DrawString("ADAPT", labelFont, mutedBrush, adaptRect.Left + 10, adaptRect.Top + 7);
+            g.DrawString(
+                Value("ADAPT"),
+                textFont,
+                mutedBrush,
+                new RectangleF(adaptRect.Left + 58, adaptRect.Top + 5, adaptRect.Width - 66, 20),
+                noWrap);
         }
     }
 
     private void DrawStats(Graphics g, int logicalWidth, int logicalHeight)
     {
-        var top = 214;
+        var top = 220;
         using var separator = new Pen(Color.FromArgb(45, 48, 51));
         g.DrawLine(separator, 18, top - 4, logicalWidth - 18, top - 4);
 
