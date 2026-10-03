@@ -1549,28 +1549,118 @@ public sealed class MainForm : Form
 
     private void ArchiveCurrentSession(string map, GameSnapshot snapshot)
     {
-        if (_rounds.Count < 4 || string.IsNullOrWhiteSpace(map))
+        SaveSessionSummary(map, snapshot, _rounds);
+    }
+
+    private void SaveSessionSummary(
+        string map,
+        GameSnapshot snapshot,
+        IReadOnlyList<RoundRecord> rounds)
+    {
+        if (rounds.Count < 4 || string.IsNullOrWhiteSpace(map))
             return;
 
         try
         {
+            var review = MatchReviewAnalyzer.Analyze(rounds);
+
             SessionHistoryStore.Save(new SessionSummary
             {
                 StartedUtc = _sessionStartedUtc,
                 EndedUtc = DateTime.UtcNow,
                 Nickname = _profile.Nickname,
                 Map = map,
-                Rounds = _rounds.Count,
-                Kills = _rounds.Sum(r => r.KillsRound),
-                Deaths = _rounds.Sum(r => r.DeathsRound),
-                ZeroKillRounds = _rounds.Count(r => r.KillsRound == 0),
-                MultiKillRounds = _rounds.Count(r => r.KillsRound >= 2),
-                SurvivalRounds = _rounds.Count(r => r.DeathsRound == 0),
+                Rounds = rounds.Count,
+                Kills = rounds.Sum(r => r.KillsRound),
+                Deaths = rounds.Sum(r => r.DeathsRound),
+                ZeroKillRounds = rounds.Count(r => r.KillsRound == 0),
+                MultiKillRounds = rounds.Count(r => r.KillsRound >= 2),
+                SurvivalRounds = rounds.Count(r => r.Survived),
                 CtScore = snapshot.CtScore ?? 0,
-                TScore = snapshot.TScore ?? 0
+                TScore = snapshot.TScore ?? 0,
+                BestArea = review.BestTitle + " • " + review.BestDetail,
+                TroubleArea = review.TroubleTitle + " • " + review.TroubleDetail,
+                NextFocus = review.FocusTitle + " • " + review.FocusDetail
             });
         }
         catch { }
+    }
+
+    private List<RoundRecord> BuildMatchReviewRounds()
+    {
+        var result = _rounds.ToList();
+
+        if (_trackedRound is not int tracked ||
+            result.Any(r => r.Round == tracked))
+            return result;
+
+        var snapshot = _current;
+        var intent = string.IsNullOrWhiteSpace(GetRoundIntent(tracked))
+            ? CoachEngine.AutoRoundIntent(snapshot, result)
+            : GetRoundIntent(tracked);
+
+        result.Add(new RoundRecord
+        {
+            Round = tracked,
+            Side = snapshot.Team,
+            KillsTotal = snapshot.Kills ?? 0,
+            DeathsTotal = snapshot.Deaths ?? 0,
+            MoneyEnd = snapshot.Money ?? 0,
+            KillsRound = Math.Max(0, (snapshot.Kills ?? 0) - _roundStartKills),
+            DeathsRound = Math.Max(0, (snapshot.Deaths ?? 0) - _roundStartDeaths),
+            Won = string.IsNullOrWhiteSpace(_trackedRoundWinTeam)
+                ? null
+                : string.Equals(
+                    _trackedRoundWinTeam,
+                    snapshot.Team,
+                    StringComparison.OrdinalIgnoreCase),
+            Survived = _trackedRoundLastHealth > 0,
+            WeaponEnd = _trackedRoundLastHealth > 0
+                ? _trackedRoundPrimaryWeapon
+                : "",
+            Intent = intent,
+            PositionPlan = CoachEngine.PositionPlan(
+                snapshot,
+                GetRoundIntent(tracked),
+                result),
+            BombPlanted = _trackedBombPlanted,
+            BombSite = _trackedBombSite,
+            BombPlantSeconds = _trackedBombPlantSeconds
+        });
+
+        return result;
+    }
+
+    private void TryShowMatchReview(GameSnapshot snapshot)
+    {
+        if (!string.Equals(
+                snapshot.MapPhase,
+                "gameover",
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var reviewRounds = BuildMatchReviewRounds();
+        if (reviewRounds.Count < 4)
+            return;
+
+        var key =
+            $"{snapshot.Map}|{snapshot.CtScore}:{snapshot.TScore}|{snapshot.Round}";
+
+        if (string.Equals(
+                _matchReviewShownKey,
+                key,
+                StringComparison.Ordinal))
+            return;
+
+        _matchReviewShownKey = key;
+        SaveSessionSummary(snapshot.Map, snapshot, reviewRounds);
+
+        using var review = new MatchReviewForm(
+            snapshot.Map,
+            snapshot.CtScore,
+            snapshot.TScore,
+            reviewRounds);
+        review.ShowDialog(this);
     }
 
     private void EditProfile()
@@ -1762,6 +1852,7 @@ public sealed class MainForm : Form
                 _sessionStartedUtc = DateTime.UtcNow;
                 _rounds.Clear();
                 _roundIntents.Clear();
+                _matchReviewShownKey = "";
                 _trackedRound = s.Round;
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
@@ -1789,6 +1880,7 @@ public sealed class MainForm : Form
                     _sessionStartedUtc = DateTime.UtcNow;
                     _rounds.Clear();
                     _roundIntents.Clear();
+                    _matchReviewShownKey = "";
                 }
                 else
                 {
@@ -1840,6 +1932,7 @@ public sealed class MainForm : Form
                  !string.Equals(_lastAiMap, s.Map, StringComparison.OrdinalIgnoreCase));
 
             RefreshUi();
+            TryShowMatchReview(s);
 
             if (requestAi && _autoAi.Checked)
             {
