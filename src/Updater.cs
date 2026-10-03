@@ -157,7 +157,12 @@ public static class AppUpdater
             if (process == null)
                 throw new InvalidOperationException("Update helperja ni bilo mogoče zagnati.");
 
-            Application.Exit();
+            // Do not call Application.Exit() here. The app owns a secondary
+            // overlay Form, and Application.Exit() enumerates OpenForms while
+            // MainForm.FormClosing closes that overlay. That can mutate the
+            // collection mid-enumeration and throw:
+            // "Collection was modified; enumeration operation may not execute."
+            // The caller closes MainForm normally after this method returns.
         }
         catch (Exception ex)
         {
@@ -215,7 +220,9 @@ public static class AppUpdater
             if (process == null)
                 throw new InvalidOperationException("Portable update helperja ni bilo mogoče zagnati.");
 
-            Application.Exit();
+            // MainForm will close itself after the helper has been launched.
+            // Avoid Application.Exit() for the same multi-form reason as the
+            // installer path above.
         }
         catch (Exception ex)
         {

@@ -1797,6 +1797,13 @@ public sealed class MainForm : Form
             {
                 _updateButton.Text = "Downloading…";
                 await AppUpdater.DownloadAndInstallAsync(m);
+
+                _updateButton.Text = "Installing…";
+                BeginInvoke((Action)(() =>
+                {
+                    if (!IsDisposed)
+                        Close();
+                }));
             }
         }
         catch (Exception ex)
