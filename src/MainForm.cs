@@ -1855,7 +1855,9 @@ public sealed class MainForm : Form
                         WeaponEnd = _trackedRoundLastHealth > 0
                             ? _trackedRoundPrimaryWeapon
                             : "",
-                        Intent = GetRoundIntent(pr),
+                        Intent = string.IsNullOrWhiteSpace(GetRoundIntent(pr))
+                            ? CoachEngine.AutoRoundIntent(_previous, _rounds)
+                            : GetRoundIntent(pr),
                         PositionPlan = CoachEngine.PositionPlan(
                             _previous,
                             GetRoundIntent(pr),
@@ -2068,9 +2070,13 @@ public sealed class MainForm : Form
         var scoreText = $"{_current.CtScore?.ToString() ?? "—"}:{_current.TScore?.ToString() ?? "—"}";
 
         var liveIntent = GetRoundIntent(_current.Round);
+        var effectiveIntent = string.IsNullOrWhiteSpace(liveIntent)
+            ? CoachEngine.AutoRoundIntent(_current, _rounds)
+            : liveIntent;
+        var intentSource = string.IsNullOrWhiteSpace(liveIntent) ? "AUTO" : "CHAT";
+
         _liveContext.Text =
-            $"{prettyMap.ToUpperInvariant()}  •  {(_current.Team ?? "—")}  •  {roundText}  •  SCORE {scoreText}  •  {CoachEngine.ClassifyRound(_current).ToUpperInvariant()}" +
-            (string.IsNullOrWhiteSpace(liveIntent) ? "" : $"  •  CHAT {liveIntent}");
+            $"{prettyMap.ToUpperInvariant()}  •  {(_current.Team ?? "—")}  •  {roundText}  •  SCORE {scoreText}  •  {CoachEngine.ClassifyRound(_current).ToUpperInvariant()}  •  {intentSource} {effectiveIntent}";
 
         _stats["map"].Text = prettyMap;
         _stats["side"].Text = string.IsNullOrWhiteSpace(_current.Team) ? "—" : _current.Team;
