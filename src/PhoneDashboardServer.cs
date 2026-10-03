@@ -24,6 +24,12 @@ public sealed class PhoneDashboardServer : IDisposable
         public string roundType { get; init; } = "—";
         public string buyTitle { get; init; } = "";
         public string buyAdvice { get; init; } = "";
+        public string position { get; init; } = "—";
+        public string expect { get; init; } = "—";
+        public string action { get; init; } = "—";
+        public string adapt { get; init; } = "—";
+        public string planKey { get; init; } = "";
+        public string roundKey { get; init; } = "";
         public string aiTip { get; init; } = "";
         public string tip { get; init; } = "";
     }
@@ -240,7 +246,45 @@ public sealed class PhoneDashboardServer : IDisposable
         var kd = deaths > 0
             ? ((double)kills / deaths).ToString("0.00")
             : kills.ToString("0.00");
-        var (buyTitle, buyAdvice) = CoachEngine.BuyAdvice(snapshot);
+
+        var advice = _aiProvider() ?? "";
+        var plan = ParseCoachAdvice(advice);
+        var (fallbackBuyTitle, fallbackBuyAdvice) =
+            CoachEngine.BuyAdvice(snapshot);
+
+        var buy = ValueOrFallback(
+            plan,
+            "BUY",
+            fallbackBuyAdvice);
+
+        var position = ValueOrFallback(
+            plan,
+            "POSITION",
+            "Waiting for live round data");
+
+        var expect = ValueOrFallback(
+            plan,
+            "EXPECT",
+            "Learning enemy patterns");
+
+        var action = ValueOrFallback(
+            plan,
+            "DO",
+            "Waiting for next round plan");
+
+        var adapt = ValueOrFallback(
+            plan,
+            "ADAPT",
+            "—");
+
+        var weapon = !string.IsNullOrWhiteSpace(snapshot.PrimaryWeapon)
+            ? CoachEngine.PrettyWeapon(snapshot.PrimaryWeapon)
+            : !string.IsNullOrWhiteSpace(snapshot.Weapon)
+                ? CoachEngine.PrettyWeapon(snapshot.Weapon)
+                : "—";
+
+        var roundKey =
+            $"{snapshot.Map}|{snapshot.Team}|{snapshot.Round?.ToString() ?? "—"}";
 
         return new PhoneState
         {
@@ -254,15 +298,58 @@ public sealed class PhoneDashboardServer : IDisposable
             money = snapshot.Money ?? 0,
             hp = snapshot.Health?.ToString() ?? "—",
             armor = snapshot.Armor?.ToString() ?? "—",
-            weapon = string.IsNullOrWhiteSpace(snapshot.Weapon) ? "—" : snapshot.Weapon,
+            weapon = weapon,
             roundType = CoachEngine.ClassifyRound(snapshot),
-            buyTitle = buyTitle,
-            buyAdvice = buyAdvice,
-            aiTip = _aiProvider(),
+            buyTitle = fallbackBuyTitle,
+            buyAdvice = buy,
+            position = position,
+            expect = expect,
+            action = action,
+            adapt = adapt,
+            roundKey = roundKey,
+            planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt,
+            aiTip = advice,
             tip =
                 CoachEngine.SoloTip(snapshot, mode) +
                 $" Role: {role}. Focus: {focus}."
         };
+    }
+
+    private static Dictionary<string,string> ParseCoachAdvice(string? advice)
+    {
+        var result = new Dictionary<string,string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in (advice ?? "")
+                     .Replace("\r", "")
+                     .Split(
+                         '\n',
+                         StringSplitOptions.RemoveEmptyEntries |
+                         StringSplitOptions.TrimEntries))
+        {
+            var colon = line.IndexOf(':');
+            if (colon <= 0)
+                continue;
+
+            var key = line[..colon].Trim();
+            var value = line[(colon + 1)..].Trim();
+
+            if (key is "BUY" or "POSITION" or "EXPECT" or "DO" or "ADAPT")
+                result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static string ValueOrFallback(
+        IReadOnlyDictionary<string,string> plan,
+        string key,
+        string fallback)
+    {
+        return plan.TryGetValue(key, out var value) &&
+               !string.IsNullOrWhiteSpace(value)
+            ? value
+            : fallback;
     }
 
     private string BuildHtml()
@@ -278,139 +365,263 @@ public sealed class PhoneDashboardServer : IDisposable
 <html lang='sl'>
 <head>
 <meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>
-<meta name='theme-color' content='#090d13'>
+<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no'>
+<meta name='theme-color' content='#090a0c'>
 <meta name='apple-mobile-web-app-capable' content='yes'>
-<title>Sm0ki Solo Coach</title>
+<meta name='apple-mobile-web-app-status-bar-style' content='black-translucent'>
+<title>Sm0ki Live Coach</title>
 <style>
-*{{box-sizing:border-box}}
-body{{margin:0;background:#090d13;color:#f4f6fa;font-family:Segoe UI,Arial,sans-serif}}
-.wrap{{max-width:820px;margin:auto;padding:18px 14px 34px}}
-.hero{{position:sticky;top:0;z-index:2;background:rgba(9,13,19,.94);backdrop-filter:blur(12px);padding:9px 0 12px}}
-h1{{font-size:25px;margin:2px 0 4px;letter-spacing:-.02em}}
-.sub{{font-size:10px;letter-spacing:.14em;color:#737f93;font-weight:800}}
-.badge{{display:inline-block;padding:5px 9px;border-radius:999px;background:#183927;color:#8af0b8;font-weight:800;font-size:10px;vertical-align:middle;animation:pulse 1.8s ease-in-out infinite}}
-.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:14px 0 10px}}
-.card,.section{{background:linear-gradient(180deg,#121923,#0f151e);border:1px solid #252e3d;border-radius:15px;box-shadow:0 8px 24px rgba(0,0,0,.18)}}
-.card{{padding:13px}}
-.label{{font-size:9px;color:#758197;letter-spacing:.11em;font-weight:800}}
-.value{{font-size:21px;font-weight:800;margin-top:6px;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;transition:opacity .15s ease}}
-.section{{padding:17px;margin-top:10px}}
-.section h2{{font-size:10px;color:#7d899e;margin:0 0 9px;letter-spacing:.13em}}
-.big{{font-size:21px;font-weight:800;margin-bottom:7px}}
-.text{{line-height:1.5;color:#cbd3df;white-space:pre-line}}
-.ai{{border-left:3px solid #685cff}}
-.controls{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-.field label{{display:block;font-size:9px;color:#758197;font-weight:800;letter-spacing:.1em;margin:0 0 5px}}
-select{{width:100%;background:#171e29;color:#f5f7fb;border:1px solid #303a4c;border-radius:10px;padding:10px}}
-.toggle{{display:flex;align-items:center;gap:8px;color:#cbd3df;font-size:13px;padding-top:8px}}
-button{{width:100%;margin-top:12px;border:0;border-radius:11px;padding:11px 14px;background:#685cff;color:white;font-weight:800;font-size:14px}}
-.note{{font-size:11px;color:#7e8ba1;margin-top:10px;line-height:1.45}}
-@keyframes pulse{{0%,100%{{box-shadow:0 0 0 rgba(126,240,174,0)}}50%{{box-shadow:0 0 16px rgba(126,240,174,.28)}}}}
-@media(max-width:600px){{
- .wrap{{padding:12px 10px 28px}}
- .grid{{grid-template-columns:repeat(2,1fr)}}
- .value{{font-size:20px}}
+*{{box-sizing:border-box;-webkit-tap-highlight-color:transparent}}
+:root{{color-scheme:dark}}
+html,body{{margin:0;min-height:100%;background:#090a0c;color:#f4f6f8;font-family:Inter,Segoe UI,Arial,sans-serif}}
+body{{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}}
+.wrap{{max-width:720px;margin:auto;padding:10px 10px 28px}}
+.top{{position:sticky;top:0;z-index:10;background:rgba(9,10,12,.96);backdrop-filter:blur(16px);padding:7px 2px 9px;border-bottom:1px solid #1b1d20}}
+.brand{{display:flex;align-items:center;justify-content:space-between;gap:10px}}
+.logo{{font-size:19px;font-weight:900;letter-spacing:-.03em}}
+.orange{{color:#ff9c2c}}
+.live{{font-size:9px;font-weight:900;letter-spacing:.11em;color:#78e6a5;background:#102a1e;border:1px solid #20583c;border-radius:999px;padding:5px 8px}}
+.context{{display:flex;gap:7px;align-items:center;margin-top:7px;font-size:12px;font-weight:800;color:#b5bbc4;white-space:nowrap;overflow:hidden}}
+.context span{{overflow:hidden;text-overflow:ellipsis}}
+.dot{{color:#4d535c}}
+.coach{{margin-top:10px}}
+.heroCard,.card,.mini,.details{{background:#121416;border:1px solid #2a2d31;border-radius:14px}}
+.heroCard{{padding:14px 15px 15px;border-color:#725024;background:linear-gradient(180deg,#211a13,#151515)}}
+.kicker{{font-size:9px;font-weight:900;letter-spacing:.12em;color:#ff9c2c;margin-bottom:7px}}
+.position{{font-size:24px;line-height:1.14;font-weight:900;letter-spacing:-.03em}}
+.card{{padding:13px 14px;margin-top:8px}}
+.card.expect{{border-left:3px solid #ff9c2c}}
+.card.do{{background:#15181b}}
+.valueBig{{font-size:17px;line-height:1.28;font-weight:800}}
+.value{{font-size:14px;line-height:1.38;color:#d3d7dd}}
+.bottomGrid{{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}}
+.mini{{padding:11px 12px;min-height:78px}}
+.mini .value{{font-size:13px}}
+.statRow{{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}}
+.stat{{background:#0f1113;border:1px solid #24272b;border-radius:11px;padding:9px 8px}}
+.stat .kicker{{margin-bottom:4px;color:#747c87;font-size:8px}}
+.stat .num{{font-size:15px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.start{{width:100%;border:0;border-radius:12px;padding:12px 14px;margin-top:10px;background:#ff9c2c;color:#080808;font-weight:900;font-size:13px}}
+.start.on{{background:#163c2a;color:#86f1b1;border:1px solid #286244}}
+.details{{margin-top:10px;padding:0;overflow:hidden}}
+details summary{{padding:13px 14px;cursor:pointer;font-size:11px;font-weight:900;letter-spacing:.08em;color:#9ba3ae;list-style:none}}
+details summary::-webkit-details-marker{{display:none}}
+.detailBody{{padding:0 14px 14px}}
+.moreStats{{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}}
+.controls{{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}}
+.field label{{display:block;font-size:8px;font-weight:900;letter-spacing:.1em;color:#7b838e;margin-bottom:4px}}
+select{{width:100%;background:#0e1012;color:#f5f6f7;border:1px solid #30343a;border-radius:9px;padding:9px}}
+.toggle{{display:flex;align-items:center;gap:7px;padding-top:9px;font-size:12px;color:#c9ced5}}
+.apply{{width:100%;border:0;border-radius:10px;padding:10px;margin-top:10px;background:#24282d;color:#fff;font-weight:800}}
+.note{{font-size:10px;color:#6f7782;line-height:1.4;margin-top:9px}}
+.flash{{animation:roundFlash .55s ease-out}}
+@keyframes roundFlash{{0%{{box-shadow:0 0 0 2px rgba(255,156,44,.9),0 0 28px rgba(255,156,44,.45)}}100%{{box-shadow:none}}}}
+@media(max-width:420px){{
+ .wrap{{padding-left:8px;padding-right:8px}}
+ .position{{font-size:22px}}
+ .valueBig{{font-size:16px}}
+ .statRow{{grid-template-columns:repeat(4,1fr);gap:5px}}
+ .stat{{padding:8px 6px}}
+ .stat .num{{font-size:14px}}
+ .bottomGrid{{grid-template-columns:1fr}}
+ .moreStats{{grid-template-columns:repeat(2,1fr)}}
  .controls{{grid-template-columns:1fr}}
 }}
 </style>
 </head>
 <body>
 <div class='wrap'>
-<div class='hero'>
-<h1>Sm0ki <span style='color:#8176ff'>Solo Coach</span> <span class='badge'>LIVE</span></h1>
-<div class='sub'>PROFILE: {Html(nickname)} • PRIVATE LAN COMPANION • v{Html(AppUpdater.CurrentVersion)}</div>
-</div>
+<header class='top'>
+  <div class='brand'>
+    <div class='logo'>SM0KI <span class='orange'>LIVE COACH</span></div>
+    <div class='live'>● LIVE</div>
+  </div>
+  <div class='context'>
+    <span id='map'>{Html(state.map)}</span><span class='dot'>•</span>
+    <span id='side'>{Html(state.side)}</span><span class='dot'>•</span>
+    <span id='round'>{Html(state.round)}</span><span class='dot'>•</span>
+    <span id='score'>{Html(state.score)}</span>
+  </div>
+</header>
 
-<div class='grid'>
-<div class='card'><div class='label'>MAP</div><div id='map' class='value'>{Html(state.map)}</div></div>
-<div class='card'><div class='label'>SIDE</div><div id='side' class='value'>{Html(state.side)}</div></div>
-<div class='card'><div class='label'>ROUND</div><div id='round' class='value'>{Html(state.round)}</div></div>
-<div class='card'><div class='label'>SCORE</div><div id='score' class='value'>{Html(state.score)}</div></div>
-<div class='card'><div class='label'>KILLS</div><div id='kills' class='value'>{state.kills}</div></div>
-<div class='card'><div class='label'>DEATHS</div><div id='deaths' class='value'>{state.deaths}</div></div>
-<div class='card'><div class='label'>K/D</div><div id='kd' class='value'>{state.kd}</div></div>
-<div class='card'><div class='label'>MONEY</div><div id='money' class='value'>&#36;{state.money}</div></div>
-<div class='card'><div class='label'>HP</div><div id='hp' class='value'>{Html(state.hp)}</div></div>
-<div class='card'><div class='label'>ARMOR</div><div id='armor' class='value'>{Html(state.armor)}</div></div>
-<div class='card'><div class='label'>WEAPON</div><div id='weapon' class='value'>{Html(state.weapon)}</div></div>
-<div class='card'><div class='label'>ROUND TYPE</div><div id='roundType' class='value'>{Html(state.roundType)}</div></div>
-</div>
+<main id='coach' class='coach'>
+  <section class='heroCard' id='positionCard'>
+    <div class='kicker'>POSITION</div>
+    <div id='position' class='position'>{Html(state.position)}</div>
+  </section>
 
-<div class='section'>
-<h2>NEXT BUY</h2>
-<div id='buyTitle' class='big'>{Html(state.buyTitle)}</div>
-<div id='buyAdvice' class='text'>{Html(state.buyAdvice)}</div>
-</div>
+  <section class='card expect'>
+    <div class='kicker'>EXPECT</div>
+    <div id='expect' class='value'>{Html(state.expect)}</div>
+  </section>
 
-<div class='section ai'>
-<h2>NEXT ROUND PLAN</h2>
-<div id='aiTip' class='text'>{Html(state.aiTip)}</div>
-</div>
+  <section class='card do'>
+    <div class='kicker'>DO</div>
+    <div id='action' class='valueBig'>{Html(state.action)}</div>
+  </section>
 
-<div class='section'>
-<h2>COACH NOTE</h2>
-<div id='coachTip' class='text'>{Html(state.tip)}</div>
-</div>
+  <div class='bottomGrid'>
+    <section class='mini'>
+      <div class='kicker'>BUY</div>
+      <div id='buyAdvice' class='value'>{Html(state.buyAdvice)}</div>
+    </section>
+    <section class='mini'>
+      <div class='kicker'>ADAPT</div>
+      <div id='adapt' class='value'>{Html(state.adapt)}</div>
+    </section>
+  </div>
 
-<div class='section'>
-<h2>COACH CONTROLS</h2>
-<form method='get' action='/settings'>
-<input type='hidden' name='token' value='{Html(_accessToken)}'>
-<div class='controls'>
-<div class='field'>
-<label>MODE</label>
-<select name='mode'>{Options(new[] { "Balanced","Aggressive","Safe" }, mode)}</select>
-</div>
-<div class='field'>
-<label>ROLE</label>
-<select name='role'>{Options(new[] { "Flex","Entry","Lurk","Support","Anchor" }, role)}</select>
-</div>
-<div class='field'>
-<label>FOCUS</label>
-<select name='focus'>{Options(new[] { "More kills","Survive & trade","Entry impact","Utility impact","Clutch / late round" }, focus)}</select>
-</div>
-<div class='toggle'>
-<input id='autoAi' type='checkbox' name='autoAi' value='1' {(autoAi ? "checked" : "")}>
-<label for='autoAi'>Auto AI</label>
-</div>
-</div>
-<button type='submit'>Apply to PC coach</button>
-</form>
-<div class='note'>Live values update without reloading the page, so controls stay usable. Telefon in PC morata biti na istem trusted Wi‑Fi/LAN omrežju.</div>
-</div>
+  <div class='statRow'>
+    <div class='stat'><div class='kicker'>MONEY</div><div id='money' class='num'>&#36;{state.money}</div></div>
+    <div class='stat'><div class='kicker'>GUN</div><div id='weapon' class='num'>{Html(state.weapon)}</div></div>
+    <div class='stat'><div class='kicker'>K/D</div><div id='kd' class='num'>{Html(state.kd)}</div></div>
+    <div class='stat'><div class='kicker'>TYPE</div><div id='roundType' class='num'>{Html(state.roundType)}</div></div>
+  </div>
+
+  <button id='startCoach' class='start' type='button'>START LIVE COACH</button>
+
+  <div class='details'>
+    <details>
+      <summary>MORE INFO & COACH SETTINGS</summary>
+      <div class='detailBody'>
+        <div class='moreStats'>
+          <div class='stat'><div class='kicker'>KILLS</div><div id='kills' class='num'>{state.kills}</div></div>
+          <div class='stat'><div class='kicker'>DEATHS</div><div id='deaths' class='num'>{state.deaths}</div></div>
+          <div class='stat'><div class='kicker'>HP</div><div id='hp' class='num'>{Html(state.hp)}</div></div>
+          <div class='stat'><div class='kicker'>ARMOR</div><div id='armor' class='num'>{Html(state.armor)}</div></div>
+        </div>
+
+        <form method='get' action='/settings'>
+          <input type='hidden' name='token' value='{Html(_accessToken)}'>
+          <div class='controls'>
+            <div class='field'>
+              <label>MODE</label>
+              <select name='mode'>{Options(new[] { "Balanced","Aggressive","Safe" }, mode)}</select>
+            </div>
+            <div class='field'>
+              <label>ROLE</label>
+              <select name='role'>{Options(new[] { "Flex","Entry","Lurk","Support","Anchor" }, role)}</select>
+            </div>
+            <div class='field'>
+              <label>FOCUS</label>
+              <select name='focus'>{Options(new[] { "More kills","Survive & trade","Entry impact","Utility impact","Clutch / late round" }, focus)}</select>
+            </div>
+            <div class='toggle'>
+              <input id='autoAi' type='checkbox' name='autoAi' value='1' {(autoAi ? "checked" : "")}>
+              <label for='autoAi'>Auto AI refine</label>
+            </div>
+          </div>
+          <button class='apply' type='submit'>APPLY TO PC COACH</button>
+        </form>
+
+        <div class='note'>
+          {Html(nickname)} • private LAN link • v{Html(AppUpdater.CurrentVersion)}.
+          Telefon in PC morata biti na istem Wi‑Fi/LAN omrežju.
+        </div>
+      </div>
+    </details>
+  </div>
+</main>
 </div>
 
 <script>
 const liveToken='{Html(_accessToken)}';
+let lastRoundKey='{Html(state.roundKey)}';
+let lastPlanKey='{Html(state.planKey)}';
+let alertsEnabled=false;
+let wakeLock=null;
+
 const setText=(id,value)=>{{
   const el=document.getElementById(id);
   if(el) el.textContent=(value ?? '—');
 }};
+
+function flashPlan(){{
+  const card=document.getElementById('positionCard');
+  if(!card) return;
+  card.classList.remove('flash');
+  void card.offsetWidth;
+  card.classList.add('flash');
+}}
+
+async function enableLiveCoach(){{
+  alertsEnabled=true;
+  const button=document.getElementById('startCoach');
+  button.textContent='LIVE COACH ACTIVE';
+  button.classList.add('on');
+
+  try{{
+    if(navigator.wakeLock && !wakeLock)
+      wakeLock=await navigator.wakeLock.request('screen');
+  }}catch{{}}
+
+  try{{
+    if(navigator.vibrate) navigator.vibrate(60);
+  }}catch{{}}
+
+  try{{
+    if(document.documentElement.requestFullscreen)
+      await document.documentElement.requestFullscreen();
+  }}catch{{}}
+}}
+
+document.getElementById('startCoach')?.addEventListener('click',enableLiveCoach);
+
+document.addEventListener('visibilitychange',async()=>{{
+  if(document.visibilityState==='visible' && alertsEnabled){{
+    try{{
+      if(navigator.wakeLock && !wakeLock)
+        wakeLock=await navigator.wakeLock.request('screen');
+    }}catch{{}}
+  }}
+}});
+
 async function refreshLive(){{
   try{{
-    const response=await fetch('/api/state?token='+encodeURIComponent(liveToken),{{cache:'no-store'}});
+    const response=await fetch(
+      '/api/state?token='+encodeURIComponent(liveToken)+'&_=' + Date.now(),
+      {{cache:'no-store'}});
     if(!response.ok) return;
+
     const x=await response.json();
+
+    const roundChanged=lastRoundKey && x.roundKey && x.roundKey!==lastRoundKey;
+    const planChanged=lastPlanKey && x.planKey && x.planKey!==lastPlanKey;
+
     setText('map',x.map);
     setText('side',x.side);
     setText('round',x.round);
     setText('score',x.score);
+    setText('position',x.position);
+    setText('expect',x.expect);
+    setText('action',x.action);
+    setText('buyAdvice',x.buyAdvice);
+    setText('adapt',x.adapt);
+    setText('money','$'+x.money);
+    setText('weapon',x.weapon);
+    setText('kd',x.kd);
+    setText('roundType',x.roundType);
     setText('kills',x.kills);
     setText('deaths',x.deaths);
-    setText('kd',x.kd);
-    setText('money','$'+x.money);
     setText('hp',x.hp);
     setText('armor',x.armor);
-    setText('weapon',x.weapon);
-    setText('roundType',x.roundType);
-    setText('buyTitle',x.buyTitle);
-    setText('buyAdvice',x.buyAdvice);
-    setText('aiTip',x.aiTip);
-    setText('coachTip',x.tip);
+
+    if(roundChanged || planChanged)
+      flashPlan();
+
+    if(roundChanged && alertsEnabled){{
+      try{{
+        if(navigator.vibrate) navigator.vibrate([90,50,90]);
+      }}catch{{}}
+    }}
+
+    lastRoundKey=x.roundKey || lastRoundKey;
+    lastPlanKey=x.planKey || lastPlanKey;
   }}catch{{}}
 }}
-setInterval(refreshLive,1500);
+
+refreshLive();
+setInterval(refreshLive,700);
 </script>
 </body>
 </html>";
