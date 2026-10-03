@@ -51,6 +51,9 @@ public sealed class MainForm : Form
     private int? _trackedRound;
     private int _roundStartKills;
     private int _roundStartDeaths;
+    private string _trackedRoundWinTeam = "";
+    private string _trackedRoundPrimaryWeapon = "";
+    private int _trackedRoundLastHealth = 0;
     private DateTime _sessionStartedUtc = DateTime.UtcNow;
     private readonly System.Windows.Forms.Timer _uiPulseTimer = new();
     private DateTime _lastGsiUtc = DateTime.MinValue;
@@ -1713,6 +1716,17 @@ public sealed class MainForm : Form
             _current = s;
             _gameOverlay?.SetGameActive(!string.IsNullOrWhiteSpace(s.Map));
 
+            if (_trackedRound == s.Round)
+            {
+                if (!string.IsNullOrWhiteSpace(s.RoundWinTeam))
+                    _trackedRoundWinTeam = s.RoundWinTeam;
+
+                _trackedRoundLastHealth = s.Health ?? _trackedRoundLastHealth;
+
+                if ((s.Health ?? 0) > 0 && !string.IsNullOrWhiteSpace(s.PrimaryWeapon))
+                    _trackedRoundPrimaryWeapon = s.PrimaryWeapon;
+            }
+
             bool mapChanged =
                 !string.IsNullOrWhiteSpace(_previous.Map) &&
                 !string.IsNullOrWhiteSpace(s.Map) &&
@@ -1726,12 +1740,18 @@ public sealed class MainForm : Form
                 _trackedRound = s.Round;
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
+                _trackedRoundWinTeam = s.RoundWinTeam;
+                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
+                _trackedRoundLastHealth = s.Health ?? 0;
             }
             else if (_trackedRound == null && s.Round is int initialRound)
             {
                 _trackedRound = initialRound;
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
+                _trackedRoundWinTeam = s.RoundWinTeam;
+                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
+                _trackedRoundLastHealth = s.Health ?? 0;
             }
 
             if (!mapChanged && _previous.Round is int pr && s.Round is int cr && pr != cr)
@@ -1752,7 +1772,17 @@ public sealed class MainForm : Form
                         DeathsTotal = _previous.Deaths ?? 0,
                         MoneyEnd = _previous.Money ?? 0,
                         KillsRound = Math.Max(0, (_previous.Kills ?? 0) - _roundStartKills),
-                        DeathsRound = Math.Max(0, (_previous.Deaths ?? 0) - _roundStartDeaths)
+                        DeathsRound = Math.Max(0, (_previous.Deaths ?? 0) - _roundStartDeaths),
+                        Won = string.IsNullOrWhiteSpace(_trackedRoundWinTeam)
+                            ? null
+                            : string.Equals(
+                                _trackedRoundWinTeam,
+                                _previous.Team,
+                                StringComparison.OrdinalIgnoreCase),
+                        Survived = _trackedRoundLastHealth > 0,
+                        WeaponEnd = _trackedRoundLastHealth > 0
+                            ? _trackedRoundPrimaryWeapon
+                            : ""
                     });
                     while (_rounds.Count > 40) _rounds.RemoveAt(0);
                 }
@@ -1760,6 +1790,9 @@ public sealed class MainForm : Form
                 _trackedRound = cr;
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
+                _trackedRoundWinTeam = s.RoundWinTeam;
+                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
+                _trackedRoundLastHealth = s.Health ?? 0;
             }
 
             bool requestAi =
@@ -1935,8 +1968,13 @@ public sealed class MainForm : Form
         _history.Items.Clear();
         foreach (var rr in _rounds.TakeLast(10))
         {
+            var outcome = rr.Won == true ? "W" : rr.Won == false ? "L" : "—";
+            var carry = rr.Survived && !string.IsNullOrWhiteSpace(rr.WeaponEnd)
+                ? " • " + CoachEngine.PrettyWeapon(rr.WeaponEnd)
+                : "";
             _history.Items.Add(
-                $"R{rr.Round + 1:00}   {rr.Side,2}   {rr.KillsRound}K/{rr.DeathsRound}D   $" + rr.MoneyEnd);
+                $"R{rr.Round + 1:00}   {outcome}   {rr.Side,2}   {rr.KillsRound}K/{rr.DeathsRound}D   $" +
+                rr.MoneyEnd + carry);
         }
         if (_history.Items.Count == 0)
             _history.Items.Add("No completed rounds tracked yet.");

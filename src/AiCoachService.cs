@@ -273,7 +273,15 @@ public sealed class AiCoachService
         var model = await ResolveModelAsync(cancellationToken);
 
         var recent = rounds.TakeLast(3)
-            .Select(r => $"R{r.Round + 1}:{r.KillsRound}K/{r.DeathsRound}D")
+            .Select(r =>
+            {
+                var outcome = r.Won == true ? "W" : r.Won == false ? "L" : "?";
+                var life = r.Survived ? "survived" : "died";
+                var gun = string.IsNullOrWhiteSpace(r.WeaponEnd)
+                    ? ""
+                    : $",gun={CoachEngine.PrettyWeapon(r.WeaponEnd)}";
+                return $"R{r.Round + 1}:{outcome},{r.KillsRound}K/{r.DeathsRound}D,{life}{gun}";
+            })
             .ToArray();
 
         var safePlayerName = string.IsNullOrWhiteSpace(playerName)
@@ -287,14 +295,15 @@ public sealed class AiCoachService
         var prompt =
             "/no_think\n" +
             $"CS2 solo coach for {safePlayerName}. Slovenian. Give ONLY minimal commands for the NEXT round. " +
-            "Use ONLY supplied state; never guess enemy positions. Adapt strongly to the previous round outcome, score, side and money. " +
+            "Use ONLY supplied state; never guess enemy positions. Adapt strongly to previous W/L, survival, carried primary gun, score, side and money. " +
+            "If primary is present, NEVER recommend buying another primary gun; preserve it and only top up armor/utility/kit. " +
             "Exactly 3 lines and nothing else: BUY:, DO:, ADAPT:. " +
-            "BUY must be a realistic short purchase/save recommendation from current money. " +
+            "BUY must be a realistic short purchase/save recommendation from current inventory and money. " +
             "DO must be one short sequence using arrows, e.g. mid control → trade → reposition. " +
             "ADAPT must explicitly react to the recent round result. Max 35 words total. No explanations.\n" +
             $"STATE map={CoachEngine.PrettyMap(s.Map)}({s.Map}); side={s.Team}; " +
             $"round={roundNumber}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
-            $"money={s.Money ?? 0}; weapon={s.Weapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; " +
+            $"money={s.Money ?? 0}; active={s.Weapon}; primary={s.PrimaryWeapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; helmet={s.Helmet}; " +
             $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; " +
             $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}; variation={variationSeed}.";
 
@@ -324,12 +333,14 @@ public sealed class AiCoachService
         if (doc.RootElement.TryGetProperty("response", out var output) &&
             output.ValueKind == JsonValueKind.String &&
             !string.IsNullOrWhiteSpace(output.GetString()))
-            return NormalizeRoundAdvice(StripThinking(output.GetString()!));
+            return NormalizeRoundAdvice(
+                StripThinking(output.GetString()!),
+                CoachEngine.RoundBuyPlan(s));
 
         throw new InvalidOperationException("Local AI odgovor ni vseboval besedila.");
     }
 
-    private static string NormalizeRoundAdvice(string text)
+    private static string NormalizeRoundAdvice(string text, string deterministicBuy)
     {
         var lines = text
             .Replace("\r", "")
@@ -342,7 +353,10 @@ public sealed class AiCoachService
             .ToList();
 
         if (lines.Count == 3)
+        {
+            lines[0] = "BUY: " + deterministicBuy;
             return string.Join("\n", lines);
+        }
 
         // Small local models occasionally ignore formatting. Keep the UI compact
         // instead of showing a paragraph in the live-round card.
@@ -350,7 +364,7 @@ public sealed class AiCoachService
         if (compact.Length > 180)
             compact = compact[..180].TrimEnd() + "…";
 
-        return compact;
+        return "BUY: " + deterministicBuy + "\nDO: " + compact + "\nADAPT: use previous round result";
     }
 
     private static string StripThinking(string text)

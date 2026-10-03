@@ -62,7 +62,7 @@ public sealed class GameOverlayForm : Form
             Invalidate();
         };
 
-        PositionTopRight();
+        PositionSafeArea();
         UpdateRegion();
     }
 
@@ -131,7 +131,7 @@ public sealed class GameOverlayForm : Form
         _mode = mode is "Full" or "Off" ? mode : "Minimal";
         Height = _mode == "Full" ? 218 : 158;
         UpdateRegion();
-        PositionTopRight();
+        PositionSafeArea();
 
         if (_mode == "Off")
         {
@@ -172,7 +172,7 @@ public sealed class GameOverlayForm : Form
             return;
         }
 
-        PositionTopRight();
+        PositionSafeArea();
         if (!Visible)
             Show();
 
@@ -221,13 +221,15 @@ public sealed class GameOverlayForm : Form
         Invalidate();
     }
 
-    public void PositionTopRight()
+    public void PositionSafeArea()
     {
         var screen = Screen.PrimaryScreen?.WorkingArea
                      ?? new Rectangle(0, 0, 1920, 1080);
+
+        // Bottom-center stays clear of CS2's kill feed, radar, health and ammo HUD.
         Location = new Point(
-            Math.Max(screen.Left + 12, screen.Right - Width - 28),
-            screen.Top + 34);
+            screen.Left + Math.Max(12, (screen.Width - Width) / 2),
+            Math.Max(screen.Top + 12, screen.Bottom - Height - 92));
     }
 
     private void UpdateRegion()
