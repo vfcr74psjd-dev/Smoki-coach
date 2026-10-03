@@ -74,9 +74,9 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "Sm0ki Solo Coach";
-        Width = 1380;
-        Height = 860;
-        MinimumSize = new Size(1160, 720);
+        Width = 1460;
+        Height = 900;
+        MinimumSize = new Size(1180, 760);
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         DoubleBuffered = true;
@@ -608,7 +608,9 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            Margin = new Padding(7, 0, 0, 0)
+            Margin = new Padding(7, 0, 0, 0),
+            AutoScroll = true,
+            AutoScrollMinSize = new Size(0, 430)
         };
         right.RowStyles.Add(new RowStyle(SizeType.Absolute, 246));
         right.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
@@ -826,7 +828,51 @@ public sealed class MainForm : Form
         workspace.Controls.Add(footer, 0, 3);
         root.Controls.Add(workspace, 1, 0);
 
+        void ApplyResponsiveLayout()
+        {
+            var w = Math.Max(1, ClientSize.Width);
+            var h = Math.Max(1, ClientSize.Height);
+
+            // Keep the navigation compact and give the coach/right rail enough
+            // actual pixels even on 125/150% Windows scaling.
+            root.ColumnStyles[0].Width = w < 1320 ? 166 : 188;
+
+            workspace.RowStyles[0].Height = h < 820 ? 68 : 76;
+            workspace.RowStyles[1].Height = h < 820 ? 72 : 86;
+            workspace.RowStyles[3].Height = h < 820 ? 26 : 30;
+
+            if (w < 1320)
+            {
+                content.ColumnStyles[0].Width = 66;
+                content.ColumnStyles[1].Width = 34;
+            }
+            else
+            {
+                content.ColumnStyles[0].Width = 70;
+                content.ColumnStyles[1].Width = 30;
+            }
+
+            // Secondary content yields space first; the live plan always gets
+            // the largest flexible region.
+            left.RowStyles[1].Height = h < 820 ? 90 : 110;
+            left.RowStyles[2].Height = h < 820 ? 50 : 64;
+
+            right.RowStyles[0].Height = h < 820 ? 220 : 246;
+            right.RowStyles[1].Height = h < 820 ? 112 : 138;
+
+            // Header buttons must not squeeze the live context at higher DPI.
+            top.ColumnStyles[1].Width = w < 1320 ? 108 : 122;
+            top.ColumnStyles[2].Width = w < 1320 ? 96 : 108;
+
+            _planView.Invalidate();
+            PerformLayout();
+        }
+
+        Resize += (_,__) => ApplyResponsiveLayout();
+        DpiChanged += (_,__) => BeginInvoke(ApplyResponsiveLayout);
+
         Controls.Add(root);
+        ApplyResponsiveLayout();
 
         _buyTitle.Text = "WAITING";
         _buyText.Text = "";
