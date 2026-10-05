@@ -18,6 +18,22 @@ public static class CoachEngine
     public static string PrettyMap(string map)
         => MapNames.TryGetValue(map ?? "", out var n) ? n : (string.IsNullOrWhiteSpace(map) ? "—" : map);
 
+    public static SpawnProfile SpawnProfile(GameSnapshot s)
+    {
+        if (!s.HasSpawnPosition)
+            return new SpawnProfile(false, "NEUTRAL", "spawn not captured", 0, 0);
+
+        return RadarCatalog.SpawnProfileFromWorld(
+            s.Map,
+            s.Team,
+            s.SpawnPositionX!.Value,
+            s.SpawnPositionY!.Value,
+            s.SpawnPositionZ!.Value);
+    }
+
+    public static string SpawnContext(GameSnapshot s)
+        => SpawnProfile(s).Label;
+
     public static string ClassifyRound(GameSnapshot s)
     {
         if (s.IsSpectating) return "Spectating";
@@ -140,9 +156,10 @@ public static class CoachEngine
     {
         intent = NormalizeRoundIntent(intent);
         var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
-        var variant = Math.Abs((s.Round ?? 0) % 3);
+        var spawn = SpawnProfile(s);
+        var manualIntent = !string.IsNullOrWhiteSpace(intent);
 
-        if (string.IsNullOrWhiteSpace(intent))
+        if (!manualIntent)
             intent = AutoRoundIntent(s, rounds);
 
         var recentAtIntent = rounds
@@ -170,7 +187,30 @@ public static class CoachEngine
                 ? $"{intent} site • prvi kontakt + varen umik"
                 : $"{intent} route • drugi kontakt + trade";
 
-        var index = Math.Abs(variant + failed) % options.Length;
+        int index;
+
+        if (spawn.Known && options.Length > 1)
+        {
+            // Options are ordered from more direct first-contact to more
+            // supportive/passive. Spawn only chooses the variant; it never
+            // overrides an explicit A/B call.
+            index =
+                string.Equals(spawn.Bias, intent, StringComparison.OrdinalIgnoreCase)
+                    ? 0
+                    : spawn.Bias == "NEUTRAL"
+                        ? Math.Min(1, options.Length - 1)
+                        : options.Length - 1;
+
+            // Repeating a failed/death-heavy setup twice moves one step away
+            // from the same look even if the spawn would normally favor it.
+            if (failed >= 2)
+                index = (index + 1) % options.Length;
+        }
+        else
+        {
+            var variant = Math.Abs((s.Round ?? 0) % 3);
+            index = Math.Abs(variant + failed) % options.Length;
+        }
 
         if (options.Length > 1 &&
             string.Equals(
@@ -247,6 +287,10 @@ public static class CoachEngine
 
         if (a == b)
         {
+            var spawn = SpawnProfile(s);
+            if (spawn.Known && spawn.Bias is "A" or "B")
+                return spawn.Bias;
+
             var lastSite = NormalizeRoundIntent(recent.LastOrDefault()?.Intent);
 
             if (lastSite == "A") return "B";
