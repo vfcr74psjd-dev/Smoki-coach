@@ -45,10 +45,10 @@ public sealed class SessionAnalyticsForm : Form
             Padding = new Padding(24, 18, 24, 20),
             BackColor = Bg
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 175));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
@@ -297,11 +297,25 @@ public sealed class SessionAnalyticsForm : Form
         return grid;
     }
 
+    private static readonly Dictionary<string, string> MapArtworkUrls =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["de_ancient"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_ancient.jpg",
+            ["de_anubis"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_anubis.jpg",
+            ["de_dust2"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_dust2.jpg",
+            ["de_inferno"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_inferno.jpg",
+            ["de_mirage"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_mirage.jpg",
+            ["de_nuke"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_nuke.jpg",
+            ["de_overpass"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_overpass.jpg",
+            ["de_train"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_train.jpg",
+            ["de_vertigo"] = "https://raw.githubusercontent.com/kus/cs2-modded-server/assets/images/de_vertigo.jpg"
+        };
+
     private Control BuildHistory(IReadOnlyList<SessionSummary> all)
     {
         var card = MakeCard();
-        card.Margin = new Padding(0, 8, 0, 8);
-        card.Padding = new Padding(12, 10, 12, 10);
+        card.Margin = new Padding(0, 6, 0, 6);
+        card.Padding = new Padding(12, 8, 12, 8);
 
         var layout = new TableLayoutPanel
         {
@@ -311,7 +325,7 @@ public sealed class SessionAnalyticsForm : Form
             Margin = Padding.Empty,
             BackColor = Panel
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var header = new TableLayoutPanel
@@ -320,18 +334,17 @@ public sealed class SessionAnalyticsForm : Form
             ColumnCount = 2,
             Margin = Padding.Empty
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        var icon = new Label
+        header.Controls.Add(new Label
         {
             Text = "◷",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI Symbol", 17, FontStyle.Bold),
+            Font = new Font("Segoe UI Symbol", 15, FontStyle.Bold),
             ForeColor = Orange,
             TextAlign = ContentAlignment.MiddleCenter
-        };
-        header.Controls.Add(icon, 0, 0);
+        }, 0, 0);
 
         var headerText = new TableLayoutPanel
         {
@@ -340,8 +353,8 @@ public sealed class SessionAnalyticsForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        headerText.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-        headerText.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        headerText.RowStyles.Add(new RowStyle(SizeType.Percent, 54));
+        headerText.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
         headerText.Controls.Add(new Label
         {
             Text = "RECENT MATCHES",
@@ -352,46 +365,43 @@ public sealed class SessionAnalyticsForm : Form
         }, 0, 0);
         headerText.Controls.Add(new Label
         {
-            Text = "Your latest analyzed matches",
+            Text = all.Count > 2
+                ? "Your latest analyzed matches • showing newest 2"
+                : "Your latest analyzed matches",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8),
+            Font = new Font("Segoe UI", 7.6f),
             ForeColor = Muted,
             TextAlign = ContentAlignment.TopLeft
         }, 0, 1);
         header.Controls.Add(headerText, 1, 0);
         layout.Controls.Add(header, 0, 0);
 
-        var list = new FlowLayoutPanel
+        var matches = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            AutoScroll = true,
+            ColumnCount = 1,
+            RowCount = 2,
             Margin = Padding.Empty,
             Padding = new Padding(0, 2, 0, 0),
             BackColor = Panel
         };
-        layout.Controls.Add(list, 0, 1);
+        matches.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        matches.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
 
-        void SizeRows()
+        var recent = all.Take(2).ToList();
+        for (int i = 0; i < recent.Count; i++)
         {
-            var width = Math.Max(520, list.ClientSize.Width - (list.VerticalScroll.Visible ? 18 : 2));
-            foreach (Control control in list.Controls)
-                control.Width = width;
+            var match = BuildMatchCard(recent[i]);
+            match.Margin = new Padding(0, i == 0 ? 0 : 4, 0, i == 0 ? 4 : 0);
+            matches.Controls.Add(match, 0, i);
         }
 
-        foreach (var session in all.Take(50))
-        {
-            var match = BuildMatchCard(session);
-            list.Controls.Add(match);
-        }
-
-        if (all.Count == 0)
+        if (recent.Count == 0)
         {
             var empty = new RoundedPanel
             {
-                Height = 70,
-                Margin = new Padding(0, 0, 0, 8),
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
                 BackColor = Panel2,
                 BorderColor = Color.FromArgb(42, 45, 49),
                 Radius = 13
@@ -404,12 +414,11 @@ public sealed class SessionAnalyticsForm : Form
                 ForeColor = Muted,
                 TextAlign = ContentAlignment.MiddleCenter
             });
-            list.Controls.Add(empty);
+            matches.SetRowSpan(empty, 2);
+            matches.Controls.Add(empty, 0, 0);
         }
 
-        list.SizeChanged += (_,__) => SizeRows();
-        list.HandleCreated += (_,__) => SizeRows();
-
+        layout.Controls.Add(matches, 0, 1);
         card.Controls.Add(layout);
         return card;
     }
@@ -418,11 +427,10 @@ public sealed class SessionAnalyticsForm : Form
     {
         var row = new RoundedPanel
         {
-            Height = 70,
-            Margin = new Padding(0, 0, 0, 8),
-            BackColor = Color.FromArgb(16, 18, 20),
-            BorderColor = Color.FromArgb(45, 48, 52),
-            HoverBorderColor = Color.FromArgb(119, 82, 40),
+            Dock = DockStyle.Fill,
+            BackColor = Color.FromArgb(15, 17, 19),
+            BorderColor = Color.FromArgb(44, 47, 51),
+            HoverBorderColor = Color.FromArgb(131, 88, 41),
             Radius = 14,
             Cursor = Cursors.Hand
         };
@@ -430,104 +438,92 @@ public sealed class SessionAnalyticsForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 12,
+            ColumnCount = 4,
             RowCount = 1,
             Margin = Padding.Empty,
-            Padding = new Padding(9, 7, 8, 7),
+            Padding = new Padding(8, 7, 8, 7),
             BackColor = Color.Transparent
         };
-
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
-        for (int i = 0; i < 8; i++)
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12.5f));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
-
-        var time = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            BackColor = Color.Transparent
-        };
-        time.RowStyles.Add(new RowStyle(SizeType.Percent, 54));
-        time.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
-        time.Controls.Add(new Label
-        {
-            Text = session.EndedUtc.ToLocalTime().ToString("dd.MM HH:mm"),
-            Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            ForeColor = Color.White,
-            TextAlign = ContentAlignment.BottomLeft
-        }, 0, 0);
-        time.Controls.Add(new Label
-        {
-            Text = RelativeAge(session.EndedUtc),
-            Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.4f),
-            ForeColor = Muted,
-            TextAlign = ContentAlignment.TopLeft
-        }, 0, 1);
-        layout.Controls.Add(time, 0, 0);
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26));
 
         var thumbHost = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(2, 0, 8, 0),
-            BackColor = Color.FromArgb(24, 26, 29),
+            Margin = new Padding(0, 0, 10, 0),
+            Padding = new Padding(2),
+            BackColor = Color.FromArgb(11, 13, 15),
             BorderColor = Color.FromArgb(53, 56, 60),
-            Radius = 9
+            Radius = 10
         };
         var picture = new PictureBox
         {
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(24, 26, 29),
+            BackColor = Color.FromArgb(11, 13, 15),
             SizeMode = PictureBoxSizeMode.Zoom
         };
-        thumbHost.Padding = new Padding(2);
         thumbHost.Controls.Add(picture);
-        layout.Controls.Add(thumbHost, 1, 0);
-        _ = LoadMapThumbnailAsync(picture, session.Map);
+        layout.Controls.Add(thumbHost, 0, 0);
+        _ = LoadMapArtworkAsync(picture, session.Map);
 
-        var mapInfo = new TableLayoutPanel
+        var identity = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
-            Margin = new Padding(4, 0, 8, 0),
+            RowCount = 5,
+            Margin = new Padding(2, 0, 8, 0),
             BackColor = Color.Transparent
         };
-        mapInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
-        mapInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-        mapInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-        mapInfo.Controls.Add(new Panel
+        identity.RowStyles.Add(new RowStyle(SizeType.Absolute, 6));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 31));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 23));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 23));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 23));
+
+        identity.Controls.Add(new Panel
         {
             Dock = DockStyle.Left,
-            Width = 28,
+            Width = 30,
             Height = 3,
             BackColor = Orange,
-            Margin = new Padding(0, 2, 0, 0)
+            Margin = new Padding(0, 1, 0, 0)
         }, 0, 0);
-        mapInfo.Controls.Add(new Label
+        identity.Controls.Add(new Label
         {
             Text = CoachEngine.PrettyMap(session.Map),
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 11, FontStyle.Bold),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.BottomLeft
         }, 0, 1);
-        mapInfo.Controls.Add(new Label
+        identity.Controls.Add(new Label
         {
             Text = "Competitive",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f),
-            ForeColor = Color.FromArgb(171, 179, 190),
+            Font = new Font("Segoe UI", 7.7f),
+            ForeColor = Color.FromArgb(169, 177, 188),
             TextAlign = ContentAlignment.TopLeft
         }, 0, 2);
-        layout.Controls.Add(mapInfo, 2, 0);
+        identity.Controls.Add(new Label
+        {
+            Text = session.EndedUtc.ToLocalTime().ToString("dd.MM • HH:mm"),
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 7.8f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(226, 229, 233),
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, 3);
+        identity.Controls.Add(new Label
+        {
+            Text = RelativeAge(session.EndedUtc),
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 7.3f),
+            ForeColor = Muted,
+            TextAlign = ContentAlignment.TopLeft
+        }, 0, 4);
+        layout.Controls.Add(identity, 1, 0);
 
         var kdColor = session.Deaths == 0 || session.Kills >= session.Deaths ? Green : Red;
         var survivalColor = session.SurvivalRate >= 60 ? Green : Orange;
@@ -535,29 +531,49 @@ public sealed class SessionAnalyticsForm : Form
             ? Green
             : session.DevelopmentScore > 0 ? Orange : Muted;
 
-        var chips = new[]
+        var stats = new TableLayoutPanel
         {
-            MakeStatChip("ROUNDS", session.Rounds.ToString(), Color.White),
-            MakeStatChip("K / D", $"{session.Kills}/{session.Deaths}", kdColor),
-            MakeStatChip("K / R", session.KillsPerRound.ToString("0.00"), Color.White),
-            MakeStatChip("SURVIVAL", session.SurvivalRate.ToString("0") + "%", survivalColor),
-            MakeStatChip("MULTI", session.MultiKillRounds.ToString(), Color.FromArgb(105, 177, 238)),
-            MakeStatChip("0K", session.ZeroKillRounds.ToString(), session.ZeroKillRounds > 0 ? Red : Green),
-            MakeStatChip("DEV", session.DevelopmentScore > 0 ? session.DevelopmentScore.ToString() : "—", devColor),
-            MakeStatChip("SCORE", $"{session.CtScore}:{session.TScore}", Orange)
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        for (int i = 0; i < 4; i++)
+            stats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        stats.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        stats.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+
+        var statItems = new (string Title, string Value, Color Color)[]
+        {
+            ("K / D", $"{session.Kills}/{session.Deaths}", kdColor),
+            ("K / R", session.KillsPerRound.ToString("0.00"), Color.White),
+            ("SURVIVAL", session.SurvivalRate.ToString("0") + "%", survivalColor),
+            ("SCORE", $"{session.CtScore}:{session.TScore}", Orange),
+            ("ROUNDS", session.Rounds.ToString(), Color.White),
+            ("MULTI", session.MultiKillRounds.ToString(), Color.FromArgb(105, 177, 238)),
+            ("0K", session.ZeroKillRounds.ToString(), session.ZeroKillRounds > 0 ? Red : Green),
+            ("DEV", session.DevelopmentScore > 0 ? session.DevelopmentScore.ToString() : "—", devColor)
         };
 
-        for (int i = 0; i < chips.Length; i++)
-            layout.Controls.Add(chips[i], i + 3, 0);
+        for (int i = 0; i < statItems.Length; i++)
+        {
+            var item = statItems[i];
+            stats.Controls.Add(
+                MakeStatChip(item.Title, item.Value, item.Color),
+                i % 4,
+                i / 4);
+        }
+        layout.Controls.Add(stats, 2, 0);
 
         layout.Controls.Add(new Label
         {
             Text = "›",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 19, FontStyle.Regular),
+            Font = new Font("Segoe UI", 20),
             ForeColor = Color.FromArgb(205, 210, 216),
             TextAlign = ContentAlignment.MiddleCenter
-        }, 11, 0);
+        }, 3, 0);
 
         row.Controls.Add(layout);
         return row;
@@ -568,10 +584,10 @@ public sealed class SessionAnalyticsForm : Form
         var chip = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(3, 1, 3, 1),
+            Margin = new Padding(4, 3, 4, 3),
             BackColor = Color.FromArgb(20, 22, 25),
             BorderColor = Color.FromArgb(50, 53, 58),
-            Radius = 9
+            Radius = 8
         };
 
         var layout = new TableLayoutPanel
@@ -580,16 +596,16 @@ public sealed class SessionAnalyticsForm : Form
             ColumnCount = 1,
             RowCount = 2,
             Margin = Padding.Empty,
-            Padding = new Padding(4, 4, 4, 3),
+            Padding = new Padding(3, 2, 3, 2),
             BackColor = Color.Transparent
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
         layout.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 6.6f, FontStyle.Regular),
+            Font = new Font("Segoe UI", 6.5f),
             ForeColor = Color.FromArgb(132, 140, 151),
             TextAlign = ContentAlignment.BottomCenter
         }, 0, 0);
@@ -597,7 +613,7 @@ public sealed class SessionAnalyticsForm : Form
         {
             Text = value,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 9.2f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 9.3f, FontStyle.Bold),
             ForeColor = valueColor,
             TextAlign = ContentAlignment.TopCenter
         }, 0, 1);
@@ -606,69 +622,85 @@ public sealed class SessionAnalyticsForm : Form
         return chip;
     }
 
-    private async Task LoadMapThumbnailAsync(PictureBox picture, string map)
+    private async Task LoadMapArtworkAsync(PictureBox picture, string map)
     {
         try
         {
-            var mapKey = (map ?? "").Trim();
-            if (!mapKey.StartsWith("de_", StringComparison.OrdinalIgnoreCase) &&
-                !string.IsNullOrWhiteSpace(mapKey))
+            var mapKey = NormalizeMapKey(map);
+            if (!MapArtworkUrls.TryGetValue(mapKey, out var url))
             {
-                mapKey = "de_" + mapKey.ToLowerInvariant().Replace(" ", "");
-            }
-
-            var radar = RadarCatalog.Get(mapKey);
-            if (radar == null)
-            {
-                picture.Image = BuildMapFallback(map);
+                SetPictureImage(picture, BuildMapFallback(map));
                 return;
             }
 
-            var bytes = await RadarImageCache.GetAsync(radar.RadarUrl);
+            var bytes = await RadarImageCache.GetAsync(url);
             using var ms = new MemoryStream(bytes);
             using var source = Image.FromStream(ms);
             var image = new Bitmap(source);
-
-            if (picture.IsDisposed)
-            {
-                image.Dispose();
-                return;
-            }
-
-            var old = picture.Image;
-            picture.Image = image;
-            old?.Dispose();
+            SetPictureImage(picture, image);
         }
         catch
         {
-            if (!picture.IsDisposed)
-            {
-                var old = picture.Image;
-                picture.Image = BuildMapFallback(map);
-                old?.Dispose();
-            }
+            SetPictureImage(picture, BuildMapFallback(map));
         }
+    }
+
+    private static void SetPictureImage(PictureBox picture, Image image)
+    {
+        if (picture.IsDisposed)
+        {
+            image.Dispose();
+            return;
+        }
+
+        if (picture.InvokeRequired)
+        {
+            try
+            {
+                picture.BeginInvoke(new Action(() => SetPictureImage(picture, image)));
+            }
+            catch
+            {
+                image.Dispose();
+            }
+            return;
+        }
+
+        var old = picture.Image;
+        picture.Image = image;
+        old?.Dispose();
+    }
+
+    private static string NormalizeMapKey(string map)
+    {
+        var key = (map ?? "").Trim().ToLowerInvariant();
+        if (key.Length == 0) return "";
+        if (!key.StartsWith("de_", StringComparison.OrdinalIgnoreCase))
+            key = "de_" + key.Replace(" ", "");
+        return key;
     }
 
     private static Image BuildMapFallback(string map)
     {
-        var bmp = new Bitmap(220, 100);
+        var bmp = new Bitmap(360, 160);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         using var bg = new LinearGradientBrush(
             new Rectangle(0, 0, bmp.Width, bmp.Height),
-            Color.FromArgb(49, 38, 27),
-            Color.FromArgb(18, 21, 24),
+            Color.FromArgb(51, 39, 26),
+            Color.FromArgb(13, 16, 19),
             LinearGradientMode.ForwardDiagonal);
         g.FillRectangle(bg, 0, 0, bmp.Width, bmp.Height);
 
-        using var accent = new SolidBrush(Color.FromArgb(90, 255, 156, 44));
-        g.FillEllipse(accent, bmp.Width - 84, -24, 110, 110);
+        using var accent = new SolidBrush(Color.FromArgb(88, 255, 156, 44));
+        g.FillEllipse(accent, bmp.Width - 118, -35, 160, 160);
 
-        using var titleFont = new Font("Segoe UI", 15, FontStyle.Bold);
+        using var subtitleFont = new Font("Segoe UI", 8, FontStyle.Bold);
+        using var titleFont = new Font("Segoe UI", 20, FontStyle.Bold);
         using var titleBrush = new SolidBrush(Color.White);
-        var title = CoachEngine.PrettyMap(map);
-        g.DrawString(title, titleFont, titleBrush, new PointF(12, 37));
+        using var mutedBrush = new SolidBrush(Color.FromArgb(188, 196, 205));
+        g.DrawString("CS2 MAP", subtitleFont, mutedBrush, new PointF(16, 38));
+        g.DrawString(CoachEngine.PrettyMap(map), titleFont, titleBrush, new PointF(14, 62));
         return bmp;
     }
 
