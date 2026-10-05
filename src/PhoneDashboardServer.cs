@@ -51,6 +51,13 @@ public sealed class PhoneDashboardServer : IDisposable
         public int devScore { get; init; }
         public string devLeak { get; init; } = "Collecting evidence";
         public string devFocus { get; init; } = "Play normal CS2 while the coach learns.";
+        public string brainMistake { get; init; } = "Collecting evidence";
+        public string brainPriority { get; init; } = "KEEP PLAN";
+        public string brainFocus { get; init; } = "Play normal CS2 while Smart Match Brain learns your pattern.";
+        public string brainEvidence { get; init; } = "";
+        public string brainConfidence { get; init; } = "LOW";
+        public string brainStatus { get; init; } = "LEARNING";
+        public string brainProgress { get; init; } = "";
         public string planKey { get; init; } = "";
         public string roundKey { get; init; } = "";
         public string aiTip { get; init; } = "";
@@ -300,6 +307,7 @@ public sealed class PhoneDashboardServer : IDisposable
         var advice = _aiProvider() ?? "";
         var plan = ParseCoachAdvice(advice);
         var development = PlayerDevelopmentEngine.Analyze(rounds);
+        var brain = SmartMatchBrainEngine.Analyze(rounds);
         var (fallbackBuyTitle, fallbackBuyAdvice) =
             CoachEngine.BuyAdvice(snapshot);
 
@@ -417,6 +425,13 @@ public sealed class PhoneDashboardServer : IDisposable
             devScore = development.OverallScore,
             devLeak = development.BiggestLeak,
             devFocus = development.MatchFocus,
+            brainMistake = brain.Mistake,
+            brainPriority = brain.Priority,
+            brainFocus = brain.OneFocus,
+            brainEvidence = brain.Evidence,
+            brainConfidence = brain.Confidence,
+            brainStatus = brain.FocusStatus,
+            brainProgress = brain.FocusProgress,
             roundKey = roundKey,
             planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt + "|" + development.BiggestLeak,
             aiTip = advice,
@@ -541,6 +556,12 @@ button,select{font:inherit}
   font-size:9px;font-weight:900;line-height:1.15
 }
 .gameToggle.on{color:#07150d;background:#79e5a4;border-color:#79e5a4}
+.focusStrip{
+  margin-top:8px;padding:9px 11px;border-radius:12px;border:1px solid #34312a;
+  background:#15130f;display:flex;gap:9px;align-items:flex-start
+}
+.focusStrip .focusTag{font-size:8px;font-weight:950;letter-spacing:.12em;color:var(--orange);padding-top:2px;white-space:nowrap}
+.focusStrip .focusText{font-size:12px;line-height:1.25;font-weight:900;color:#edf0f3}
 .plan{display:grid;gap:8px;margin-top:8px}
 .planCard{border-radius:15px;border:1px solid var(--line);padding:12px 14px;background:var(--panel)}
 .planCard.position{border-color:#6d4a22;background:linear-gradient(180deg,#211911,#141516)}
@@ -572,6 +593,14 @@ button,select{font:inherit}
 .devScore{font-size:31px;font-weight:950;color:var(--orange);letter-spacing:-.04em}
 .devLeak{font-size:16px;font-weight:900;margin-top:5px}
 .devFocus{font-size:12px;color:#c1c7cf;line-height:1.35;margin-top:5px}
+.brainCard{
+  margin-top:9px;padding:13px;border-radius:15px;border:1px solid #34312a;background:#121313
+}
+.brainTop{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.brainBadge{font-size:8px;font-weight:950;letter-spacing:.1em;color:#ffbf75;border:1px solid #5a442b;border-radius:999px;padding:4px 7px}
+.brainMistake{font-size:15px;font-weight:900;margin-top:7px}
+.brainPriority{font-size:12px;line-height:1.34;color:#d2d7dd;margin-top:5px}
+.brainMeta{font-size:9px;line-height:1.35;color:#747c86;margin-top:7px}
 .rounds{display:grid;gap:6px}
 .roundRow{
   display:grid;grid-template-columns:42px 35px 42px 1fr;gap:8px;align-items:center;
@@ -666,6 +695,11 @@ select{
       <span id="summaryText"></span>
     </div>
 
+    <div class="focusStrip">
+      <div class="focusTag">FOCUS</div>
+      <div id="brainFocus" class="focusText">{{Html(state.brainFocus)}}</div>
+    </div>
+
     <div class="plan">
       <article id="positionCard" class="planCard position">
         <div class="label">POSITION</div>
@@ -705,6 +739,17 @@ select{
       <div><span id="devScore" class="devScore">{{state.devScore}}</span><span style="color:#767e88"> / 100</span></div>
       <div id="devLeak" class="devLeak">{{Html(state.devLeak)}}</div>
       <div id="devFocus" class="devFocus">{{Html(state.devFocus)}}</div>
+    </div>
+
+    <div class="sectionTitle">SMART MATCH BRAIN</div>
+    <div class="brainCard">
+      <div class="brainTop">
+        <div class="label">DETECT → PRIORITIZE → FOCUS</div>
+        <div id="brainBadge" class="brainBadge">{{Html(state.brainConfidence)}}</div>
+      </div>
+      <div id="brainMistake" class="brainMistake">{{Html(state.brainMistake)}}</div>
+      <div id="brainPriority" class="brainPriority">{{Html(state.brainPriority)}}</div>
+      <div id="brainMeta" class="brainMeta">{{Html(state.brainEvidence)}} • {{Html(state.brainStatus)}} • {{Html(state.brainProgress)}}</div>
     </div>
 
     <div class="sectionTitle">RECENT ROUNDS</div>
@@ -871,6 +916,11 @@ function updateSecondary(x){
   setText('devScore',x.devScore);
   setText('devLeak',x.devLeak);
   setText('devFocus',x.devFocus);
+  setText('brainFocus',x.brainFocus);
+  setText('brainMistake',x.brainMistake);
+  setText('brainPriority',x.brainPriority);
+  setText('brainBadge',x.brainConfidence);
+  setText('brainMeta',(x.brainEvidence||'')+' • '+(x.brainStatus||'')+' • '+(x.brainProgress||''));
   renderRounds(x.recentRounds);
 
   $('modeSelect').value=x.mode||'Balanced';
