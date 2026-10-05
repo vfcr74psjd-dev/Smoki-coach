@@ -47,9 +47,15 @@ public sealed class MainForm : Form
     private DateTime _faceitLoadedUtc = DateTime.MinValue;
     private bool _faceitLoading;
     private CancellationTokenSource? _aiCts;
+    private CancellationTokenSource? _aiPrefetchCts;
     private string _latestAiAdvice = "AI coach čaka na nastavitev.";
     private int? _lastAiRound;
     private string _lastAiMap = "";
+    private int? _aiPrefetchRound;
+    private string _aiPrefetchMap = "";
+    private string _aiPrefetchSide = "";
+    private string _aiPrefetchIntent = "";
+    private string _aiPrefetchedAdvice = "";
     private int? _trackedRound;
     private int _roundStartKills;
     private int _roundStartDeaths;
@@ -148,6 +154,8 @@ public sealed class MainForm : Form
             ArchiveCurrentSession(_current.Map, _current);
             _aiCts?.Cancel();
             _aiCts?.Dispose();
+            _aiPrefetchCts?.Cancel();
+            _aiPrefetchCts?.Dispose();
             _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
             _demoInbox?.Dispose();
@@ -1504,25 +1512,41 @@ public sealed class MainForm : Form
     {
         if (!force && snapshot.Round == null) return;
 
-        // Every round gets a useful plan immediately. Local AI is only a refinement.
+        var mode = _mode.SelectedItem?.ToString() ?? "Balanced";
+        var role = _role.SelectedItem?.ToString() ?? "Flex";
+        var focus = _focus.SelectedItem?.ToString() ?? "More kills";
+        var intent = GetRoundIntent(snapshot.Round);
+
+        // Every round gets a useful deterministic plan immediately.
         var instant = CoachEngine.InstantRoundPlan(
             snapshot,
-            _mode.SelectedItem?.ToString() ?? "Balanced",
-            _role.SelectedItem?.ToString() ?? "Flex",
-            _focus.SelectedItem?.ToString() ?? "More kills",
+            mode,
+            role,
+            focus,
             _rounds.ToList(),
-            GetRoundIntent(snapshot.Round)
+            intent
         );
 
-        _latestAiAdvice = instant;
-        _aiText.Text = instant;
-        _aiStatus.Text = _aiCoach.IsConfigured ? "FAST PLAN • AI REFINE" : "FAST PLAN";
-        _aiStatus.ForeColor = _aiCoach.IsConfigured
-            ? Color.FromArgb(255, 178, 91)
-            : Color.FromArgb(126, 240, 174);
+        var prefetched = TryUsePrefetchedAi(snapshot, intent, instant, out var immediate);
+        _latestAiAdvice = immediate;
+        _aiText.Text = immediate;
+        _aiStatus.Text = prefetched
+            ? "AI PREFETCHED • READY"
+            : _aiCoach.IsConfigured
+                ? "FAST PLAN • AI REFINE"
+                : "FAST PLAN";
+        _aiStatus.ForeColor = prefetched || !_aiCoach.IsConfigured
+            ? Color.FromArgb(126, 240, 174)
+            : Color.FromArgb(255, 178, 91);
         UpdateGameOverlay();
 
         if (!_autoAi.Checked || !_aiCoach.IsConfigured)
+            return;
+
+        // If the between-round prefetch matched the current map/round/side/intent,
+        // the useful AI refinement is already on screen. Do not burn more freeze-time
+        // regenerating the same advice.
+        if (prefetched && !force)
             return;
 
         _aiCts?.Cancel();
@@ -1541,9 +1565,9 @@ public sealed class MainForm : Form
             var advice = await _aiCoach.GenerateRoundAdviceAsync(
                 snapshot,
                 _rounds.ToList(),
-                $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"} | SmartFocus={brain.OneFocus} | BrainPriority={brain.Priority}",
+                $"{mode} | Role={role} | Focus={focus} | SmartFocus={brain.OneFocus} | BrainPriority={brain.Priority}",
                 _profile.Nickname,
-                GetRoundIntent(snapshot.Round),
+                intent,
                 requestToken
             );
 
@@ -1560,7 +1584,6 @@ public sealed class MainForm : Form
         }
         catch (OperationCanceledException)
         {
-            // New round or 7-second budget reached: keep the instant plan.
             if (_current.Map == requestedMap && _current.Round == requestedRound)
             {
                 _aiStatus.Text = "FAST PLAN";
@@ -1569,13 +1592,170 @@ public sealed class MainForm : Form
         }
         catch
         {
-            // Never replace a usable round plan with an AI error during a match.
             if (_current.Map == requestedMap && _current.Round == requestedRound)
             {
                 _aiStatus.Text = "FAST PLAN";
                 _aiStatus.ForeColor = Color.FromArgb(126, 240, 174);
             }
         }
+    }
+
+    private async Task PrefetchNextRoundAiAsync(GameSnapshot snapshot)
+    {
+        if (!_autoAi.Checked ||
+            !_aiCoach.IsConfigured ||
+            snapshot.Round is not int currentRound ||
+            string.IsNullOrWhiteSpace(snapshot.Map))
+            return;
+
+        var targetRound = currentRound + 1;
+        var targetIntent = GetRoundIntent(targetRound);
+        var targetMap = snapshot.Map;
+        var targetSide = snapshot.Team ?? "";
+
+        if (_aiPrefetchRound == targetRound &&
+            string.Equals(_aiPrefetchMap, targetMap, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_aiPrefetchSide, targetSide, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_aiPrefetchIntent, targetIntent, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _aiPrefetchCts?.Cancel();
+        _aiPrefetchCts?.Dispose();
+        _aiPrefetchCts = new CancellationTokenSource();
+        _aiPrefetchCts.CancelAfter(TimeSpan.FromSeconds(7));
+
+        _aiPrefetchRound = targetRound;
+        _aiPrefetchMap = targetMap;
+        _aiPrefetchSide = targetSide;
+        _aiPrefetchIntent = targetIntent;
+        _aiPrefetchedAdvice = "";
+
+        var rounds = BuildMatchReviewRounds();
+        var brain = SmartMatchBrainEngine.Analyze(rounds);
+        var mode = _mode.SelectedItem?.ToString() ?? "Balanced";
+        var role = _role.SelectedItem?.ToString() ?? "Flex";
+        var focus = _focus.SelectedItem?.ToString() ?? "More kills";
+        var token = _aiPrefetchCts.Token;
+
+        // Inventory/economy from round-over can be stale or spectated.
+        // The prefetch is only used for DO + ADAPT; BUY/POSITION/EXPECT
+        // are rebuilt from fresh next-round state.
+        var predicted = new GameSnapshot
+        {
+            PlayerName = _profile.Nickname,
+            LocalSteamId = snapshot.LocalSteamId,
+            PlayerSteamId = snapshot.LocalSteamId,
+            IsSpectating = false,
+            Team = targetSide,
+            Map = targetMap,
+            MapPhase = snapshot.MapPhase,
+            Round = targetRound,
+            RoundPhase = "freezetime",
+            CtScore = snapshot.CtScore,
+            TScore = snapshot.TScore,
+            Health = 100,
+            Armor = snapshot.Armor,
+            Helmet = snapshot.Helmet,
+            Money = snapshot.Money,
+            Kills = snapshot.Kills,
+            Deaths = snapshot.Deaths,
+            Assists = snapshot.Assists,
+            Weapon = "",
+            PrimaryWeapon = "",
+            Timestamp = DateTime.UtcNow
+        };
+
+        try
+        {
+            var advice = await _aiCoach.GenerateRoundAdviceAsync(
+                predicted,
+                rounds,
+                $"{mode} | Role={role} | Focus={focus} | SmartFocus={brain.OneFocus} | BrainPriority={brain.Priority} | Prefetch=next-round",
+                _profile.Nickname,
+                targetIntent,
+                token);
+
+            if (token.IsCancellationRequested ||
+                _aiPrefetchRound != targetRound ||
+                !string.Equals(_aiPrefetchMap, targetMap, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(_aiPrefetchSide, targetSide, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _aiPrefetchedAdvice = advice;
+        }
+        catch
+        {
+            // Prefetch is optional. The deterministic FAST PLAN remains immediate.
+        }
+    }
+
+    private bool TryUsePrefetchedAi(
+        GameSnapshot snapshot,
+        string intent,
+        string instant,
+        out string merged)
+    {
+        merged = instant;
+
+        if (snapshot.Round is not int round ||
+            _aiPrefetchRound != round ||
+            string.IsNullOrWhiteSpace(_aiPrefetchedAdvice) ||
+            !string.Equals(_aiPrefetchMap, snapshot.Map, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(_aiPrefetchSide, snapshot.Team, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(_aiPrefetchIntent, intent, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        merged = MergeRefinedActionLines(instant, _aiPrefetchedAdvice);
+
+        _aiPrefetchedAdvice = "";
+        _aiPrefetchRound = null;
+        _aiPrefetchMap = "";
+        _aiPrefetchSide = "";
+        _aiPrefetchIntent = "";
+
+        return true;
+    }
+
+    private static string MergeRefinedActionLines(string instant, string refined)
+    {
+        static string? ReadLine(string text, string key)
+            => text
+                .Replace("\r", "")
+                .Split(
+                    '\n',
+                    StringSplitOptions.RemoveEmptyEntries |
+                    StringSplitOptions.TrimEntries)
+                .FirstOrDefault(x =>
+                    x.StartsWith(
+                        key + ":",
+                        StringComparison.OrdinalIgnoreCase));
+
+        var refinedDo = ReadLine(refined, "DO");
+        var refinedAdapt = ReadLine(refined, "ADAPT");
+
+        var lines = instant
+            .Replace("\r", "")
+            .Split(
+                '\n',
+                StringSplitOptions.RemoveEmptyEntries |
+                StringSplitOptions.TrimEntries)
+            .ToList();
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (refinedDo != null &&
+                lines[i].StartsWith("DO:", StringComparison.OrdinalIgnoreCase))
+            {
+                lines[i] = refinedDo;
+            }
+            else if (refinedAdapt != null &&
+                     lines[i].StartsWith("ADAPT:", StringComparison.OrdinalIgnoreCase))
+            {
+                lines[i] = refinedAdapt;
+            }
+        }
+
+        return string.Join("\n", lines);
     }
 
     private void ArchiveCurrentSession(string map, GameSnapshot snapshot)
@@ -1965,6 +2145,15 @@ public sealed class MainForm : Form
                 _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
                 _trackedRoundLastHealth = s.Health ?? 0;
                 ResetRoundPatternTracking(s);
+            }
+
+            if (string.Equals(
+                    s.RoundPhase,
+                    "over",
+                    StringComparison.OrdinalIgnoreCase) &&
+                s.Round is int)
+            {
+                _ = PrefetchNextRoundAiAsync(s);
             }
 
             bool requestAi =
