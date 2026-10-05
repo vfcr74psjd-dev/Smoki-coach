@@ -315,10 +315,12 @@ public sealed class PhoneDashboardServer : IDisposable
         // round-critical signals and should update as soon as GSI/round history changes.
         var buy = fallbackBuyAdvice;
 
-        var position = ValueOrFallback(
-            plan,
-            "POSITION",
-            "Waiting for live round data");
+        // POSITION is deterministic and spawn-aware. Do not let an older
+        // AI-refined line hide a newly captured freeze-time spawn.
+        var position = CoachEngine.PositionPlan(
+            snapshot,
+            "",
+            rounds);
 
         var expect = CoachEngine.EnemyExpectation(snapshot, rounds);
 

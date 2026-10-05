@@ -57,6 +57,11 @@ public sealed class MainForm : Form
     private string _aiPrefetchIntent = "";
     private string _aiPrefetchedAdvice = "";
     private int? _trackedRound;
+    private int? _spawnRound;
+    private string _spawnMap = "";
+    private float? _roundSpawnX;
+    private float? _roundSpawnY;
+    private float? _roundSpawnZ;
     private int _roundStartKills;
     private int _roundStartDeaths;
     private string _trackedRoundWinTeam = "";
@@ -1546,8 +1551,12 @@ public sealed class MainForm : Form
         // If the between-round prefetch matched the current map/round/side/intent,
         // the useful AI refinement is already on screen. Do not burn more freeze-time
         // regenerating the same advice.
-        if (prefetched && !force)
+        if (prefetched && !force && !snapshot.HasSpawnPosition)
             return;
+
+        // Once freeze-time exposes the real spawn, allow one fast refinement
+        // with spawn context. The prefetched plan is already visible, so the
+        // phone never waits on this call.
 
         _aiCts?.Cancel();
         _aiCts?.Dispose();
@@ -2046,6 +2055,47 @@ public sealed class MainForm : Form
         BeginInvoke(() =>
         {
             _lastGsiUtc = DateTime.UtcNow;
+
+            var spawnIdentityChanged =
+                _spawnRound != s.Round ||
+                !string.Equals(
+                    _spawnMap,
+                    s.Map,
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (spawnIdentityChanged)
+            {
+                _spawnRound = s.Round;
+                _spawnMap = s.Map ?? "";
+                _roundSpawnX = null;
+                _roundSpawnY = null;
+                _roundSpawnZ = null;
+            }
+
+            // Capture only our own freeze-time position. Never allow a
+            // spectated teammate to replace the spawn used by the coach.
+            if (!_roundSpawnX.HasValue &&
+                !s.IsSpectating &&
+                s.HasPosition &&
+                string.Equals(
+                    s.RoundPhase,
+                    "freezetime",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _roundSpawnX = s.PositionX;
+                _roundSpawnY = s.PositionY;
+                _roundSpawnZ = s.PositionZ;
+            }
+
+            if (_roundSpawnX.HasValue &&
+                _roundSpawnY.HasValue &&
+                _roundSpawnZ.HasValue)
+            {
+                s.SpawnPositionX = _roundSpawnX;
+                s.SpawnPositionY = _roundSpawnY;
+                s.SpawnPositionZ = _roundSpawnZ;
+            }
+
             _previous = _current;
             _current = s;
 

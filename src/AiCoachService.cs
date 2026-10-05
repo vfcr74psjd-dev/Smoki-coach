@@ -304,7 +304,8 @@ public sealed class AiCoachService
             "If primary is present, NEVER recommend buying another primary gun; preserve it and only top up armor/utility/kit. " +
             "Exactly 5 lines and nothing else: BUY:, POSITION:, EXPECT:, DO:, ADAPT:. " +
             "BUY must be a realistic short purchase/save recommendation from current inventory and money. " +
-            "POSITION is supplied by the app playbook; do not invent another position. " +
+            "POSITION is supplied by the app playbook and is already spawn-aware when a real freeze-time spawn is available; do not invent another position. " +
+            "Use spawn context only to shape timing/directness of DO, never to override explicit A/B intent. " +
             "EXPECT is a past-pattern tendency supplied by the app; never state it as certain or claim live enemy knowledge. " +
             "DO must be one short sequence that fits POSITION and EXPECT, using arrows. " +
             "ADAPT must explicitly react to recent results. Max 62 words total. No explanations.\n" +
@@ -312,6 +313,7 @@ public sealed class AiCoachService
             $"round={roundNumber}; score={s.CtScore ?? 0}:{s.TScore ?? 0}; " +
             $"money={s.Money ?? 0}; active={s.Weapon}; primary={s.PrimaryWeapon}; hp={s.Health ?? 0}; armor={s.Armor ?? 0}; helmet={s.Helmet}; " +
             $"type={CoachEngine.ClassifyRound(s)}; mode={mode}; intent={CoachEngine.NormalizeRoundIntent(intent)}; " +
+            $"spawn={CoachEngine.SpawnContext(s)}; " +
             $"position={CoachEngine.PositionPlan(s, intent, rounds)}; " +
             $"expect={CoachEngine.EnemyExpectation(s, rounds)}; " +
             $"recent={(recent.Length == 0 ? "none" : string.Join(",", recent))}; variation={variationSeed}.";
