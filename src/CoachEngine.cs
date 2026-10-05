@@ -111,8 +111,9 @@ public static class CoachEngine
         var action = CompactActionPlan(s, role, focus, variant, rounds);
         var adapt = CompactAdaptPlan(rounds, mode);
         var development = PlayerDevelopmentEngine.Analyze(rounds);
+        var brain = SmartMatchBrainEngine.Analyze(rounds);
 
-        return $"BUY: {buy}\nPOSITION: {position}\nEXPECT: {expectation}\nDO: {action}\nADAPT: {adapt}\nFOCUS: {development.MatchFocus}\nDEV: {development.BiggestLeak}";
+        return $"BUY: {buy}\nPOSITION: {position}\nEXPECT: {expectation}\nDO: {action}\nADAPT: {adapt}\nFOCUS: {brain.OneFocus}\nBRAIN: {brain.Priority}\nWHY: {brain.Evidence} • {brain.Confidence}\nDEV: {development.BiggestLeak}";
     }
 
     public static string NormalizeRoundIntent(string? raw)
