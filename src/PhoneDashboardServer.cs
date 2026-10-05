@@ -8,14 +8,34 @@ namespace Sm0kiSoloCoach;
 
 public sealed class PhoneDashboardServer : IDisposable
 {
+    private sealed class PhoneRoundState
+    {
+        public int round { get; init; }
+        public string side { get; init; } = "—";
+        public string result { get; init; } = "—";
+        public int kills { get; init; }
+        public int deaths { get; init; }
+        public bool survived { get; init; }
+        public string intent { get; init; } = "";
+        public string site { get; init; } = "";
+        public string position { get; init; } = "";
+    }
+
     private sealed class PhoneState
     {
+        public string version { get; init; } = "";
+        public string nickname { get; init; } = "";
+        public string connection { get; init; } = "WAITING";
+        public int telemetryAgeSeconds { get; init; }
+        public string mapPhase { get; init; } = "";
+        public string roundPhase { get; init; } = "";
         public string map { get; init; } = "—";
         public string side { get; init; } = "—";
         public string round { get; init; } = "—";
         public string score { get; init; } = "—";
         public int kills { get; init; }
         public int deaths { get; init; }
+        public int assists { get; init; }
         public string kd { get; init; } = "0.00";
         public int money { get; init; }
         public string hp { get; init; } = "—";
@@ -35,6 +55,20 @@ public sealed class PhoneDashboardServer : IDisposable
         public string roundKey { get; init; } = "";
         public string aiTip { get; init; } = "";
         public string tip { get; init; } = "";
+        public string mode { get; init; } = "Balanced";
+        public string role { get; init; } = "Flex";
+        public string focus { get; init; } = "More kills";
+        public bool autoAi { get; init; }
+        public int roundsTracked { get; init; }
+        public int wins { get; init; }
+        public int losses { get; init; }
+        public int unresolved { get; init; }
+        public int survivedRounds { get; init; }
+        public int multiKillRounds { get; init; }
+        public int zeroKillRounds { get; init; }
+        public string survival { get; init; } = "0%";
+        public string killsPerRound { get; init; } = "0.00";
+        public PhoneRoundState[] recentRounds { get; init; } = Array.Empty<PhoneRoundState>();
     }
 
     private TcpListener? _listener;
@@ -181,7 +215,8 @@ public sealed class PhoneDashboardServer : IDisposable
                     return;
                 }
 
-                if (uri.AbsolutePath.Equals("/settings", StringComparison.OrdinalIgnoreCase))
+                if (uri.AbsolutePath.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
+                    uri.AbsolutePath.Equals("/api/settings", StringComparison.OrdinalIgnoreCase))
                 {
                     var mode = GetAllowed(
                         query,
@@ -213,7 +248,15 @@ public sealed class PhoneDashboardServer : IDisposable
                         auto == "1";
 
                     _settingsUpdater(mode, role, focus, autoAi);
-                    await SendRedirect(stream, $"/?token={_accessToken}");
+
+                    if (uri.AbsolutePath.Equals("/api/settings", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await SendJson(stream, "{\"ok\":true}");
+                    }
+                    else
+                    {
+                        await SendRedirect(stream, $"/?token={_accessToken}");
+                    }
                     return;
                 }
 
@@ -242,6 +285,7 @@ public sealed class PhoneDashboardServer : IDisposable
         var mode = _modeProvider();
         var role = _roleProvider();
         var focus = _focusProvider();
+        var rounds = _roundsProvider();
 
         var map = CoachEngine.PrettyMap(snapshot.Map);
         var round = snapshot.Round is int r ? $"R{r + 1}" : "—";
@@ -255,7 +299,7 @@ public sealed class PhoneDashboardServer : IDisposable
 
         var advice = _aiProvider() ?? "";
         var plan = ParseCoachAdvice(advice);
-        var development = PlayerDevelopmentEngine.Analyze(_roundsProvider());
+        var development = PlayerDevelopmentEngine.Analyze(rounds);
         var (fallbackBuyTitle, fallbackBuyAdvice) =
             CoachEngine.BuyAdvice(snapshot);
 
@@ -293,14 +337,71 @@ public sealed class PhoneDashboardServer : IDisposable
         var roundKey =
             $"{snapshot.Map}|{snapshot.Team}|{snapshot.Round?.ToString() ?? "—"}";
 
+        var tracked = rounds.Count;
+        var wins = rounds.Count(x => x.Won == true);
+        var losses = rounds.Count(x => x.Won == false);
+        var unresolved = rounds.Count(x => x.Won == null);
+        var survived = rounds.Count(x => x.Survived);
+        var multi = rounds.Count(x => x.KillsRound >= 2);
+        var zeroKill = rounds.Count(x => x.KillsRound == 0);
+        var roundKills = rounds.Sum(x => x.KillsRound);
+        var survival = tracked > 0
+            ? $"{100.0 * survived / tracked:0}%"
+            : "0%";
+        var killsPerRound = tracked > 0
+            ? ((double)roundKills / tracked).ToString("0.00")
+            : "0.00";
+
+        var recentRounds = rounds
+            .TakeLast(12)
+            .Reverse()
+            .Select(x => new PhoneRoundState
+            {
+                round = x.Round + 1,
+                side = string.IsNullOrWhiteSpace(x.Side) ? "—" : x.Side,
+                result = x.Won == true ? "W" : x.Won == false ? "L" : "—",
+                kills = x.KillsRound,
+                deaths = x.DeathsRound,
+                survived = x.Survived,
+                intent = x.Intent,
+                site = x.BombPlanted
+                    ? (string.IsNullOrWhiteSpace(x.BombSite) ? "PLANT" : $"PLANT {x.BombSite}")
+                    : "",
+                position = x.PositionPlan
+            })
+            .ToArray();
+
+        var telemetryUtc = snapshot.Timestamp.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(snapshot.Timestamp, DateTimeKind.Utc)
+            : snapshot.Timestamp.ToUniversalTime();
+
+        var telemetryAge = Math.Max(
+            0,
+            (int)Math.Round((DateTime.UtcNow - telemetryUtc).TotalSeconds));
+
+        var connection = telemetryAge <= 12 && snapshot.Round.HasValue
+            ? "LIVE"
+            : telemetryAge <= 12 && !string.IsNullOrWhiteSpace(snapshot.Map)
+                ? "CONNECTED"
+                : snapshot.Round.HasValue || !string.IsNullOrWhiteSpace(snapshot.Map)
+                    ? "STALE"
+                    : "WAITING";
+
         return new PhoneState
         {
+            version = AppUpdater.CurrentVersion,
+            nickname = _nicknameProvider(),
+            connection = connection,
+            telemetryAgeSeconds = telemetryAge,
+            mapPhase = snapshot.MapPhase ?? "",
+            roundPhase = snapshot.RoundPhase ?? "",
             map = map,
             side = string.IsNullOrWhiteSpace(snapshot.Team) ? "—" : snapshot.Team,
             round = round,
             score = score,
             kills = kills,
             deaths = deaths,
+            assists = snapshot.Assists ?? 0,
             kd = kd,
             money = snapshot.Money ?? 0,
             hp = snapshot.Health?.ToString() ?? "—",
@@ -321,7 +422,21 @@ public sealed class PhoneDashboardServer : IDisposable
             aiTip = advice,
             tip =
                 CoachEngine.SoloTip(snapshot, mode) +
-                $" Role: {role}. Focus: {focus}."
+                $" Role: {role}. Focus: {focus}.",
+            mode = mode,
+            role = role,
+            focus = focus,
+            autoAi = _autoAiProvider(),
+            roundsTracked = tracked,
+            wins = wins,
+            losses = losses,
+            unresolved = unresolved,
+            survivedRounds = survived,
+            multiKillRounds = multi,
+            zeroKillRounds = zeroKill,
+            survival = survival,
+            killsPerRound = killsPerRound,
+            recentRounds = recentRounds
         };
     }
 
