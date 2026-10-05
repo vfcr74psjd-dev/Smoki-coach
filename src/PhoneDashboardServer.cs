@@ -28,6 +28,9 @@ public sealed class PhoneDashboardServer : IDisposable
         public string expect { get; init; } = "—";
         public string action { get; init; } = "—";
         public string adapt { get; init; } = "—";
+        public int devScore { get; init; }
+        public string devLeak { get; init; } = "Collecting evidence";
+        public string devFocus { get; init; } = "Play normal CS2 while the coach learns.";
         public string planKey { get; init; } = "";
         public string roundKey { get; init; } = "";
         public string aiTip { get; init; } = "";
@@ -43,6 +46,7 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly Func<string> _nicknameProvider;
     private readonly Func<bool> _autoAiProvider;
     private readonly Func<string> _aiProvider;
+    private readonly Func<IReadOnlyList<RoundRecord>> _roundsProvider;
     private readonly Action<string,string,string,bool> _settingsUpdater;
     private readonly string _accessToken =
         Convert.ToHexString(RandomNumberGenerator.GetBytes(10)).ToLowerInvariant();
@@ -58,6 +62,7 @@ public sealed class PhoneDashboardServer : IDisposable
         Func<string> nicknameProvider,
         Func<bool> autoAiProvider,
         Func<string> aiProvider,
+        Func<IReadOnlyList<RoundRecord>> roundsProvider,
         Action<string,string,string,bool> settingsUpdater)
     {
         _snapshotProvider = snapshotProvider;
@@ -67,6 +72,7 @@ public sealed class PhoneDashboardServer : IDisposable
         _nicknameProvider = nicknameProvider;
         _autoAiProvider = autoAiProvider;
         _aiProvider = aiProvider;
+        _roundsProvider = roundsProvider;
         _settingsUpdater = settingsUpdater;
     }
 
@@ -249,6 +255,7 @@ public sealed class PhoneDashboardServer : IDisposable
 
         var advice = _aiProvider() ?? "";
         var plan = ParseCoachAdvice(advice);
+        var development = PlayerDevelopmentEngine.Analyze(_roundsProvider());
         var (fallbackBuyTitle, fallbackBuyAdvice) =
             CoachEngine.BuyAdvice(snapshot);
 
@@ -306,8 +313,11 @@ public sealed class PhoneDashboardServer : IDisposable
             expect = expect,
             action = action,
             adapt = adapt,
+            devScore = development.OverallScore,
+            devLeak = development.BiggestLeak,
+            devFocus = development.MatchFocus,
             roundKey = roundKey,
-            planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt,
+            planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt + "|" + development.BiggestLeak,
             aiTip = advice,
             tip =
                 CoachEngine.SoloTip(snapshot, mode) +
@@ -471,6 +481,12 @@ select{{width:100%;background:#0e1012;color:#f5f6f7;border:1px solid #30343a;bor
     </section>
   </div>
 
+  <section class='card dev'>
+    <div class='kicker'>PLAYER DEVELOPMENT • <span id='devScore'>{state.devScore}</span>/100</div>
+    <div id='devLeak' class='valueBig'>{Html(state.devLeak)}</div>
+    <div id='devFocus' class='value' style='margin-top:6px'>{Html(state.devFocus)}</div>
+  </section>
+
   <div class='statRow'>
     <div class='stat'><div class='kicker'>MONEY</div><div id='money' class='num'>&#36;{state.money}</div></div>
     <div class='stat'><div class='kicker'>GUN</div><div id='weapon' class='num'>{Html(state.weapon)}</div></div>
@@ -597,7 +613,159 @@ async function refreshLive(){{
     setText('action',x.action);
     setText('buyAdvice',x.buyAdvice);
     setText('adapt',x.adapt);
-    setText('money','$'+x.money);
+    setText('devScore',x.devScore);
+    setText('devLeak',x.devLeak);
+    setText('devFocus',x.devFocus);
+    setText('money','
+    setText('weapon',x.weapon);
+    setText('kd',x.kd);
+    setText('roundType',x.roundType);
+    setText('kills',x.kills);
+    setText('deaths',x.deaths);
+    setText('hp',x.hp);
+    setText('armor',x.armor);
+
+    if(roundChanged || planChanged)
+      flashPlan();
+
+    if(roundChanged && alertsEnabled){{
+      try{{
+        if(navigator.vibrate) navigator.vibrate([90,50,90]);
+      }}catch{{}}
+    }}
+
+    lastRoundKey=x.roundKey || lastRoundKey;
+    lastPlanKey=x.planKey || lastPlanKey;
+  }}catch{{}}
+}}
+
+refreshLive();
+setInterval(refreshLive,700);
+</script>
+</body>
+</html>";
+    }
+
+    private static bool SafeTokenEquals(string supplied, string expected)
+    {
+        var a = Encoding.UTF8.GetBytes(supplied);
+        var b = Encoding.UTF8.GetBytes(expected);
+        return a.Length == b.Length &&
+               CryptographicOperations.FixedTimeEquals(a, b);
+    }
+
+    private static Dictionary<string,string> ParseQuery(string query)
+    {
+        var result = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            var key = Uri.UnescapeDataString(parts[0].Replace("+", " "));
+            var value =
+                parts.Length > 1
+                    ? Uri.UnescapeDataString(parts[1].Replace("+", " "))
+                    : "";
+
+            result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static string GetAllowed(
+        IReadOnlyDictionary<string,string> query,
+        string key,
+        IReadOnlyCollection<string> allowed,
+        string fallback)
+    {
+        return query.TryGetValue(key, out var value) &&
+               allowed.Contains(value)
+            ? value
+            : fallback;
+    }
+
+    private static string Options(IEnumerable<string> items, string current)
+        => string.Join(
+            "",
+            items.Select(x =>
+                $"<option value='{Html(x)}'{(x == current ? " selected" : "")}>{Html(x)}</option>"));
+
+    private static async Task SendHtml(NetworkStream stream, string html)
+    {
+        var body = Encoding.UTF8.GetBytes(html);
+        var header =
+            "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: text/html; charset=utf-8\r\n" +
+            "Cache-Control: no-store, no-cache, must-revalidate\r\n" +
+            "Pragma: no-cache\r\n" +
+            $"Content-Length: {body.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.WriteAsync(body);
+        await stream.FlushAsync();
+    }
+
+    private static async Task SendJson(NetworkStream stream, string json)
+    {
+        var body = Encoding.UTF8.GetBytes(json);
+        var header =
+            "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: application/json; charset=utf-8\r\n" +
+            "Cache-Control: no-store, no-cache, must-revalidate\r\n" +
+            $"Content-Length: {body.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.WriteAsync(body);
+        await stream.FlushAsync();
+    }
+
+    private static async Task SendText(NetworkStream stream, int code, string text)
+    {
+        var body = Encoding.UTF8.GetBytes(text);
+        var status =
+            code == 403 ? "Forbidden" :
+            code == 404 ? "Not Found" :
+            "Bad Request";
+
+        var header =
+            $"HTTP/1.1 {code} {status}\r\n" +
+            "Content-Type: text/plain; charset=utf-8\r\n" +
+            $"Content-Length: {body.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.WriteAsync(body);
+        await stream.FlushAsync();
+    }
+
+    private static async Task SendRedirect(NetworkStream stream, string location)
+    {
+        var header =
+            "HTTP/1.1 303 See Other\r\n" +
+            $"Location: {location}\r\n" +
+            "Cache-Control: no-store\r\n" +
+            "Content-Length: 0\r\n" +
+            "Connection: close\r\n\r\n";
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.FlushAsync();
+    }
+
+    private static string Html(string? value)
+        => WebUtility.HtmlEncode(
+            string.IsNullOrWhiteSpace(value) ? "—" : value);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        try { _listener?.Stop(); } catch { }
+        _cts.Dispose();
+    }
+}
++x.money);
     setText('weapon',x.weapon);
     setText('kd',x.kd);
     setText('roundType',x.roundType);
