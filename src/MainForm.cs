@@ -105,6 +105,7 @@ public sealed class MainForm : Form
             () => _profile.Nickname,
             () => _prefs.AutoAi,
             () => _latestAiAdvice,
+            () => _rounds.ToArray(),
             ApplyPhoneSettings
         );
         _phoneServer.Start();
