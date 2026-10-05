@@ -88,6 +88,19 @@ public static class FaceitHistoryStore
         }
     }
 
+    public static void Clear()
+    {
+        lock (Sync)
+        {
+            try
+            {
+                if (File.Exists(FilePath))
+                    File.Delete(FilePath);
+            }
+            catch { }
+        }
+    }
+
     private static List<FaceitHistoryMatch> LoadUnlocked()
     {
         try
