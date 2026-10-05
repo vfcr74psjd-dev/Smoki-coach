@@ -110,8 +110,9 @@ public static class CoachEngine
         var expectation = EnemyExpectation(s, rounds);
         var action = CompactActionPlan(s, role, focus, variant, rounds);
         var adapt = CompactAdaptPlan(rounds, mode);
+        var development = PlayerDevelopmentEngine.Analyze(rounds);
 
-        return $"BUY: {buy}\nPOSITION: {position}\nEXPECT: {expectation}\nDO: {action}\nADAPT: {adapt}";
+        return $"BUY: {buy}\nPOSITION: {position}\nEXPECT: {expectation}\nDO: {action}\nADAPT: {adapt}\nFOCUS: {development.MatchFocus}\nDEV: {development.BiggestLeak}";
     }
 
     public static string NormalizeRoundIntent(string? raw)
