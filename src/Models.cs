@@ -35,6 +35,13 @@ public sealed class GameSnapshot
     public float? PositionY { get; set; }
     public float? PositionZ { get; set; }
     public bool HasPosition => PositionX.HasValue && PositionY.HasValue && PositionZ.HasValue;
+    public float? SpawnPositionX { get; set; }
+    public float? SpawnPositionY { get; set; }
+    public float? SpawnPositionZ { get; set; }
+    public bool HasSpawnPosition =>
+        SpawnPositionX.HasValue &&
+        SpawnPositionY.HasValue &&
+        SpawnPositionZ.HasValue;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 
