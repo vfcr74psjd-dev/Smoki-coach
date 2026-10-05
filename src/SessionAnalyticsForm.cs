@@ -366,7 +366,7 @@ public sealed class SessionAnalyticsForm : Form
         headerText.Controls.Add(new Label
         {
             Text = all.Count > 2
-                ? "Your latest analyzed matches • showing newest 2"
+                ? $"Your latest analyzed matches • {Math.Min(all.Count, 50)} loaded • scroll for older matches"
                 : "Your latest analyzed matches",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 7.6f),
@@ -376,32 +376,59 @@ public sealed class SessionAnalyticsForm : Form
         header.Controls.Add(headerText, 1, 0);
         layout.Controls.Add(header, 0, 0);
 
-        var matches = new TableLayoutPanel
+        var body = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
+            ColumnCount = 2,
+            RowCount = 1,
             Margin = Padding.Empty,
-            Padding = new Padding(0, 2, 0, 0),
+            Padding = Padding.Empty,
             BackColor = Panel
         };
-        matches.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        matches.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 14));
 
-        var recent = all.Take(2).ToList();
-        for (int i = 0; i < recent.Count; i++)
+        var viewport = new Panel
         {
-            var match = BuildMatchCard(recent[i]);
-            match.Margin = new Padding(0, i == 0 ? 0 : 4, 0, i == 0 ? 4 : 0);
-            matches.Controls.Add(match, 0, i);
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Panel,
+            TabStop = true
+        };
+
+        var content = new Panel
+        {
+            BackColor = Panel,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+
+        var scrollbar = new SlimScrollBar
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(5, 2, 1, 2),
+            BackColor = Panel
+        };
+
+        viewport.Controls.Add(content);
+        body.Controls.Add(viewport, 0, 0);
+        body.Controls.Add(scrollbar, 1, 0);
+        layout.Controls.Add(body, 0, 1);
+
+        var recent = all.Take(50).ToList();
+        foreach (var session in recent)
+        {
+            var match = BuildMatchCard(session);
+            match.Dock = DockStyle.None;
+            match.Height = 104;
+            content.Controls.Add(match);
         }
 
         if (recent.Count == 0)
         {
             var empty = new RoundedPanel
             {
-                Dock = DockStyle.Fill,
-                Margin = Padding.Empty,
                 BackColor = Panel2,
                 BorderColor = Color.FromArgb(42, 45, 49),
                 Radius = 13
@@ -414,11 +441,69 @@ public sealed class SessionAnalyticsForm : Form
                 ForeColor = Muted,
                 TextAlign = ContentAlignment.MiddleCenter
             });
-            matches.SetRowSpan(empty, 2);
-            matches.Controls.Add(empty, 0, 0);
+            content.Controls.Add(empty);
         }
 
-        layout.Controls.Add(matches, 0, 1);
+        void ApplyOffset()
+        {
+            content.Top = -scrollbar.Value;
+        }
+
+        void LayoutHistory()
+        {
+            var width = Math.Max(320, viewport.ClientSize.Width - 2);
+            var y = 2;
+
+            foreach (Control control in content.Controls)
+            {
+                var rowHeight = recent.Count == 0 ? Math.Max(74, viewport.ClientSize.Height - 4) : 104;
+                control.SetBounds(0, y, width, rowHeight);
+                y += rowHeight + (recent.Count == 0 ? 0 : 8);
+            }
+
+            content.SetBounds(
+                0,
+                -scrollbar.Value,
+                width,
+                Math.Max(viewport.ClientSize.Height, y));
+
+            scrollbar.SetMetrics(content.Height, viewport.ClientSize.Height);
+            ApplyOffset();
+        }
+
+        void ScrollByWheel(MouseEventArgs e)
+        {
+            var steps = Math.Max(1, Math.Abs(e.Delta) / 120);
+            var direction = e.Delta > 0 ? -1 : 1;
+            scrollbar.ScrollBy(direction * 70 * steps);
+        }
+
+        void HookWheel(Control control)
+        {
+            control.MouseEnter += (_,__) =>
+            {
+                if (!viewport.IsDisposed && viewport.CanFocus)
+                    viewport.Focus();
+            };
+            control.MouseWheel += (_, e) => ScrollByWheel(e);
+
+            foreach (Control child in control.Controls)
+                HookWheel(child);
+        }
+
+        HookWheel(viewport);
+        HookWheel(content);
+        foreach (Control child in content.Controls)
+            HookWheel(child);
+
+        viewport.MouseWheel += (_, e) => ScrollByWheel(e);
+        scrollbar.ValueChanged += (_,__) => ApplyOffset();
+        viewport.SizeChanged += (_,__) => LayoutHistory();
+        content.ControlAdded += (_,__) => LayoutHistory();
+
+        card.HandleCreated += (_,__) => LayoutHistory();
+        card.SizeChanged += (_,__) => LayoutHistory();
+
         card.Controls.Add(layout);
         return card;
     }
@@ -869,6 +954,202 @@ public sealed class SessionAnalyticsForm : Form
             e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, p.Width - 1), Math.Max(0, p.Height - 1));
         };
         return p;
+    }
+
+    private sealed class SlimScrollBar : Control
+    {
+        private int _maximum;
+        private int _value;
+        private int _viewportSize;
+        private int _contentSize;
+        private bool _hovered;
+        private bool _dragging;
+        private int _dragOffset;
+
+        public event EventHandler? ValueChanged;
+
+        public int Value
+        {
+            get => _value;
+            private set
+            {
+                var next = Math.Clamp(value, 0, _maximum);
+                if (next == _value) return;
+                _value = next;
+                Invalidate();
+                ValueChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        public SlimScrollBar()
+        {
+            DoubleBuffered = true;
+            Cursor = Cursors.Hand;
+            SetStyle(
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw |
+                ControlStyles.UserPaint,
+                true);
+        }
+
+        public void SetMetrics(int contentSize, int viewportSize)
+        {
+            _contentSize = Math.Max(0, contentSize);
+            _viewportSize = Math.Max(0, viewportSize);
+            _maximum = Math.Max(0, _contentSize - _viewportSize);
+
+            if (_value > _maximum)
+                _value = _maximum;
+
+            Visible = _maximum > 0;
+            Invalidate();
+            ValueChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void ScrollBy(int delta)
+        {
+            Value += delta;
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            _hovered = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            if (_dragging) return;
+            _hovered = false;
+            Invalidate();
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            var steps = Math.Max(1, Math.Abs(e.Delta) / 120);
+            ScrollBy((e.Delta > 0 ? -1 : 1) * 70 * steps);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left || _maximum <= 0) return;
+
+            var thumb = ThumbRect();
+            if (thumb.Contains(e.Location))
+            {
+                _dragging = true;
+                _dragOffset = e.Y - thumb.Top;
+                Capture = true;
+                Invalidate();
+                return;
+            }
+
+            JumpTo(e.Y);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (!_dragging || _maximum <= 0) return;
+
+            var thumb = ThumbRect();
+            var trackTop = 4;
+            var trackHeight = Math.Max(1, Height - 8);
+            var usable = Math.Max(1, trackHeight - thumb.Height);
+            var y = Math.Clamp(e.Y - _dragOffset - trackTop, 0, usable);
+            Value = (int)Math.Round((double)y / usable * _maximum);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (!_dragging) return;
+
+            _dragging = false;
+            Capture = false;
+            Invalidate();
+        }
+
+        private void JumpTo(int mouseY)
+        {
+            var thumb = ThumbRect();
+            var trackTop = 4;
+            var trackHeight = Math.Max(1, Height - 8);
+            var usable = Math.Max(1, trackHeight - thumb.Height);
+            var y = Math.Clamp(mouseY - trackTop - thumb.Height / 2, 0, usable);
+            Value = (int)Math.Round((double)y / usable * _maximum);
+        }
+
+        private Rectangle ThumbRect()
+        {
+            var trackTop = 4;
+            var trackHeight = Math.Max(1, Height - 8);
+
+            if (_maximum <= 0 || _contentSize <= 0)
+                return new Rectangle(2, trackTop, Math.Max(4, Width - 4), trackHeight);
+
+            var ratio = Math.Clamp((double)_viewportSize / _contentSize, 0.08, 1.0);
+            var thumbHeight = Math.Clamp((int)Math.Round(trackHeight * ratio), 30, trackHeight);
+            var usable = Math.Max(0, trackHeight - thumbHeight);
+            var y = trackTop + (_maximum == 0
+                ? 0
+                : (int)Math.Round((double)_value / _maximum * usable));
+
+            return new Rectangle(2, y, Math.Max(4, Width - 4), thumbHeight);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (_maximum <= 0) return;
+
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var track = new Rectangle(
+                Math.Max(1, Width / 2 - 2),
+                4,
+                4,
+                Math.Max(1, Height - 8));
+
+            using var trackPath = RoundRect(track, 2);
+            using var trackBrush = new SolidBrush(Color.FromArgb(40, 43, 47));
+            e.Graphics.FillPath(trackBrush, trackPath);
+
+            var thumb = ThumbRect();
+            var thumbColor = _dragging
+                ? Color.FromArgb(158, 164, 171)
+                : _hovered
+                    ? Color.FromArgb(126, 132, 140)
+                    : Color.FromArgb(88, 94, 102);
+
+            using var thumbPath = RoundRect(thumb, Math.Max(2, thumb.Width / 2));
+            using var thumbBrush = new SolidBrush(thumbColor);
+            e.Graphics.FillPath(thumbBrush, thumbPath);
+        }
+
+        private static GraphicsPath RoundRect(Rectangle rect, int radius)
+        {
+            var path = new GraphicsPath();
+            if (rect.Width <= 1 || rect.Height <= 1)
+            {
+                path.AddRectangle(rect);
+                return path;
+            }
+
+            var r = Math.Max(1, Math.Min(radius, Math.Min(rect.Width, rect.Height) / 2));
+            var d = r * 2;
+            path.AddArc(rect.Left, rect.Top, d, d, 180, 90);
+            path.AddArc(rect.Right - d, rect.Top, d, d, 270, 90);
+            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+            path.AddArc(rect.Left, rect.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
     }
 
     private sealed class RoundedPanel : Panel
