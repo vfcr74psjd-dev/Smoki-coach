@@ -22,9 +22,9 @@ public sealed class SessionAnalyticsForm : Form
         FaceitSnapshot? faceit = null)
     {
         Text = "Sm0ki Solo Coach • Performance";
-        Width = 1180;
-        Height = 800;
-        MinimumSize = new Size(980, 680);
+        Width = 1200;
+        Height = 900;
+        MinimumSize = new Size(1040, 760);
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Bg;
@@ -42,13 +42,13 @@ public sealed class SessionAnalyticsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 6,
-            Padding = new Padding(24, 18, 24, 20),
+            Padding = new Padding(24, 14, 24, 18),
             BackColor = Bg
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 158));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
