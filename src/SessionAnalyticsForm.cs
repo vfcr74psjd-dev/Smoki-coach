@@ -45,10 +45,10 @@ public sealed class SessionAnalyticsForm : Form
             Padding = new Padding(24, 18, 24, 20),
             BackColor = Bg
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 175));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 158));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
@@ -325,7 +325,7 @@ public sealed class SessionAnalyticsForm : Form
             Margin = Padding.Empty,
             BackColor = Panel
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var header = new TableLayoutPanel
@@ -432,7 +432,8 @@ public sealed class SessionAnalyticsForm : Form
             BorderColor = Color.FromArgb(44, 47, 51),
             HoverBorderColor = Color.FromArgb(131, 88, 41),
             Radius = 14,
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            MinimumSize = new Size(0, 104)
         };
 
         var layout = new TableLayoutPanel
@@ -441,7 +442,7 @@ public sealed class SessionAnalyticsForm : Form
             ColumnCount = 4,
             RowCount = 1,
             Margin = Padding.Empty,
-            Padding = new Padding(8, 7, 8, 7),
+            Padding = new Padding(8, 5, 8, 5),
             BackColor = Color.Transparent
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
@@ -495,7 +496,7 @@ public sealed class SessionAnalyticsForm : Form
         {
             Text = CoachEngine.PrettyMap(session.Map),
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 11, FontStyle.Bold),
+            Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.BottomLeft
         }, 0, 1);
@@ -511,7 +512,7 @@ public sealed class SessionAnalyticsForm : Form
         {
             Text = session.EndedUtc.ToLocalTime().ToString("dd.MM • HH:mm"),
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.8f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(226, 229, 233),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 3);
@@ -519,7 +520,7 @@ public sealed class SessionAnalyticsForm : Form
         {
             Text = RelativeAge(session.EndedUtc),
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.3f),
+            Font = new Font("Segoe UI", 7.1f),
             ForeColor = Muted,
             TextAlign = ContentAlignment.TopLeft
         }, 0, 4);
@@ -541,8 +542,8 @@ public sealed class SessionAnalyticsForm : Form
         };
         for (int i = 0; i < 4; i++)
             stats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        stats.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        stats.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        stats.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
+        stats.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
 
         var statItems = new (string Title, string Value, Color Color)[]
         {
@@ -584,7 +585,7 @@ public sealed class SessionAnalyticsForm : Form
         var chip = new RoundedPanel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(4, 3, 4, 3),
+            Margin = new Padding(3, 2, 3, 2),
             BackColor = Color.FromArgb(20, 22, 25),
             BorderColor = Color.FromArgb(50, 53, 58),
             Radius = 8
@@ -596,7 +597,7 @@ public sealed class SessionAnalyticsForm : Form
             ColumnCount = 1,
             RowCount = 2,
             Margin = Padding.Empty,
-            Padding = new Padding(3, 2, 3, 2),
+            Padding = new Padding(2, 0, 2, 0),
             BackColor = Color.Transparent
         };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
@@ -605,7 +606,7 @@ public sealed class SessionAnalyticsForm : Form
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 6.5f),
+            Font = new Font("Segoe UI", 6.2f),
             ForeColor = Color.FromArgb(132, 140, 151),
             TextAlign = ContentAlignment.BottomCenter
         }, 0, 0);
@@ -613,7 +614,7 @@ public sealed class SessionAnalyticsForm : Form
         {
             Text = value,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 9.3f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 8.8f, FontStyle.Bold),
             ForeColor = valueColor,
             TextAlign = ContentAlignment.TopCenter
         }, 0, 1);
