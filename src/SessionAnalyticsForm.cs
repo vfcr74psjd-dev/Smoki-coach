@@ -47,8 +47,8 @@ public sealed class SessionAnalyticsForm : Form
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
@@ -301,52 +301,386 @@ public sealed class SessionAnalyticsForm : Form
     {
         var card = MakeCard();
         card.Margin = new Padding(0, 8, 0, 8);
-        card.Padding = new Padding(12, 8, 12, 8);
+        card.Padding = new Padding(12, 10, 12, 10);
 
-        var list = new ListView
+        var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            View = View.Details,
-            FullRowSelect = true,
-            GridLines = false,
-            BackColor = Panel,
-            ForeColor = Color.FromArgb(224, 227, 232),
-            BorderStyle = BorderStyle.None,
-            Font = new Font("Segoe UI", 9)
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            BackColor = Panel
         };
-        list.Columns.Add("DATE", 120);
-        list.Columns.Add("MAP", 125);
-        list.Columns.Add("ROUNDS", 70);
-        list.Columns.Add("K / D", 80);
-        list.Columns.Add("K / R", 70);
-        list.Columns.Add("SURVIVAL", 85);
-        list.Columns.Add("MULTI", 65);
-        list.Columns.Add("0K", 55);
-        list.Columns.Add("DEV", 60);
-        list.Columns.Add("SCORE", 70);
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Margin = Padding.Empty
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var icon = new Label
+        {
+            Text = "◷",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI Symbol", 17, FontStyle.Bold),
+            ForeColor = Orange,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        header.Controls.Add(icon, 0, 0);
+
+        var headerText = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty
+        };
+        headerText.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+        headerText.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        headerText.Controls.Add(new Label
+        {
+            Text = "RECENT MATCHES",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+            ForeColor = Color.White,
+            TextAlign = ContentAlignment.BottomLeft
+        }, 0, 0);
+        headerText.Controls.Add(new Label
+        {
+            Text = "Your latest analyzed matches",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 8),
+            ForeColor = Muted,
+            TextAlign = ContentAlignment.TopLeft
+        }, 0, 1);
+        header.Controls.Add(headerText, 1, 0);
+        layout.Controls.Add(header, 0, 0);
+
+        var list = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 2, 0, 0),
+            BackColor = Panel
+        };
+        layout.Controls.Add(list, 0, 1);
+
+        void SizeRows()
+        {
+            var width = Math.Max(520, list.ClientSize.Width - (list.VerticalScroll.Visible ? 18 : 2));
+            foreach (Control control in list.Controls)
+                control.Width = width;
+        }
 
         foreach (var session in all.Take(50))
         {
-            var item = new ListViewItem(session.EndedUtc.ToLocalTime().ToString("dd.MM HH:mm"));
-            item.SubItems.Add(CoachEngine.PrettyMap(session.Map));
-            item.SubItems.Add(session.Rounds.ToString());
-            item.SubItems.Add($"{session.Kills}/{session.Deaths}");
-            item.SubItems.Add(session.KillsPerRound.ToString("0.00"));
-            item.SubItems.Add(session.SurvivalRate.ToString("0") + "%");
-            item.SubItems.Add(session.MultiKillRounds.ToString());
-            item.SubItems.Add(session.ZeroKillRounds.ToString());
-            item.SubItems.Add(session.DevelopmentScore > 0 ? session.DevelopmentScore.ToString() : "—");
-            item.SubItems.Add($"{session.CtScore}:{session.TScore}");
-            list.Items.Add(item);
+            var match = BuildMatchCard(session);
+            list.Controls.Add(match);
         }
 
         if (all.Count == 0)
         {
-            list.Items.Add(new ListViewItem("No archived sessions yet."));
+            var empty = new RoundedPanel
+            {
+                Height = 70,
+                Margin = new Padding(0, 0, 0, 8),
+                BackColor = Panel2,
+                BorderColor = Color.FromArgb(42, 45, 49),
+                Radius = 13
+            };
+            empty.Controls.Add(new Label
+            {
+                Text = "No archived sessions yet. Finish a match and it will appear here.",
+                Dock = DockStyle.Fill,
+                Font = new Font("Segoe UI", 9),
+                ForeColor = Muted,
+                TextAlign = ContentAlignment.MiddleCenter
+            });
+            list.Controls.Add(empty);
         }
 
-        card.Controls.Add(list);
+        list.SizeChanged += (_,__) => SizeRows();
+        list.HandleCreated += (_,__) => SizeRows();
+
+        card.Controls.Add(layout);
         return card;
+    }
+
+    private Control BuildMatchCard(SessionSummary session)
+    {
+        var row = new RoundedPanel
+        {
+            Height = 70,
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = Color.FromArgb(16, 18, 20),
+            BorderColor = Color.FromArgb(45, 48, 52),
+            HoverBorderColor = Color.FromArgb(119, 82, 40),
+            Radius = 14,
+            Cursor = Cursors.Hand
+        };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 12,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = new Padding(9, 7, 8, 7),
+            BackColor = Color.Transparent
+        };
+
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
+        for (int i = 0; i < 8; i++)
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12.5f));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+
+        var time = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        time.RowStyles.Add(new RowStyle(SizeType.Percent, 54));
+        time.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
+        time.Controls.Add(new Label
+        {
+            Text = session.EndedUtc.ToLocalTime().ToString("dd.MM HH:mm"),
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            ForeColor = Color.White,
+            TextAlign = ContentAlignment.BottomLeft
+        }, 0, 0);
+        time.Controls.Add(new Label
+        {
+            Text = RelativeAge(session.EndedUtc),
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 7.4f),
+            ForeColor = Muted,
+            TextAlign = ContentAlignment.TopLeft
+        }, 0, 1);
+        layout.Controls.Add(time, 0, 0);
+
+        var thumbHost = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(2, 0, 8, 0),
+            BackColor = Color.FromArgb(24, 26, 29),
+            BorderColor = Color.FromArgb(53, 56, 60),
+            Radius = 9
+        };
+        var picture = new PictureBox
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            BackColor = Color.FromArgb(24, 26, 29),
+            SizeMode = PictureBoxSizeMode.Zoom
+        };
+        thumbHost.Padding = new Padding(2);
+        thumbHost.Controls.Add(picture);
+        layout.Controls.Add(thumbHost, 1, 0);
+        _ = LoadMapThumbnailAsync(picture, session.Map);
+
+        var mapInfo = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = new Padding(4, 0, 8, 0),
+            BackColor = Color.Transparent
+        };
+        mapInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
+        mapInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+        mapInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        mapInfo.Controls.Add(new Panel
+        {
+            Dock = DockStyle.Left,
+            Width = 28,
+            Height = 3,
+            BackColor = Orange,
+            Margin = new Padding(0, 2, 0, 0)
+        }, 0, 0);
+        mapInfo.Controls.Add(new Label
+        {
+            Text = CoachEngine.PrettyMap(session.Map),
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            ForeColor = Color.White,
+            TextAlign = ContentAlignment.BottomLeft
+        }, 0, 1);
+        mapInfo.Controls.Add(new Label
+        {
+            Text = "Competitive",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 7.5f),
+            ForeColor = Color.FromArgb(171, 179, 190),
+            TextAlign = ContentAlignment.TopLeft
+        }, 0, 2);
+        layout.Controls.Add(mapInfo, 2, 0);
+
+        var kdColor = session.Deaths == 0 || session.Kills >= session.Deaths ? Green : Red;
+        var survivalColor = session.SurvivalRate >= 60 ? Green : Orange;
+        var devColor = session.DevelopmentScore >= 70
+            ? Green
+            : session.DevelopmentScore > 0 ? Orange : Muted;
+
+        var chips = new[]
+        {
+            MakeStatChip("ROUNDS", session.Rounds.ToString(), Color.White),
+            MakeStatChip("K / D", $"{session.Kills}/{session.Deaths}", kdColor),
+            MakeStatChip("K / R", session.KillsPerRound.ToString("0.00"), Color.White),
+            MakeStatChip("SURVIVAL", session.SurvivalRate.ToString("0") + "%", survivalColor),
+            MakeStatChip("MULTI", session.MultiKillRounds.ToString(), Color.FromArgb(105, 177, 238)),
+            MakeStatChip("0K", session.ZeroKillRounds.ToString(), session.ZeroKillRounds > 0 ? Red : Green),
+            MakeStatChip("DEV", session.DevelopmentScore > 0 ? session.DevelopmentScore.ToString() : "—", devColor),
+            MakeStatChip("SCORE", $"{session.CtScore}:{session.TScore}", Orange)
+        };
+
+        for (int i = 0; i < chips.Length; i++)
+            layout.Controls.Add(chips[i], i + 3, 0);
+
+        layout.Controls.Add(new Label
+        {
+            Text = "›",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 19, FontStyle.Regular),
+            ForeColor = Color.FromArgb(205, 210, 216),
+            TextAlign = ContentAlignment.MiddleCenter
+        }, 11, 0);
+
+        row.Controls.Add(layout);
+        return row;
+    }
+
+    private Control MakeStatChip(string title, string value, Color valueColor)
+    {
+        var chip = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(3, 1, 3, 1),
+            BackColor = Color.FromArgb(20, 22, 25),
+            BorderColor = Color.FromArgb(50, 53, 58),
+            Radius = 9
+        };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = new Padding(4, 4, 4, 3),
+            BackColor = Color.Transparent
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
+        layout.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 6.6f, FontStyle.Regular),
+            ForeColor = Color.FromArgb(132, 140, 151),
+            TextAlign = ContentAlignment.BottomCenter
+        }, 0, 0);
+        layout.Controls.Add(new Label
+        {
+            Text = value,
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 9.2f, FontStyle.Bold),
+            ForeColor = valueColor,
+            TextAlign = ContentAlignment.TopCenter
+        }, 0, 1);
+
+        chip.Controls.Add(layout);
+        return chip;
+    }
+
+    private async Task LoadMapThumbnailAsync(PictureBox picture, string map)
+    {
+        try
+        {
+            var mapKey = (map ?? "").Trim();
+            if (!mapKey.StartsWith("de_", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(mapKey))
+            {
+                mapKey = "de_" + mapKey.ToLowerInvariant().Replace(" ", "");
+            }
+
+            var radar = RadarCatalog.Get(mapKey);
+            if (radar == null)
+            {
+                picture.Image = BuildMapFallback(map);
+                return;
+            }
+
+            var bytes = await RadarImageCache.GetAsync(radar.RadarUrl);
+            using var ms = new MemoryStream(bytes);
+            using var source = Image.FromStream(ms);
+            var image = new Bitmap(source);
+
+            if (picture.IsDisposed)
+            {
+                image.Dispose();
+                return;
+            }
+
+            var old = picture.Image;
+            picture.Image = image;
+            old?.Dispose();
+        }
+        catch
+        {
+            if (!picture.IsDisposed)
+            {
+                var old = picture.Image;
+                picture.Image = BuildMapFallback(map);
+                old?.Dispose();
+            }
+        }
+    }
+
+    private static Image BuildMapFallback(string map)
+    {
+        var bmp = new Bitmap(220, 100);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var bg = new LinearGradientBrush(
+            new Rectangle(0, 0, bmp.Width, bmp.Height),
+            Color.FromArgb(49, 38, 27),
+            Color.FromArgb(18, 21, 24),
+            LinearGradientMode.ForwardDiagonal);
+        g.FillRectangle(bg, 0, 0, bmp.Width, bmp.Height);
+
+        using var accent = new SolidBrush(Color.FromArgb(90, 255, 156, 44));
+        g.FillEllipse(accent, bmp.Width - 84, -24, 110, 110);
+
+        using var titleFont = new Font("Segoe UI", 15, FontStyle.Bold);
+        using var titleBrush = new SolidBrush(Color.White);
+        var title = CoachEngine.PrettyMap(map);
+        g.DrawString(title, titleFont, titleBrush, new PointF(12, 37));
+        return bmp;
+    }
+
+    private static string RelativeAge(DateTime endedUtc)
+    {
+        var age = DateTime.UtcNow - endedUtc.ToUniversalTime();
+        if (age < TimeSpan.Zero) age = TimeSpan.Zero;
+
+        if (age.TotalMinutes < 1) return "just now";
+        if (age.TotalMinutes < 60) return $"~ {(int)age.TotalMinutes} min ago";
+        if (age.TotalHours < 24) return $"~ {(int)age.TotalHours} h ago";
+        return $"~ {(int)age.TotalDays} d ago";
     }
 
     private Control Metric(string title, string value, string subtitle)
@@ -502,6 +836,65 @@ public sealed class SessionAnalyticsForm : Form
             e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, p.Width - 1), Math.Max(0, p.Height - 1));
         };
         return p;
+    }
+
+    private sealed class RoundedPanel : Panel
+    {
+        public int Radius { get; set; } = 12;
+        public Color BorderColor { get; set; } = Color.FromArgb(48, 51, 55);
+        public Color HoverBorderColor { get; set; } = Color.Empty;
+        private bool _hovered;
+
+        public RoundedPanel()
+        {
+            DoubleBuffered = true;
+            SetStyle(
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw |
+                ControlStyles.UserPaint,
+                true);
+
+            MouseEnter += (_,__) => { _hovered = true; Invalidate(); };
+            MouseLeave += (_,__) => { _hovered = false; Invalidate(); };
+        }
+
+        protected override void OnResize(EventArgs eventargs)
+        {
+            base.OnResize(eventargs);
+            if (Width <= 0 || Height <= 0) return;
+            using var path = RoundRect(new Rectangle(0, 0, Width, Height), Radius);
+            Region?.Dispose();
+            Region = new Region(path);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var rect = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            using var path = RoundRect(rect, Radius);
+            using var fill = new SolidBrush(BackColor);
+            var border = _hovered && HoverBorderColor != Color.Empty
+                ? HoverBorderColor
+                : BorderColor;
+            using var pen = new Pen(border, _hovered ? 1.5f : 1f);
+            e.Graphics.FillPath(fill, path);
+            e.Graphics.DrawPath(pen, path);
+            base.OnPaint(e);
+        }
+
+        private static GraphicsPath RoundRect(Rectangle rect, int radius)
+        {
+            var path = new GraphicsPath();
+            var r = Math.Max(2, Math.Min(radius, Math.Min(rect.Width, rect.Height) / 2));
+            var d = r * 2;
+            path.AddArc(rect.Left, rect.Top, d, d, 180, 90);
+            path.AddArc(rect.Right - d, rect.Top, d, d, 270, 90);
+            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+            path.AddArc(rect.Left, rect.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
     }
 
     private sealed class PerformanceChart : Control
