@@ -1035,6 +1035,14 @@ public sealed class MainForm : Form
                 MessageBoxIcon.Information);
         }), 0, 3);
 
+        var resetButton = ToolButton("RESET TEST DATA", "Clear local stats • keep keys & settings", (_,__) =>
+        {
+            ResetTestData(dialog);
+        });
+        resetButton.ForeColor = Color.FromArgb(255, 188, 112);
+        resetButton.FlatAppearance.BorderColor = Color.FromArgb(112, 72, 39);
+        resetButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(51, 34, 24);
+        grid.Controls.Add(resetButton, 1, 3);
 
         root.Controls.Add(grid, 0, 1);
 
@@ -1045,6 +1053,63 @@ public sealed class MainForm : Form
 
         dialog.Controls.Add(root);
         dialog.ShowDialog(this);
+    }
+
+    private void ResetTestData(IWin32Window owner)
+    {
+        var confirm = MessageBox.Show(
+            "To bo pobrisalo samo lokalne TESTNE podatke:\n\n" +
+            "• Progress / session statistiko\n" +
+            "• lokalni FACEIT history cache\n" +
+            "• demo / heatmap history\n" +
+            "• trenutno lokalno rundno zgodovino\n\n" +
+            "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
+            "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
+            "Nadaljujem?",
+            "Reset test data",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+
+        if (confirm != DialogResult.Yes)
+            return;
+
+        SessionHistoryStore.Clear();
+        FaceitHistoryStore.Clear();
+        HeatMapStore.Clear();
+
+        _rounds.Clear();
+        _roundIntents.Clear();
+        _history.Items.Clear();
+        _history.Items.Add("Test data reset • waiting for completed rounds.");
+
+        _trackedRound = null;
+        _roundStartKills = 0;
+        _roundStartDeaths = 0;
+        _trackedRoundWinTeam = "";
+        _trackedRoundPrimaryWeapon = "";
+        _trackedRoundLastHealth = 0;
+        _trackedRoundLiveStartedUtc = DateTime.MinValue;
+        _trackedBombPlanted = false;
+        _trackedBombSite = "";
+        _trackedBombPlantSeconds = null;
+        _sessionStartedUtc = DateTime.UtcNow;
+        _matchReviewShownKey = "";
+        _lastAiRound = null;
+        _lastAiMap = "";
+
+        _latestAiAdvice = "AI coach čaka na nove runde po resetu.";
+        _aiText.Text = _latestAiAdvice;
+        _planView.Advice = _latestAiAdvice;
+        _planView.Invalidate();
+
+        MessageBox.Show(
+            "Testni podatki so pobrisani.\n\n" +
+            "Profil, API ključi in nastavitve so ostali nespremenjeni.\n" +
+            "FACEIT history se lahko pri naslednjem syncu ponovno napolni iz FACEIT-a.",
+            "Sm0ki Solo Coach",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
     }
 
     private void UpdateGameOverlay()

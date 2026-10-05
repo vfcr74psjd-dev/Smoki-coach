@@ -44,6 +44,16 @@ public static class SessionHistoryStore
         catch { return new(); }
     }
 
+    public static void Clear()
+    {
+        try
+        {
+            if (File.Exists(FilePath))
+                File.Delete(FilePath);
+        }
+        catch { }
+    }
+
     public static void Save(SessionSummary session)
     {
         if (session.Rounds < 4) return;
