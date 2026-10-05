@@ -3,6 +3,9 @@ namespace Sm0kiSoloCoach;
 public sealed class GameSnapshot
 {
     public string PlayerName { get; set; } = "";
+    public string LocalSteamId { get; set; } = "";
+    public string PlayerSteamId { get; set; } = "";
+    public bool IsSpectating { get; set; }
     public string Team { get; set; } = "";
     public string Map { get; set; } = "";
     public string MapPhase { get; set; } = "";

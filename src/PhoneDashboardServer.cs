@@ -311,20 +311,16 @@ public sealed class PhoneDashboardServer : IDisposable
         var (fallbackBuyTitle, fallbackBuyAdvice) =
             CoachEngine.BuyAdvice(snapshot);
 
-        var buy = ValueOrFallback(
-            plan,
-            "BUY",
-            fallbackBuyAdvice);
+        // BUY and EXPECT must never wait for Local AI. They are deterministic,
+        // round-critical signals and should update as soon as GSI/round history changes.
+        var buy = fallbackBuyAdvice;
 
         var position = ValueOrFallback(
             plan,
             "POSITION",
             "Waiting for live round data");
 
-        var expect = ValueOrFallback(
-            plan,
-            "EXPECT",
-            "Learning enemy patterns");
+        var expect = CoachEngine.EnemyExpectation(snapshot, rounds);
 
         var action = ValueOrFallback(
             plan,
