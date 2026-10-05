@@ -12,6 +12,13 @@ public sealed record RadarDefinition(
     string? LowerRadarUrl = null,
     double? LowerBelowZ = null);
 
+public sealed record SpawnProfile(
+    bool Known,
+    string Bias,
+    string Label,
+    float RadarX,
+    float RadarY);
+
 public static class RadarCatalog
 {
     private const string Base = "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/";
@@ -52,6 +59,63 @@ public static class RadarCatalog
 
     public static RadarDefinition? Get(string map)
         => Maps.TryGetValue(map ?? "", out var value) ? value : null;
+
+    public static SpawnProfile SpawnProfileFromWorld(
+        string map,
+        string side,
+        float x,
+        float y,
+        float z)
+    {
+        var def = Get(map);
+        if (def == null)
+            return new SpawnProfile(false, "NEUTRAL", "spawn unknown", 0, 0);
+
+        var point = WorldToRadar(def, x, y);
+
+        var bias = "NEUTRAL";
+
+        // A/B on Nuke are vertically stacked, so 2D radar distance is not a
+        // trustworthy spawn-route signal. Anubis currently has no site markers
+        // in our overview metadata. In both cases we preserve the coordinates
+        // for AI context but refuse to fabricate a site bias.
+        if (!string.Equals(map, "de_nuke", StringComparison.OrdinalIgnoreCase) &&
+            BombSites.TryGetValue(map ?? "", out var sites))
+        {
+            static double Distance(PointF a, PointF b)
+            {
+                var dx = a.X - b.X;
+                var dy = a.Y - b.Y;
+                return Math.Sqrt(dx * dx + dy * dy);
+            }
+
+            var a = Distance(point, sites.A);
+            var b = Distance(point, sites.B);
+            var sum = Math.Max(0.001, a + b);
+            var separation = Math.Abs(a - b) / sum;
+
+            if (separation >= 0.06)
+                bias = a < b ? "A" : "B";
+        }
+
+        var sideLabel = string.IsNullOrWhiteSpace(side)
+            ? "spawn"
+            : side.Trim().ToUpperInvariant() + " spawn";
+
+        var biasLabel = bias switch
+        {
+            "A" => "A-leaning",
+            "B" => "B-leaning",
+            _ => "neutral"
+        };
+
+        return new SpawnProfile(
+            true,
+            bias,
+            $"{sideLabel} • {biasLabel} • radar {point.X:0.00},{point.Y:0.00}",
+            point.X,
+            point.Y);
+    }
 
     public static string BombSiteFromWorld(
         string map,
