@@ -20,6 +20,7 @@ public static class CoachEngine
 
     public static string ClassifyRound(GameSnapshot s)
     {
+        if (s.IsSpectating) return "Spectating";
         if (s.Round is 0 or 12) return "Pistol";
 
         var money = s.Money ?? 0;
@@ -38,6 +39,11 @@ public static class CoachEngine
 
     public static (string title, string advice) BuyAdvice(GameSnapshot s)
     {
+        if (s.IsSpectating)
+            return (
+                "Spectating",
+                "SPECTATING • buy se osveži, ko GSI spet vidi tvoj player state.");
+
         var roundType = ClassifyRound(s);
         var money = s.Money ?? 0;
         var side = s.Team ?? "";
@@ -267,7 +273,9 @@ public static class CoachEngine
             .ToList();
 
         if (recent.Count == 0)
-            return "learning pattern • 0/8 rounds • confidence LOW";
+            return ct
+                ? "no enemy sample yet • hold standard setup • do not overrotate • confidence LOW"
+                : "no CT setup sample yet • take one tradeable contact and collect info • confidence LOW";
 
         if (ct)
         {
@@ -357,6 +365,24 @@ public static class CoachEngine
         var bRounds = recent
             .Where(r => NormalizeRoundIntent(r.Intent) == "B")
             .ToList();
+
+        if (recent.Count == 1)
+        {
+            var only = recent[0];
+            var site = NormalizeRoundIntent(only.Intent);
+            if (site is "A" or "B")
+            {
+                var result = only.Won == true
+                    ? "we converted"
+                    : only.Won == false
+                        ? "CT stopped us"
+                        : "result unresolved";
+
+                return $"{site} first sample • {result} • one sample only • confidence LOW";
+            }
+
+            return "first CT sample collected • no site pattern yet • confidence LOW";
+        }
 
         static int Stops(List<RoundRecord> siteRounds)
             => siteRounds.Count(r => r.Won == false);
@@ -492,6 +518,9 @@ public static class CoachEngine
 
     public static string RoundBuyPlan(GameSnapshot s)
     {
+        if (s.IsSpectating)
+            return "SPECTATING • buy se osveži ob tvojem naslednjem player state-u.";
+
         var money = s.Money ?? 0;
         var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
         var pistol = s.Round is 0 or 12;
