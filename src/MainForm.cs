@@ -1536,10 +1536,12 @@ public sealed class MainForm : Form
 
         try
         {
+            var brain = SmartMatchBrainEngine.Analyze(_rounds);
+
             var advice = await _aiCoach.GenerateRoundAdviceAsync(
                 snapshot,
                 _rounds.ToList(),
-                $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"}",
+                $"{_mode.SelectedItem?.ToString() ?? "Balanced"} | Role={_role.SelectedItem?.ToString() ?? "Flex"} | Focus={_focus.SelectedItem?.ToString() ?? "More kills"} | SmartFocus={brain.OneFocus} | BrainPriority={brain.Priority}",
                 _profile.Nickname,
                 GetRoundIntent(snapshot.Round),
                 requestToken

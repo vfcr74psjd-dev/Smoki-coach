@@ -51,6 +51,13 @@ public sealed class PhoneDashboardServer : IDisposable
         public int devScore { get; init; }
         public string devLeak { get; init; } = "Collecting evidence";
         public string devFocus { get; init; } = "Play normal CS2 while the coach learns.";
+        public string brainMistake { get; init; } = "Collecting evidence";
+        public string brainPriority { get; init; } = "KEEP PLAN";
+        public string brainFocus { get; init; } = "Play normal CS2 while Smart Match Brain learns your pattern.";
+        public string brainEvidence { get; init; } = "";
+        public string brainConfidence { get; init; } = "LOW";
+        public string brainStatus { get; init; } = "LEARNING";
+        public string brainProgress { get; init; } = "";
         public string planKey { get; init; } = "";
         public string roundKey { get; init; } = "";
         public string aiTip { get; init; } = "";
@@ -300,6 +307,7 @@ public sealed class PhoneDashboardServer : IDisposable
         var advice = _aiProvider() ?? "";
         var plan = ParseCoachAdvice(advice);
         var development = PlayerDevelopmentEngine.Analyze(rounds);
+        var brain = SmartMatchBrainEngine.Analyze(rounds);
         var (fallbackBuyTitle, fallbackBuyAdvice) =
             CoachEngine.BuyAdvice(snapshot);
 
@@ -417,6 +425,13 @@ public sealed class PhoneDashboardServer : IDisposable
             devScore = development.OverallScore,
             devLeak = development.BiggestLeak,
             devFocus = development.MatchFocus,
+            brainMistake = brain.Mistake,
+            brainPriority = brain.Priority,
+            brainFocus = brain.OneFocus,
+            brainEvidence = brain.Evidence,
+            brainConfidence = brain.Confidence,
+            brainStatus = brain.FocusStatus,
+            brainProgress = brain.FocusProgress,
             roundKey = roundKey,
             planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt + "|" + development.BiggestLeak,
             aiTip = advice,
@@ -490,298 +505,255 @@ public sealed class PhoneDashboardServer : IDisposable
 <meta name="theme-color" content="#090a0c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Sm0ki Phone Coach Pro</title>
+<title>Sm0ki Match Coach</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
   color-scheme:dark;
-  --bg:#090a0c;--panel:#111315;--panel2:#151719;--line:#292d31;
-  --muted:#858d98;--text:#f5f7f9;--orange:#ff9c2c;--green:#7ce6a6;
-  --red:#ef7b71;--blue:#82b9ef;
+  --bg:#090a0c;--panel:#111315;--line:#292d31;
+  --text:#f4f6f8;--muted:#7f8791;--orange:#ff9c2c;
+  --green:#78e6a5;--red:#ef7b71;
 }
-html,body{margin:0;width:100%;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}
-body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);overflow-x:hidden}
-button,select{font:inherit}
-.app{min-height:100dvh;max-width:760px;margin:auto;padding:0 10px 74px}
-.topbar{
-  position:sticky;top:0;z-index:20;
-  margin:0 -10px;padding:9px 12px 8px;
-  background:rgba(9,10,12,.96);backdrop-filter:blur(16px);
-  border-bottom:1px solid #1b1e21
+html,body{
+  margin:0;width:100%;min-height:100%;background:var(--bg);color:var(--text);
+  font-family:Inter,Segoe UI,Arial,sans-serif
 }
-.brandrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.brand{font-size:17px;font-weight:950;letter-spacing:-.03em;white-space:nowrap}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button{font:inherit}
+.app{max-width:680px;margin:auto;padding:0 10px 22px}
+.top{
+  position:sticky;top:0;z-index:20;margin:0 -10px;
+  padding:9px 11px 8px;background:rgba(9,10,12,.96);
+  backdrop-filter:blur(14px);border-bottom:1px solid #1c1f22
+}
+.toprow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.brand{font-size:16px;font-weight:950;letter-spacing:-.03em}
 .brand span{color:var(--orange)}
+.right{display:flex;align-items:center;gap:6px}
 .status{
-  display:flex;align-items:center;gap:6px;min-width:78px;justify-content:center;
-  font-size:8px;font-weight:950;letter-spacing:.1em;padding:5px 8px;
-  border:1px solid #34403a;border-radius:999px;color:var(--green);background:#102219
+  display:flex;align-items:center;gap:5px;padding:5px 7px;border-radius:999px;
+  border:1px solid #2d573f;background:#10251b;color:var(--green);
+  font-size:8px;font-weight:950;letter-spacing:.08em
 }
 .status.waiting{color:#e1b675;background:#2b2115;border-color:#514126}
 .status.stale{color:var(--red);background:#2b1717;border-color:#5a2928}
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
-.matchline{
-  display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;
-  margin-top:7px;color:#b7bec8;font-size:11px;font-weight:850
+.icon{
+  width:30px;height:30px;border-radius:9px;border:1px solid #2b2f33;
+  background:#121416;color:#aeb5be;font-size:14px
 }
-.map{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chip{background:#121417;border:1px solid #292c30;border-radius:8px;padding:5px 7px;white-space:nowrap}
-.chip.score{color:white}.chip.round{color:var(--orange)}
-.screen{display:none}.screen.active{display:block}
-.gameHead{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:stretch;margin-top:9px}
+.context{
+  display:flex;gap:6px;align-items:center;margin-top:7px;
+  font-size:11px;font-weight:850;color:#b7bec8
+}
+.context .map{min-width:0;max-width:55vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{
+  padding:4px 7px;border-radius:7px;background:#121417;border:1px solid #292c30;
+  white-space:nowrap
+}
+.pill.round{color:var(--orange)}
+.offline{
+  display:none;margin-top:9px;padding:9px 11px;border-radius:10px;
+  background:#301918;border:1px solid #5b2926;color:#ffc0b9;
+  font-size:10px;font-weight:850
+}
+.offline.show{display:block}
+.activate{
+  width:100%;margin-top:9px;padding:9px 11px;border-radius:11px;
+  border:1px solid #664720;background:#21170e;color:#ffc079;
+  font-size:10px;font-weight:950
+}
+.activate.on{
+  background:#133220;border-color:#2e6947;color:#8ef0b4
+}
 .buy{
-  background:linear-gradient(135deg,#20180f,#151515);
-  border:1px solid #62421f;border-radius:13px;padding:10px 12px;min-width:0
+  margin-top:9px;border:1px solid #67451f;border-radius:14px;
+  background:linear-gradient(145deg,#21180f,#141516);padding:11px 13px
 }
-.label{font-size:8px;font-weight:950;letter-spacing:.13em;color:#7f8791;text-transform:uppercase}
-.buy .label{color:var(--orange)}
-.buyText{margin-top:4px;font-size:13px;font-weight:850;line-height:1.24;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gameToggle{
-  width:86px;border:1px solid #31363b;border-radius:13px;background:#15181a;color:#d7dce2;
-  font-size:9px;font-weight:900;line-height:1.15
+.label{
+  font-size:8px;font-weight:950;letter-spacing:.13em;color:#808892;text-transform:uppercase
 }
-.gameToggle.on{color:#07150d;background:#79e5a4;border-color:#79e5a4}
-.plan{display:grid;gap:8px;margin-top:8px}
-.planCard{border-radius:15px;border:1px solid var(--line);padding:12px 14px;background:var(--panel)}
-.planCard.position{border-color:#6d4a22;background:linear-gradient(180deg,#211911,#141516)}
-.planCard.expect{border-left:3px solid var(--orange)}
-.planCard.action{background:#16191b;border-color:#34383d}
-.planCard .label{margin-bottom:6px}
-.planCard.position .label,.planCard.action .label{color:var(--orange)}
-.planText{font-size:16px;line-height:1.25;font-weight:850}
-.planCard.position .planText{font-size:22px;line-height:1.12;font-weight:950;letter-spacing:-.025em}
-.planCard.action .planText{font-size:19px;line-height:1.17;font-weight:950}
-.lockline{
-  display:flex;justify-content:space-between;gap:10px;align-items:center;
-  margin:8px 2px 0;color:#69717b;font-size:9px;font-weight:800
+.buy .label,.tacticTitle,.focusLabel{color:var(--orange)}
+.buyText{
+  margin-top:5px;font-size:14px;line-height:1.25;font-weight:900;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 }
-.locked{color:#91a0ad}
-.roundPulse{animation:roundPulse .62s ease-out}
-@keyframes roundPulse{
-  0%{box-shadow:0 0 0 2px rgba(255,156,44,.85),0 0 28px rgba(255,156,44,.35)}
+.tactic{
+  margin-top:8px;border:1px solid #31353a;border-radius:16px;
+  background:#111315;overflow:hidden
+}
+.tacticHead{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:9px 13px;border-bottom:1px solid #22262a
+}
+.tacticTitle{font-size:9px;font-weight:950;letter-spacing:.14em}
+.lock{font-size:8px;color:#727b86;font-weight:850}
+.row{padding:11px 13px;border-bottom:1px solid #22262a}
+.row:last-child{border-bottom:0}
+.row.position{background:linear-gradient(180deg,#18130e,#111315)}
+.row.do{background:#15181a}
+.value{margin-top:5px;font-size:15px;line-height:1.24;font-weight:850}
+.row.position .value{font-size:20px;line-height:1.13;font-weight:950;letter-spacing:-.02em}
+.row.do .value{font-size:18px;line-height:1.18;font-weight:950}
+.focus{
+  margin-top:8px;border:1px solid #34312a;border-radius:12px;
+  background:#15130f;padding:9px 11px
+}
+.focusLabel{font-size:8px;font-weight:950;letter-spacing:.12em}
+.focusText{margin-top:4px;font-size:12px;line-height:1.25;font-weight:900}
+.foot{
+  display:flex;justify-content:space-between;gap:8px;
+  margin:8px 2px 0;color:#69717b;font-size:8px;font-weight:800
+}
+.flash{animation:flash .58s ease-out}
+@keyframes flash{
+  0%{box-shadow:0 0 0 2px rgba(255,156,44,.85),0 0 24px rgba(255,156,44,.35)}
   100%{box-shadow:none}
 }
-.sectionTitle{margin:15px 2px 8px;font-size:10px;font-weight:950;letter-spacing:.11em;color:#8d96a2}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-.metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
-.metric .v{margin-top:4px;font-size:18px;font-weight:950}
-.devHero{
-  margin-top:9px;padding:14px;border-radius:15px;border:1px solid #62421f;
-  background:linear-gradient(145deg,#21180f,#121416)
+.sheet{
+  position:fixed;inset:0;z-index:50;display:none;
+  align-items:flex-end;justify-content:center;background:rgba(0,0,0,.58)
 }
-.devScore{font-size:31px;font-weight:950;color:var(--orange);letter-spacing:-.04em}
-.devLeak{font-size:16px;font-weight:900;margin-top:5px}
-.devFocus{font-size:12px;color:#c1c7cf;line-height:1.35;margin-top:5px}
-.rounds{display:grid;gap:6px}
-.roundRow{
-  display:grid;grid-template-columns:42px 35px 42px 1fr;gap:8px;align-items:center;
-  background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:8px 10px
+.sheet.open{display:flex}
+.panel{
+  width:min(680px,100%);border-radius:18px 18px 0 0;
+  background:#111315;border:1px solid #2a2e32;border-bottom:0;
+  padding:14px 14px calc(14px + env(safe-area-inset-bottom))
 }
-.rno{font-weight:950}.win{color:var(--green);font-weight:950}.loss{color:var(--red);font-weight:950}
-.rmeta{font-size:10px;color:#9ca4af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.settingsCard{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px}
-.settingLine{
+.panelHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.panelHead b{font-size:13px}.close{
+  width:30px;height:30px;border:0;border-radius:9px;background:#1b1e21;color:#d4d9df
+}
+.setting{
   display:flex;justify-content:space-between;align-items:center;gap:12px;
   padding:10px 0;border-bottom:1px solid #222529
 }
-.settingLine:last-child{border-bottom:0}
-.settingText b{display:block;font-size:12px}.settingText small{display:block;color:#7d858f;font-size:9px;margin-top:2px}
-.switch{
-  min-width:58px;border:1px solid #34383d;background:#16191c;color:#9aa2ad;
-  border-radius:999px;padding:7px 9px;font-size:8px;font-weight:950
+.setting:last-child{border-bottom:0}
+.setting b{display:block;font-size:11px}
+.setting small{display:block;color:#767e88;font-size:9px;margin-top:2px}
+.toggle{
+  min-width:56px;border:1px solid #34383d;background:#16191c;color:#969ea8;
+  border-radius:999px;padding:6px 8px;font-size:8px;font-weight:950
 }
-.switch.on{background:#173522;border-color:#2f6846;color:#8ef0b4}
-select{
-  max-width:155px;background:#0e1012;color:white;border:1px solid #353a40;
-  border-radius:9px;padding:8px;font-size:10px;font-weight:800
-}
-.save{
-  width:100%;border:1px solid #62421f;background:#271b10;color:#ffc071;
-  border-radius:10px;padding:10px;margin-top:10px;font-size:10px;font-weight:950
-}
+.toggle.on{background:#173522;border-color:#2f6846;color:#8ef0b4}
 .reconnect{
-  width:100%;border:1px solid #30343a;background:#15181b;color:#dbe0e6;
-  border-radius:10px;padding:10px;margin-top:8px;font-size:10px;font-weight:900
+  width:100%;border:1px solid #34383d;background:#171a1d;color:#dce1e7;
+  border-radius:10px;padding:10px;margin-top:10px;font-size:9px;font-weight:950
 }
-.note{font-size:9px;color:#69717c;line-height:1.4;margin-top:10px}
-.nav{
-  position:fixed;left:50%;bottom:0;transform:translateX(-50%);z-index:30;
-  width:min(760px,100%);display:grid;grid-template-columns:repeat(3,1fr);
-  padding:6px 10px calc(6px + env(safe-area-inset-bottom));
-  background:rgba(9,10,12,.97);backdrop-filter:blur(16px);border-top:1px solid #202327
-}
-.nav button{border:0;background:transparent;color:#747c87;padding:8px 4px;font-size:9px;font-weight:950;letter-spacing:.08em}
-.nav button.active{color:var(--orange)}
-.offlineBanner{
-  display:none;margin-top:8px;padding:9px 11px;border-radius:10px;
-  color:#ffc0b9;background:#301918;border:1px solid #5b2926;font-size:10px;font-weight:850
-}
-.offlineBanner.show{display:block}
-.summary{
-  display:none;margin-top:9px;border:1px solid #365d48;background:#10231a;border-radius:13px;padding:11px 12px
-}
-.summary.show{display:block}
-.summary b{color:var(--green)}
+.note{margin-top:9px;color:#69717c;font-size:8px;line-height:1.4}
 @media(max-width:390px){
   .app{padding-left:8px;padding-right:8px}
-  .topbar{margin-left:-8px;margin-right:-8px;padding-left:10px;padding-right:10px}
-  .planCard.position .planText{font-size:20px}
-  .planCard.action .planText{font-size:18px}
-  .planText{font-size:15px}
-  .metric .v{font-size:16px}
+  .top{margin-left:-8px;margin-right:-8px}
+  .row.position .value{font-size:19px}
+  .row.do .value{font-size:17px}
+  .value{font-size:14px}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <header class="topbar">
-    <div class="brandrow">
-      <div class="brand">SM0KI <span>PHONE COACH</span></div>
-      <div id="conn" class="status {{state.connection.ToLowerInvariant()}}">
-        <span class="dot"></span><span id="connText">{{Html(state.connection)}}</span>
+  <header class="top">
+    <div class="toprow">
+      <div class="brand">SM0KI <span>MATCH COACH</span></div>
+      <div class="right">
+        <div id="conn" class="status {{state.connection.ToLowerInvariant()}}">
+          <span class="dot"></span><span id="connText">{{Html(state.connection)}}</span>
+        </div>
+        <button id="settingsBtn" class="icon" type="button">⚙</button>
       </div>
     </div>
-    <div class="matchline">
-      <div id="map" class="map">{{Html(state.map)}}</div>
-      <div id="side" class="chip">{{Html(state.side)}}</div>
-      <div id="round" class="chip round">{{Html(state.round)}}</div>
-      <div id="score" class="chip score">{{Html(state.score)}}</div>
+    <div class="context">
+      <span id="map" class="map">{{Html(state.map)}}</span>
+      <span id="side" class="pill">{{Html(state.side)}}</span>
+      <span id="round" class="pill round">{{Html(state.round)}}</span>
     </div>
   </header>
 
-  <div id="offlineBanner" class="offlineBanner">PC/CS2 telemetry ni svež. Coach čaka na povezavo.</div>
+  <div id="offline" class="offline">PC/CS2 telemetry ni svež. Coach čaka na povezavo.</div>
 
-  <section id="coachScreen" class="screen active">
-    <div class="gameHead">
-      <div class="buy">
-        <div class="label">BUY</div>
-        <div id="buyAdvice" class="buyText">{{Html(state.buyAdvice)}}</div>
-      </div>
-      <button id="gameMode" class="gameToggle" type="button">GAME MODE<br>OFF</button>
+  <button id="activate" class="activate" type="button">START MATCH MODE</button>
+
+  <section class="buy">
+    <div class="label">BUY</div>
+    <div id="buyAdvice" class="buyText">{{Html(state.buyAdvice)}}</div>
+  </section>
+
+  <section id="tactic" class="tactic">
+    <div class="tacticHead">
+      <div class="tacticTitle">TACTIC</div>
+      <div id="planLock" class="lock">refreshes between rounds</div>
     </div>
 
-    <div id="matchSummary" class="summary">
-      <div class="label">MATCH COMPLETE</div>
-      <b id="summaryScore">{{Html(state.score)}}</b>
-      <span id="summaryText"></span>
+    <div class="row position">
+      <div class="label">POSITION</div>
+      <div id="position" class="value">{{Html(state.position)}}</div>
     </div>
 
-    <div class="plan">
-      <article id="positionCard" class="planCard position">
-        <div class="label">POSITION</div>
-        <div id="position" class="planText">{{Html(state.position)}}</div>
-      </article>
-
-      <article class="planCard expect">
-        <div class="label">EXPECT</div>
-        <div id="expect" class="planText">{{Html(state.expect)}}</div>
-      </article>
-
-      <article class="planCard action">
-        <div class="label">DO</div>
-        <div id="action" class="planText">{{Html(state.action)}}</div>
-      </article>
+    <div class="row">
+      <div class="label">EXPECT</div>
+      <div id="expect" class="value">{{Html(state.expect)}}</div>
     </div>
 
-    <div class="lockline">
-      <span id="planLock" class="locked">Plan refreshes between rounds</span>
-      <span id="latency">— ms</span>
+    <div class="row do">
+      <div class="label">DO</div>
+      <div id="action" class="value">{{Html(state.action)}}</div>
     </div>
   </section>
 
-  <section id="progressScreen" class="screen">
-    <div class="sectionTitle">MATCH SNAPSHOT</div>
-    <div class="metrics">
-      <div class="metric"><div class="label">K/D</div><div id="kd" class="v">{{Html(state.kd)}}</div></div>
-      <div class="metric"><div class="label">K/R</div><div id="kpr" class="v">{{Html(state.killsPerRound)}}</div></div>
-      <div class="metric"><div class="label">SURVIVAL</div><div id="survival" class="v">{{Html(state.survival)}}</div></div>
-      <div class="metric"><div class="label">KILLS</div><div id="kills" class="v">{{state.kills}}</div></div>
-      <div class="metric"><div class="label">MULTI</div><div id="multi" class="v">{{state.multiKillRounds}}</div></div>
-      <div class="metric"><div class="label">0K</div><div id="zeroKill" class="v">{{state.zeroKillRounds}}</div></div>
-    </div>
-
-    <div class="devHero">
-      <div class="label">DEVELOPMENT SCORE</div>
-      <div><span id="devScore" class="devScore">{{state.devScore}}</span><span style="color:#767e88"> / 100</span></div>
-      <div id="devLeak" class="devLeak">{{Html(state.devLeak)}}</div>
-      <div id="devFocus" class="devFocus">{{Html(state.devFocus)}}</div>
-    </div>
-
-    <div class="sectionTitle">RECENT ROUNDS</div>
-    <div id="rounds" class="rounds"></div>
+  <section class="focus">
+    <div class="focusLabel">FOCUS</div>
+    <div id="brainFocus" class="focusText">{{Html(state.brainFocus)}}</div>
   </section>
 
-  <section id="settingsScreen" class="screen">
-    <div class="sectionTitle">GAME MODE</div>
-    <div class="settingsCard">
-      <div class="settingLine">
-        <div class="settingText"><b>Vibration</b><small>Short alert when a new round starts</small></div>
-        <button id="vibrationToggle" class="switch" type="button">ON</button>
-      </div>
-      <div class="settingLine">
-        <div class="settingText"><b>Sound cue</b><small>Quiet beep on new round</small></div>
-        <button id="soundToggle" class="switch" type="button">OFF</button>
-      </div>
-      <div class="settingLine">
-        <div class="settingText"><b>Keep screen awake</b><small>Best when phone sits next to your monitor</small></div>
-        <button id="wakeToggle" class="switch" type="button">ON</button>
-      </div>
-      <div class="settingLine">
-        <div class="settingText"><b>Fullscreen</b><small>Remove browser chrome where supported</small></div>
-        <button id="fullscreenToggle" class="switch" type="button">OFF</button>
-      </div>
-    </div>
-
-    <div class="sectionTitle">COACH STYLE</div>
-    <div class="settingsCard">
-      <div class="settingLine">
-        <div class="settingText"><b>Mode</b></div>
-        <select id="modeSelect">
-          <option>Balanced</option><option>Aggressive</option><option>Safe</option>
-        </select>
-      </div>
-      <div class="settingLine">
-        <div class="settingText"><b>Role</b></div>
-        <select id="roleSelect">
-          <option>Flex</option><option>Entry</option><option>Lurk</option><option>Support</option><option>Anchor</option>
-        </select>
-      </div>
-      <div class="settingLine">
-        <div class="settingText"><b>Focus</b></div>
-        <select id="focusSelect">
-          <option>More kills</option><option>Survive & trade</option><option>Entry impact</option><option>Utility impact</option><option>Clutch / late round</option>
-        </select>
-      </div>
-      <div class="settingLine">
-        <div class="settingText"><b>Auto AI refine</b><small>Only allowed to refresh the visible plan between rounds</small></div>
-        <button id="aiToggle" class="switch" type="button">ON</button>
-      </div>
-      <button id="saveCoach" class="save" type="button">SAVE TO PC COACH</button>
-      <button id="reconnect" class="reconnect" type="button">REFRESH / RECONNECT</button>
-      <div class="note">
-        {{Html(state.nickname)}} • v{{Html(state.version)}} • private LAN link.<br>
-        Telefon in PC morata biti na istem Wi‑Fi/LAN omrežju.
-      </div>
-    </div>
-  </section>
+  <div class="foot">
+    <span id="latency">— ms</span>
+    <span>v{{Html(state.version)}}</span>
+  </div>
 </div>
 
-<nav class="nav">
-  <button data-view="coach" class="active">COACH</button>
-  <button data-view="progress">PROGRESS</button>
-  <button data-view="settings">SETTINGS</button>
-</nav>
+<div id="settingsSheet" class="sheet">
+  <div class="panel">
+    <div class="panelHead">
+      <b>MATCH MODE SETTINGS</b>
+      <button id="closeSettings" class="close" type="button">×</button>
+    </div>
+
+    <div class="setting">
+      <div><b>Vibration</b><small>Short cue when a new round starts</small></div>
+      <button id="vibrationToggle" class="toggle" type="button">ON</button>
+    </div>
+
+    <div class="setting">
+      <div><b>Sound cue</b><small>Quiet beep on new round</small></div>
+      <button id="soundToggle" class="toggle" type="button">OFF</button>
+    </div>
+
+    <div class="setting">
+      <div><b>Keep screen awake</b><small>Phone stays visible next to monitor</small></div>
+      <button id="wakeToggle" class="toggle" type="button">ON</button>
+    </div>
+
+    <div class="setting">
+      <div><b>Fullscreen</b><small>Hide browser UI where supported</small></div>
+      <button id="fullscreenToggle" class="toggle" type="button">OFF</button>
+    </div>
+
+    <button id="reconnect" class="reconnect" type="button">REFRESH / RECONNECT</button>
+
+    <div class="note">
+      {{Html(state.nickname)}} • private LAN • phone shows only information useful during a match.
+    </div>
+  </div>
+</div>
 
 <script>
 const liveToken={{JsonSerializer.Serialize(_accessToken)}};
 let lastRoundKey={{JsonSerializer.Serialize(state.roundKey)}};
 let lastPlanKey={{JsonSerializer.Serialize(state.planKey)}};
-let lastRoundPhase={{JsonSerializer.Serialize(state.roundPhase)}};
 let lastSuccess=Date.now();
-let gameMode=false;
+let matchMode=false;
 let wakeLock=null;
-let forceRefreshPlan=true;
-let latestState=null;
+let forcePlan=true;
 
 const prefs={
   vibration:localStorage.getItem('smoki_vibration')!=='0',
@@ -793,129 +765,70 @@ const prefs={
 const $=id=>document.getElementById(id);
 const setText=(id,v)=>{const e=$(id);if(e)e.textContent=(v??'—')};
 
-function setSwitch(id,on){
+function setToggle(id,on){
   const b=$(id);if(!b)return;
   b.classList.toggle('on',!!on);
   b.textContent=on?'ON':'OFF';
 }
 
-function setView(view){
-  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
-  $(view+'Screen')?.classList.add('active');
-  document.querySelector('.nav button[data-view="'+view+'"]')?.classList.add('active');
+function isLivePhase(v){
+  return String(v||'').toLowerCase()==='live';
 }
 
-document.querySelectorAll('.nav button').forEach(b=>{
-  b.addEventListener('click',()=>setView(b.dataset.view));
-});
-
-function isLivePhase(phase){
-  return String(phase||'').toLowerCase()==='live';
-}
-
-function connectionUi(x){
+function updateConnection(x){
   const conn=$('conn');
   if(!conn)return;
   conn.className='status '+String(x.connection||'waiting').toLowerCase();
   setText('connText',x.connection||'WAITING');
-  $('offlineBanner')?.classList.toggle('show',x.connection==='STALE'||x.connection==='WAITING');
+  $('offline')?.classList.toggle('show',x.connection==='STALE'||x.connection==='WAITING');
 }
 
-function applyPlan(x,animate){
+function applyPlan(x,flash){
+  setText('buyAdvice',x.buyAdvice);
   setText('position',x.position);
   setText('expect',x.expect);
   setText('action',x.action);
-  setText('buyAdvice',x.buyAdvice);
+  setText('brainFocus',x.brainFocus);
 
-  if(animate){
-    const card=$('positionCard');
-    card?.classList.remove('roundPulse');
+  if(flash){
+    const card=$('tactic');
+    card?.classList.remove('flash');
     void card?.offsetWidth;
-    card?.classList.add('roundPulse');
-  }
-}
-
-function renderRounds(rounds){
-  const host=$('rounds');
-  if(!host)return;
-  if(!rounds||!rounds.length){
-    host.innerHTML='<div class="note">No completed rounds yet.</div>';
-    return;
-  }
-  host.innerHTML=rounds.map(r=>{
-    const resultClass=r.result==='W'?'win':r.result==='L'?'loss':'';
-    const extra=[r.intent,r.site,r.position].filter(Boolean).join(' • ');
-    return '<div class="roundRow">'+
-      '<div class="rno">R'+r.round+'</div>'+
-      '<div class="'+resultClass+'">'+r.result+'</div>'+
-      '<div>'+r.kills+'K</div>'+
-      '<div class="rmeta">'+escapeHtml(extra||r.side)+'</div>'+
-      '</div>';
-  }).join('');
-}
-
-function escapeHtml(s){
-  return String(s??'').replace(/[&<>"']/g,c=>({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[c]));
-}
-
-function updateSecondary(x){
-  setText('kd',x.kd);
-  setText('kpr',x.killsPerRound);
-  setText('survival',x.survival);
-  setText('kills',x.kills);
-  setText('multi',x.multiKillRounds);
-  setText('zeroKill',x.zeroKillRounds);
-  setText('devScore',x.devScore);
-  setText('devLeak',x.devLeak);
-  setText('devFocus',x.devFocus);
-  renderRounds(x.recentRounds);
-
-  $('modeSelect').value=x.mode||'Balanced';
-  $('roleSelect').value=x.role||'Flex';
-  $('focusSelect').value=x.focus||'More kills';
-  $('aiToggle').dataset.on=x.autoAi?'1':'0';
-  setSwitch('aiToggle',x.autoAi);
-
-  const over=String(x.mapPhase||'').toLowerCase()==='gameover';
-  $('matchSummary')?.classList.toggle('show',over);
-  if(over){
-    setText('summaryScore',x.score);
-    setText('summaryText',' • '+x.kills+' kills • '+x.kd+' K/D • DEV '+x.devScore);
+    card?.classList.add('flash');
   }
 }
 
 function beep(){
   if(!prefs.sound)return;
   try{
-    const AudioContext=window.AudioContext||window.webkitAudioContext;
-    const ctx=new AudioContext();
+    const AC=window.AudioContext||window.webkitAudioContext;
+    const ctx=new AC();
     const osc=ctx.createOscillator();
     const gain=ctx.createGain();
-    osc.frequency.value=660;
-    gain.gain.setValueAtTime(.045,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.12);
+    osc.frequency.value=650;
+    gain.gain.setValueAtTime(.04,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.11);
     osc.connect(gain);gain.connect(ctx.destination);
-    osc.start();osc.stop(ctx.currentTime+.13);
+    osc.start();osc.stop(ctx.currentTime+.12);
   }catch{}
 }
 
 async function ensureWake(){
-  if(!gameMode||!prefs.wake||!navigator.wakeLock)return;
+  if(!matchMode||!prefs.wake||!navigator.wakeLock)return;
   try{
-    if(!wakeLock) wakeLock=await navigator.wakeLock.request('screen');
+    if(!wakeLock)wakeLock=await navigator.wakeLock.request('screen');
   }catch{}
 }
 
-async function setGameMode(on){
-  gameMode=!!on;
-  const b=$('gameMode');
-  b?.classList.toggle('on',gameMode);
-  if(b)b.innerHTML=gameMode?'GAME MODE<br>ON':'GAME MODE<br>OFF';
+async function setMatchMode(on){
+  matchMode=!!on;
+  const b=$('activate');
+  if(b){
+    b.classList.toggle('on',matchMode);
+    b.textContent=matchMode?'MATCH MODE ACTIVE':'START MATCH MODE';
+  }
 
-  if(gameMode){
+  if(matchMode){
     await ensureWake();
     if(prefs.fullscreen){
       try{await document.documentElement.requestFullscreen?.()}catch{}
@@ -928,115 +841,95 @@ async function setGameMode(on){
 
 async function refreshLive(){
   const started=performance.now();
+
   try{
-    const response=await fetch('/api/state?token='+encodeURIComponent(liveToken)+'&_='+Date.now(),{cache:'no-store'});
+    const response=await fetch(
+      '/api/state?token='+encodeURIComponent(liveToken)+'&_='+Date.now(),
+      {cache:'no-store'});
+
     if(!response.ok)throw new Error('HTTP '+response.status);
     const x=await response.json();
-    latestState=x;
-    lastSuccess=Date.now();
 
+    lastSuccess=Date.now();
     setText('latency',Math.round(performance.now()-started)+' ms');
     setText('map',x.map);
     setText('side',x.side);
     setText('round',x.round);
-    setText('score',x.score);
-    connectionUi(x);
-    updateSecondary(x);
+    updateConnection(x);
 
-    const roundChanged=!!lastRoundKey && !!x.roundKey && x.roundKey!==lastRoundKey;
-    const planChanged=!!lastPlanKey && !!x.planKey && x.planKey!==lastPlanKey;
+    const roundChanged=!!lastRoundKey&&!!x.roundKey&&x.roundKey!==lastRoundKey;
+    const planChanged=!!lastPlanKey&&!!x.planKey&&x.planKey!==lastPlanKey;
     const betweenRounds=!isLivePhase(x.roundPhase);
 
-    // Glance-first rule:
-    // visible coaching text may refresh on a new round or while CS2 is not live.
-    // Once the round is live, the player sees a stable plan.
-    const mayRefreshPlan=forceRefreshPlan||roundChanged||betweenRounds;
-    if(mayRefreshPlan && (forceRefreshPlan||roundChanged||planChanged)){
+    // Never rewrite the tactic while the player is inside a live round.
+    if(forcePlan||roundChanged||(betweenRounds&&planChanged)){
       applyPlan(x,roundChanged);
-      forceRefreshPlan=false;
+      forcePlan=false;
     }
 
     setText(
       'planLock',
       isLivePhase(x.roundPhase)
-        ? '🔒 Plan locked during live round'
-        : '↻ Plan can refresh between rounds'
+        ? '🔒 locked during live round'
+        : '↻ refreshes between rounds'
     );
 
-    if(roundChanged&&gameMode){
+    if(roundChanged&&matchMode){
       if(prefs.vibration){
-        try{navigator.vibrate?.([80,45,80])}catch{}
+        try{navigator.vibrate?.([75,40,75])}catch{}
       }
       beep();
     }
 
     lastRoundKey=x.roundKey||lastRoundKey;
     lastPlanKey=x.planKey||lastPlanKey;
-    lastRoundPhase=x.roundPhase||lastRoundPhase;
   }catch{
     if(Date.now()-lastSuccess>2500){
-      const x=latestState||{connection:'STALE'};
-      x.connection='STALE';
-      connectionUi(x);
+      const conn=$('conn');
+      if(conn)conn.className='status stale';
+      setText('connText','STALE');
+      $('offline')?.classList.add('show');
       setText('latency','OFFLINE');
     }
   }
 }
 
-$('gameMode')?.addEventListener('click',()=>setGameMode(!gameMode));
+$('activate')?.addEventListener('click',()=>setMatchMode(!matchMode));
+
+$('settingsBtn')?.addEventListener('click',()=>$('settingsSheet')?.classList.add('open'));
+$('closeSettings')?.addEventListener('click',()=>$('settingsSheet')?.classList.remove('open'));
+$('settingsSheet')?.addEventListener('click',e=>{
+  if(e.target===$('settingsSheet'))$('settingsSheet')?.classList.remove('open');
+});
 
 $('vibrationToggle')?.addEventListener('click',()=>{
   prefs.vibration=!prefs.vibration;
   localStorage.setItem('smoki_vibration',prefs.vibration?'1':'0');
-  setSwitch('vibrationToggle',prefs.vibration);
+  setToggle('vibrationToggle',prefs.vibration);
 });
 $('soundToggle')?.addEventListener('click',()=>{
   prefs.sound=!prefs.sound;
   localStorage.setItem('smoki_sound',prefs.sound?'1':'0');
-  setSwitch('soundToggle',prefs.sound);
+  setToggle('soundToggle',prefs.sound);
   if(prefs.sound)beep();
 });
 $('wakeToggle')?.addEventListener('click',async()=>{
   prefs.wake=!prefs.wake;
   localStorage.setItem('smoki_wake',prefs.wake?'1':'0');
-  setSwitch('wakeToggle',prefs.wake);
+  setToggle('wakeToggle',prefs.wake);
   if(prefs.wake)await ensureWake();
   else{try{await wakeLock?.release()}catch{}wakeLock=null;}
 });
 $('fullscreenToggle')?.addEventListener('click',()=>{
   prefs.fullscreen=!prefs.fullscreen;
   localStorage.setItem('smoki_fullscreen',prefs.fullscreen?'1':'0');
-  setSwitch('fullscreenToggle',prefs.fullscreen);
-});
-
-$('aiToggle')?.addEventListener('click',()=>{
-  const on=$('aiToggle').dataset.on!=='1';
-  $('aiToggle').dataset.on=on?'1':'0';
-  setSwitch('aiToggle',on);
-});
-
-$('saveCoach')?.addEventListener('click',async()=>{
-  const q=new URLSearchParams({
-    token:liveToken,
-    mode:$('modeSelect').value,
-    role:$('roleSelect').value,
-    focus:$('focusSelect').value,
-    autoAi:$('aiToggle').dataset.on==='1'?'1':'0'
-  });
-  try{
-    const r=await fetch('/api/settings?'+q.toString(),{cache:'no-store'});
-    if(r.ok){
-      $('saveCoach').textContent='SAVED';
-      forceRefreshPlan=true;
-      setTimeout(()=>$('saveCoach').textContent='SAVE TO PC COACH',1100);
-    }
-  }catch{}
+  setToggle('fullscreenToggle',prefs.fullscreen);
 });
 
 $('reconnect')?.addEventListener('click',()=>{
-  forceRefreshPlan=true;
+  forcePlan=true;
   refreshLive();
-  setView('coach');
+  $('settingsSheet')?.classList.remove('open');
 });
 
 document.addEventListener('visibilitychange',async()=>{
@@ -1047,10 +940,10 @@ document.addEventListener('visibilitychange',async()=>{
   }
 });
 
-setSwitch('vibrationToggle',prefs.vibration);
-setSwitch('soundToggle',prefs.sound);
-setSwitch('wakeToggle',prefs.wake);
-setSwitch('fullscreenToggle',prefs.fullscreen);
+setToggle('vibrationToggle',prefs.vibration);
+setToggle('soundToggle',prefs.sound);
+setToggle('wakeToggle',prefs.wake);
+setToggle('fullscreenToggle',prefs.fullscreen);
 
 refreshLive();
 setInterval(refreshLive,800);
