@@ -164,11 +164,20 @@ public sealed class SessionAnalyticsForm : Form
         double histKr = histRounds > 0 ? (double)histKills / histRounds : 0;
         double histSurvival = histRounds > 0 ? 100.0 * all.Sum(x => x.SurvivalRounds) / histRounds : 0;
 
+        var liveDevelopment = PlayerDevelopmentEngine.Analyze(currentRounds);
+        var latestDevelopment = all.FirstOrDefault(x => x.DevelopmentScore > 0);
+        var developmentScore = currentRounds.Count >= 3
+            ? liveDevelopment.OverallScore
+            : latestDevelopment?.DevelopmentScore ?? 0;
+        var developmentSubtitle = currentRounds.Count >= 3
+            ? liveDevelopment.BiggestLeak
+            : latestDevelopment?.DevelopmentLeak ?? "needs v4.2 match data";
+
         grid.Controls.Add(Metric("KILLS", currentRounds.Count > 0 ? liveKills.ToString() : all.Sum(x => x.Kills).ToString(), "current / archived"), 0, 0);
         grid.Controls.Add(Metric("K / ROUND", (currentRounds.Count > 0 ? liveKr : histKr).ToString("0.00"), "fragging pace"), 1, 0);
         grid.Controls.Add(Metric("SURVIVAL", (currentRounds.Count > 0 ? liveSurvival : histSurvival).ToString("0") + "%", "rounds survived"), 2, 0);
         grid.Controls.Add(Metric("AVG K/D", faceit?.RecentAverageKd?.ToString("0.00") ?? (liveDeaths > 0 ? ((double)liveKills/liveDeaths).ToString("0.00") : "—"), "recent form"), 3, 0);
-        grid.Controls.Add(Metric("ELO", faceit?.Elo.ToString() ?? "—", faceit?.RecentKillsTrendLabel ?? "FACEIT trend"), 4, 0);
+        grid.Controls.Add(Metric("DEV SCORE", developmentScore > 0 ? developmentScore + "/100" : "—", developmentSubtitle), 4, 0);
         return grid;
     }
 
@@ -207,18 +216,26 @@ public sealed class SessionAnalyticsForm : Form
         killsCard.Margin = new Padding(0, 0, 6, 0);
         grid.Controls.Add(killsCard, 0, 0);
 
-        var form = all.Take(12).Reverse().ToList();
-        var kr = form.Select(x => x.KillsPerRound).ToArray();
-        var labels = form.Select(x => CoachEngine.PrettyMap(x.Map)).ToArray();
-        var krCard = ChartCard(
-            "K/R TREND",
-            "Kills per round across recent sessions",
-            kr,
-            labels,
+        var developmentForm = all
+            .Where(x => x.DevelopmentScore > 0)
+            .Take(12)
+            .Reverse()
+            .ToList();
+        var developmentScores = developmentForm
+            .Select(x => (double)x.DevelopmentScore)
+            .ToArray();
+        var developmentLabels = developmentForm
+            .Select(x => CoachEngine.PrettyMap(x.Map))
+            .ToArray();
+        var developmentCard = ChartCard(
+            "DEVELOPMENT TREND",
+            "Player Development score across recent v4.2 sessions",
+            developmentScores,
+            developmentLabels,
             Green,
-            true);
-        krCard.Margin = new Padding(6, 0, 0, 0);
-        grid.Controls.Add(krCard, 1, 0);
+            false);
+        developmentCard.Margin = new Padding(6, 0, 0, 0);
+        grid.Controls.Add(developmentCard, 1, 0);
 
         return grid;
     }
@@ -305,6 +322,7 @@ public sealed class SessionAnalyticsForm : Form
         list.Columns.Add("SURVIVAL", 85);
         list.Columns.Add("MULTI", 65);
         list.Columns.Add("0K", 55);
+        list.Columns.Add("DEV", 60);
         list.Columns.Add("SCORE", 70);
 
         foreach (var session in all.Take(50))
@@ -317,6 +335,7 @@ public sealed class SessionAnalyticsForm : Form
             item.SubItems.Add(session.SurvivalRate.ToString("0") + "%");
             item.SubItems.Add(session.MultiKillRounds.ToString());
             item.SubItems.Add(session.ZeroKillRounds.ToString());
+            item.SubItems.Add(session.DevelopmentScore > 0 ? session.DevelopmentScore.ToString() : "—");
             item.SubItems.Add($"{session.CtScore}:{session.TScore}");
             list.Items.Add(item);
         }
