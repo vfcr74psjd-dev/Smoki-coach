@@ -20,6 +20,9 @@ public sealed class SessionSummary
     public string BestArea { get; set; } = "";
     public string TroubleArea { get; set; } = "";
     public string NextFocus { get; set; } = "";
+    public int DevelopmentScore { get; set; }
+    public string DevelopmentLeak { get; set; } = "";
+    public string DevelopmentFocus { get; set; } = "";
 
     public double KillsPerRound => Rounds > 0 ? (double)Kills / Rounds : 0;
     public double SurvivalRate => Rounds > 0 ? 100.0 * SurvivalRounds / Rounds : 0;

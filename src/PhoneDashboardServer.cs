@@ -28,6 +28,9 @@ public sealed class PhoneDashboardServer : IDisposable
         public string expect { get; init; } = "—";
         public string action { get; init; } = "—";
         public string adapt { get; init; } = "—";
+        public int devScore { get; init; }
+        public string devLeak { get; init; } = "Collecting evidence";
+        public string devFocus { get; init; } = "Play normal CS2 while the coach learns.";
         public string planKey { get; init; } = "";
         public string roundKey { get; init; } = "";
         public string aiTip { get; init; } = "";
@@ -43,6 +46,7 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly Func<string> _nicknameProvider;
     private readonly Func<bool> _autoAiProvider;
     private readonly Func<string> _aiProvider;
+    private readonly Func<IReadOnlyList<RoundRecord>> _roundsProvider;
     private readonly Action<string,string,string,bool> _settingsUpdater;
     private readonly string _accessToken =
         Convert.ToHexString(RandomNumberGenerator.GetBytes(10)).ToLowerInvariant();
@@ -58,6 +62,7 @@ public sealed class PhoneDashboardServer : IDisposable
         Func<string> nicknameProvider,
         Func<bool> autoAiProvider,
         Func<string> aiProvider,
+        Func<IReadOnlyList<RoundRecord>> roundsProvider,
         Action<string,string,string,bool> settingsUpdater)
     {
         _snapshotProvider = snapshotProvider;
@@ -67,6 +72,7 @@ public sealed class PhoneDashboardServer : IDisposable
         _nicknameProvider = nicknameProvider;
         _autoAiProvider = autoAiProvider;
         _aiProvider = aiProvider;
+        _roundsProvider = roundsProvider;
         _settingsUpdater = settingsUpdater;
     }
 
@@ -249,6 +255,7 @@ public sealed class PhoneDashboardServer : IDisposable
 
         var advice = _aiProvider() ?? "";
         var plan = ParseCoachAdvice(advice);
+        var development = PlayerDevelopmentEngine.Analyze(_roundsProvider());
         var (fallbackBuyTitle, fallbackBuyAdvice) =
             CoachEngine.BuyAdvice(snapshot);
 
@@ -306,8 +313,11 @@ public sealed class PhoneDashboardServer : IDisposable
             expect = expect,
             action = action,
             adapt = adapt,
+            devScore = development.OverallScore,
+            devLeak = development.BiggestLeak,
+            devFocus = development.MatchFocus,
             roundKey = roundKey,
-            planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt,
+            planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt + "|" + development.BiggestLeak,
             aiTip = advice,
             tip =
                 CoachEngine.SoloTip(snapshot, mode) +
@@ -471,6 +481,12 @@ select{{width:100%;background:#0e1012;color:#f5f6f7;border:1px solid #30343a;bor
     </section>
   </div>
 
+  <section class='card dev'>
+    <div class='kicker'>PLAYER DEVELOPMENT • <span id='devScore'>{state.devScore}</span>/100</div>
+    <div id='devLeak' class='valueBig'>{Html(state.devLeak)}</div>
+    <div id='devFocus' class='value' style='margin-top:6px'>{Html(state.devFocus)}</div>
+  </section>
+
   <div class='statRow'>
     <div class='stat'><div class='kicker'>MONEY</div><div id='money' class='num'>&#36;{state.money}</div></div>
     <div class='stat'><div class='kicker'>GUN</div><div id='weapon' class='num'>{Html(state.weapon)}</div></div>
@@ -597,6 +613,9 @@ async function refreshLive(){{
     setText('action',x.action);
     setText('buyAdvice',x.buyAdvice);
     setText('adapt',x.adapt);
+    setText('devScore',x.devScore);
+    setText('devLeak',x.devLeak);
+    setText('devFocus',x.devFocus);
     setText('money','$'+x.money);
     setText('weapon',x.weapon);
     setText('kd',x.kd);

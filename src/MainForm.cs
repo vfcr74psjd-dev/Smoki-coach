@@ -105,6 +105,7 @@ public sealed class MainForm : Form
             () => _profile.Nickname,
             () => _prefs.AutoAi,
             () => _latestAiAdvice,
+            () => _rounds.ToArray(),
             ApplyPhoneSettings
         );
         _phoneServer.Start();
@@ -1526,6 +1527,7 @@ public sealed class MainForm : Form
         try
         {
             var review = MatchReviewAnalyzer.Analyze(rounds);
+            var development = PlayerDevelopmentEngine.Analyze(rounds);
 
             SessionHistoryStore.Save(new SessionSummary
             {
@@ -1543,7 +1545,10 @@ public sealed class MainForm : Form
                 TScore = snapshot.TScore ?? 0,
                 BestArea = review.BestTitle + " • " + review.BestDetail,
                 TroubleArea = review.TroubleTitle + " • " + review.TroubleDetail,
-                NextFocus = review.FocusTitle + " • " + review.FocusDetail
+                NextFocus = review.FocusTitle + " • " + review.FocusDetail,
+                DevelopmentScore = development.OverallScore,
+                DevelopmentLeak = development.BiggestLeak,
+                DevelopmentFocus = development.MatchFocus
             });
         }
         catch { }
