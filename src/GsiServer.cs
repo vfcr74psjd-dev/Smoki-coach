@@ -273,9 +273,20 @@ public sealed class GsiServer : IDisposable
     {
         var s = new GameSnapshot();
 
+        if (root.TryGetProperty("provider", out var provider))
+            s.LocalSteamId = StrProp(provider, "steamid");
+
         if (root.TryGetProperty("player", out var p))
         {
             s.PlayerName = StrProp(p, "name");
+            s.PlayerSteamId = StrProp(p, "steamid");
+            s.IsSpectating =
+                !string.IsNullOrWhiteSpace(s.LocalSteamId) &&
+                !string.IsNullOrWhiteSpace(s.PlayerSteamId) &&
+                !string.Equals(
+                    s.LocalSteamId,
+                    s.PlayerSteamId,
+                    StringComparison.Ordinal);
             s.Team = StrProp(p, "team");
 
             var rawPosition = StrProp(p, "position");
