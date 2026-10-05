@@ -98,6 +98,19 @@ public static class HeatMapStore
         }
     }
 
+    public static void Clear()
+    {
+        lock (Sync)
+        {
+            try
+            {
+                if (File.Exists(PathName))
+                    File.Delete(PathName);
+            }
+            catch { }
+        }
+    }
+
     public static string FingerprintFile(string path)
     {
         var info = new FileInfo(path);
