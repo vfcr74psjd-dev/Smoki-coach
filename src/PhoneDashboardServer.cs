@@ -699,7 +699,7 @@ button{font:inherit}
 
   <button id="activate" class="activate" type="button">START MATCH MODE</button>
 
-  <div id="halftime" class="halftime {{state.halftimeActive ? "show" : ""}}">
+  <div id="halftime" class="halftime {{(state.halftimeActive ? "show" : "")}}">
     <span class="label">HALFTIME RESET</span>
     <div id="halftimeText">{{Html(state.halftimeText)}}</div>
   </div>
