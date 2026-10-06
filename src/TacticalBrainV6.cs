@@ -704,15 +704,38 @@ public static class TacticalBrainV6
     {
         if (ct)
         {
-            return alternate == null
-                ? "če ni kontakta → ostani rotate-ready, brez lovljenja"
-                : $"če ni kontakta/si potisnjen → fall → {alternate}";
+            if (string.IsNullOrWhiteSpace(alternate))
+                return "če ni kontakta → ostani rotate-ready, brez lovljenja";
+
+            var bridge =
+                MapKnowledgeGraphV7.BuildFallbackBridge(
+                    s.Map,
+                    route,
+                    alternate);
+
+            return string.IsNullOrWhiteSpace(bridge)
+                ? $"če ni kontakta/si potisnjen → fall → {alternate}"
+                : $"če si potisnjen → fall/reposition → {bridge}";
         }
 
         if (!string.IsNullOrWhiteSpace(alternate))
-            return $"če je route blokiran → STOP → reset → {alternate}";
+        {
+            var bridge =
+                MapKnowledgeGraphV7.BuildFallbackBridge(
+                    s.Map,
+                    route,
+                    alternate);
 
-        var other = intent == "A" ? "B" : "A";
+            return string.IsNullOrWhiteSpace(bridge)
+                ? $"če je route blokiran → STOP → reset → {alternate}"
+                : $"če je route blokiran → STOP → reset → {bridge}";
+        }
+
+        var other =
+            intent == "A"
+                ? "B"
+                : "A";
+
         return $"če je route blokiran → reset → vzemi info mid → odloči {other}";
     }
 }
