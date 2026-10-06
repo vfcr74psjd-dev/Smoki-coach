@@ -2163,10 +2163,22 @@ public sealed class MainForm : Form
                 if (!string.IsNullOrWhiteSpace(s.RoundWinTeam))
                     _trackedRoundWinTeam = s.RoundWinTeam;
 
-                _trackedRoundLastHealth = s.Health ?? _trackedRoundLastHealth;
+                // Survival/carry data must also remain personal. Spectated
+                // teammate HP and weapons are never allowed into RoundRecord.
+                if (!s.IsSpectating)
+                {
+                    _trackedRoundLastHealth = s.Health ?? _trackedRoundLastHealth;
 
-                if ((s.Health ?? 0) > 0 && !string.IsNullOrWhiteSpace(s.PrimaryWeapon))
-                    _trackedRoundPrimaryWeapon = s.PrimaryWeapon;
+                    if ((s.Health ?? 0) > 0 &&
+                        !string.IsNullOrWhiteSpace(s.PrimaryWeapon))
+                    {
+                        _trackedRoundPrimaryWeapon = s.PrimaryWeapon;
+                    }
+                }
+                else if ((_lastOwnHealth ?? 0) <= 0)
+                {
+                    _trackedRoundLastHealth = 0;
+                }
 
                 TrackRoundPatternSnapshot(s);
             }
@@ -2187,8 +2199,14 @@ public sealed class MainForm : Form
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
                 _trackedRoundWinTeam = s.RoundWinTeam;
-                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
-                _trackedRoundLastHealth = s.Health ?? 0;
+                _trackedRoundPrimaryWeapon =
+                    !s.IsSpectating && (s.Health ?? 0) > 0
+                        ? s.PrimaryWeapon
+                        : "";
+                _trackedRoundLastHealth =
+                    !s.IsSpectating
+                        ? s.Health ?? 0
+                        : _lastOwnHealth ?? 0;
                 ResetRoundPatternTracking(s);
             }
             else if (_trackedRound == null && s.Round is int initialRound)
@@ -2197,8 +2215,14 @@ public sealed class MainForm : Form
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
                 _trackedRoundWinTeam = s.RoundWinTeam;
-                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
-                _trackedRoundLastHealth = s.Health ?? 0;
+                _trackedRoundPrimaryWeapon =
+                    !s.IsSpectating && (s.Health ?? 0) > 0
+                        ? s.PrimaryWeapon
+                        : "";
+                _trackedRoundLastHealth =
+                    !s.IsSpectating
+                        ? s.Health ?? 0
+                        : _lastOwnHealth ?? 0;
                 ResetRoundPatternTracking(s);
             }
 
@@ -2251,8 +2275,14 @@ public sealed class MainForm : Form
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
                 _trackedRoundWinTeam = s.RoundWinTeam;
-                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
-                _trackedRoundLastHealth = s.Health ?? 0;
+                _trackedRoundPrimaryWeapon =
+                    !s.IsSpectating && (s.Health ?? 0) > 0
+                        ? s.PrimaryWeapon
+                        : "";
+                _trackedRoundLastHealth =
+                    !s.IsSpectating
+                        ? s.Health ?? 0
+                        : _lastOwnHealth ?? 0;
                 ResetRoundPatternTracking(s);
             }
 
