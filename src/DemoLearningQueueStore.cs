@@ -15,6 +15,8 @@ public sealed class DemoLearningQueueItem
     public string LastError { get; set; } = "";
     public string LocalDemoPath { get; set; } = "";
     public int ImportedDeaths { get; set; }
+    public int GroundTruthMatchedRounds { get; set; }
+    public string GroundTruthSummary { get; set; } = "";
 
     public bool Learned =>
         State.Equals(
@@ -179,6 +181,32 @@ public static class DemoLearningQueueStore
             "WAITING_DEMO",
             retryAfter: retryAfter);
 
+    public static void SetGroundTruth(
+        string matchId,
+        GroundTruthMatchReport report)
+    {
+        lock (Gate)
+        {
+            var item = LoadUnsafe()
+                .FirstOrDefault(x =>
+                    x.MatchId.Equals(
+                        matchId,
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (item == null)
+                return;
+
+            item.GroundTruthMatchedRounds =
+                report.MatchedRounds;
+            item.GroundTruthSummary =
+                report.BiggestFinding;
+            item.UpdatedUtc =
+                DateTime.UtcNow;
+
+            SaveUnsafe();
+        }
+    }
+
     public static void Clear()
     {
         lock (Gate)
@@ -246,6 +274,8 @@ public static class DemoLearningQueueStore
             UpdatedUtc = x.UpdatedUtc,
             LastError = x.LastError,
             LocalDemoPath = x.LocalDemoPath,
-            ImportedDeaths = x.ImportedDeaths
+            ImportedDeaths = x.ImportedDeaths,
+            GroundTruthMatchedRounds = x.GroundTruthMatchedRounds,
+            GroundTruthSummary = x.GroundTruthSummary
         };
 }
