@@ -40,6 +40,7 @@ public static class MistakeLibraryStore
         Path.Combine(
             Dir,
             "mistake-library.json");
+    private static List<MistakeMatchEntry>? _cache;
 
     public static void RecordMatch(
         string matchKey,
@@ -261,6 +262,7 @@ public static class MistakeLibraryStore
     {
         lock (Gate)
         {
+            _cache = new();
             try
             {
                 if (File.Exists(FilePath))
@@ -349,10 +351,13 @@ public static class MistakeLibraryStore
 
     private static List<MistakeMatchEntry> LoadUnsafe()
     {
+        if (_cache != null)
+            return _cache;
+
         try
         {
             if (!File.Exists(FilePath))
-                return new();
+                return _cache = new();
 
             var all =
                 JsonSerializer.Deserialize<List<MistakeMatchEntry>>(
@@ -368,11 +373,11 @@ public static class MistakeLibraryStore
                         StringComparer.OrdinalIgnoreCase);
             }
 
-            return all;
+            return _cache = all;
         }
         catch
         {
-            return new();
+            return _cache = new();
         }
     }
 
@@ -382,6 +387,7 @@ public static class MistakeLibraryStore
         try
         {
             Directory.CreateDirectory(Dir);
+            _cache = all;
             File.WriteAllText(
                 FilePath,
                 JsonSerializer.Serialize(
