@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Sm0kiSoloCoach;
 
 internal static class Program
@@ -17,10 +18,10 @@ internal static class Program
                     "Expected one CS2 .dem fixture path.");
             }
 
-            await TestRealDemoParserAsync(args[0]);
+            await TestRealDemoFormatsAsync(args[0]);
 
             Console.WriteLine(
-                "SM0KI V7 SMOKE PASS • graph + real demo parser");
+                "SM0KI V7 SMOKE PASS • graph + raw/gzip/zip real demo parser");
             return 0;
         }
         catch (Exception ex)
@@ -96,17 +97,99 @@ internal static class Program
             "Map graph should produce a fallback bridge.");
     }
 
-    private static async Task TestRealDemoParserAsync(
+    private static async Task TestRealDemoFormatsAsync(
         string demoPath)
     {
         Require(
             File.Exists(demoPath),
             "Pinned real demo fixture is missing.");
 
+        var tempDir =
+            Path.Combine(
+                Path.GetTempPath(),
+                "smoki-v7-ci-" +
+                Guid.NewGuid().ToString("N"));
+
+        Directory.CreateDirectory(
+            tempDir);
+
+        try
+        {
+            await TestOneDemoAsync(
+                demoPath,
+                "raw");
+
+            var gzipPath =
+                Path.Combine(
+                    tempDir,
+                    "fixture.dem.gz");
+
+            await using (var input =
+                         File.OpenRead(demoPath))
+            await using (var output =
+                         File.Create(gzipPath))
+            await using (var gzip =
+                         new GZipStream(
+                             output,
+                             CompressionLevel.Fastest))
+            {
+                await input.CopyToAsync(
+                    gzip);
+            }
+
+            await TestOneDemoAsync(
+                gzipPath,
+                "gzip");
+
+            var zipPath =
+                Path.Combine(
+                    tempDir,
+                    "fixture.zip");
+
+            using (var archive =
+                   ZipFile.Open(
+                       zipPath,
+                       ZipArchiveMode.Create))
+            {
+                var entry =
+                    archive.CreateEntry(
+                        "fixture.dem",
+                        CompressionLevel.Fastest);
+
+                await using var input =
+                    File.OpenRead(demoPath);
+
+                await using var output =
+                    entry.Open();
+
+                await input.CopyToAsync(
+                    output);
+            }
+
+            await TestOneDemoAsync(
+                zipPath,
+                "zip");
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(
+                    tempDir,
+                    true);
+            }
+            catch { }
+        }
+    }
+
+    private static async Task TestOneDemoAsync(
+        string demoPath,
+        string format)
+    {
         var report =
             await DemoGroundTruthAnalyzer.AnalyzeSourceAsync(
                 demoPath,
-                "ci-smoke-demo",
+                "ci-smoke-demo-" + format,
                 DateTime.UtcNow,
                 "__smoki_v7_smoke_no_player__",
                 null,
@@ -114,13 +197,13 @@ internal static class Program
 
         Require(
             !string.IsNullOrWhiteSpace(report.Map),
-            "Real demo parser did not resolve a map.");
+            $"{format}: real demo parser did not resolve a map.");
 
         Require(
             report.Map.StartsWith(
                 "de_",
                 StringComparison.OrdinalIgnoreCase),
-            $"Unexpected CS2 map name: '{report.Map}'.");
+            $"{format}: unexpected CS2 map name: '{report.Map}'.");
     }
 
     private static GroundTruthPathSample Sample(
