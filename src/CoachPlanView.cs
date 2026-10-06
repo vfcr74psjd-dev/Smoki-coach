@@ -90,7 +90,7 @@ public sealed class CoachPlanView : Control
             new Rectangle(pad + third + gap, y, third, 76),
             "BUY",
             data["BUY"],
-            Text);
+            PrimaryText);
 
         DrawIntelCard(
             g,
