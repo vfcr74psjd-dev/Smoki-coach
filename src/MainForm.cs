@@ -312,6 +312,12 @@ public sealed class MainForm : Form
                 FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
             lab.ShowDialog(this);
         }));
+        nav.Controls.Add(MakeNavButton("PLAYBOOK", false, (_,__) =>
+        {
+            using var playbook = new TacticalMemoryForm(
+                _current.Map);
+            playbook.ShowDialog(this);
+        }));
         nav.Controls.Add(MakeNavButton("TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
 
