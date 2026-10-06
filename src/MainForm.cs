@@ -2760,7 +2760,7 @@ public sealed class MainForm : Form
             if (requestAi)
             {
                 _lastAiRound = s.Round;
-                _lastAiMap = s.Map;
+                _lastAiMap = s.Map ?? "";
 
                 // Always regenerate the deterministic round plan so POSITION,
                 // EXPECT, BUY, DO and ADAPT advance every round. Auto AI only
