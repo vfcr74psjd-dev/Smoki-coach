@@ -52,6 +52,8 @@ public sealed class PhoneDashboardServer : IDisposable
         public string planWhy { get; init; } = "";
         public string planConfidence { get; init; } = "LOW";
         public int decisionScore { get; init; }
+        public bool halftimeActive { get; init; }
+        public string halftimeText { get; init; } = "";
         public int devScore { get; init; }
         public string devLeak { get; init; } = "Collecting evidence";
         public string devFocus { get; init; } = "Play normal CS2 while the coach learns.";
@@ -325,6 +327,9 @@ public sealed class PhoneDashboardServer : IDisposable
             focus,
             rounds,
             intent);
+        var halftime = HalftimeBrainV6.Analyze(
+            snapshot.Team,
+            rounds);
 
         var (fallbackBuyTitle, _) = CoachEngine.BuyAdvice(snapshot);
         var buy = tactical.Buy;
@@ -423,6 +428,10 @@ public sealed class PhoneDashboardServer : IDisposable
             planWhy = tactical.Why,
             planConfidence = tactical.Confidence,
             decisionScore = tactical.DecisionScore,
+            halftimeActive = halftime.Active,
+            halftimeText = halftime.Active
+                ? $"{halftime.FromSide} → {halftime.ToSide} • {halftime.Change} • {halftime.Opening}"
+                : "",
             devScore = development.OverallScore,
             devLeak = development.BiggestLeak,
             devFocus = development.MatchFocus,
@@ -567,6 +576,12 @@ button{font:inherit}
 .activate.on{
   background:#133220;border-color:#2e6947;color:#8ef0b4
 }
+.halftime{
+  display:none;margin-top:8px;padding:8px 10px;border-radius:10px;
+  border:1px solid #584020;background:#21180f;color:#ffc079;
+  font-size:10px;line-height:1.25;font-weight:900
+}
+.halftime.show{display:block}
 .buy{
   margin-top:9px;border:1px solid #67451f;border-radius:14px;
   background:linear-gradient(145deg,#21180f,#141516);padding:11px 13px
@@ -683,6 +698,11 @@ button{font:inherit}
   <div id="offline" class="offline">PC/CS2 telemetry ni svež. Coach čaka na povezavo.</div>
 
   <button id="activate" class="activate" type="button">START MATCH MODE</button>
+
+  <div id="halftime" class="halftime {{state.halftimeActive ? "show" : ""}}">
+    <span class="label">HALFTIME RESET</span>
+    <div id="halftimeText">{{Html(state.halftimeText)}}</div>
+  </div>
 
   <section class="buy">
     <div class="label">BUY</div>
@@ -811,6 +831,8 @@ function applyPlan(x,flash){
   setText('brainFocus',x.brainFocus);
   setText('whyBtn','WHY • '+(x.planConfidence||'LOW')+' • '+(x.decisionScore??0));
   setText('whyBox',x.planWhy);
+  setText('halftimeText',x.halftimeText);
+  $('halftime')?.classList.toggle('show',!!x.halftimeActive);
 
   if(flash){
     const card=$('tactic');
