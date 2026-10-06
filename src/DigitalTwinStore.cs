@@ -146,6 +146,79 @@ public static class DigitalTwinStore
 
     private static DigitalTwinState? _cache;
 
+    public static IReadOnlyList<DigitalTwinRouteNode> LoadRoutes(
+        string? map = null,
+        string? side = null)
+    {
+        lock (Gate)
+        {
+            return LoadUnsafe()
+                .Routes
+                .Where(x =>
+                    (string.IsNullOrWhiteSpace(map) ||
+                     x.Map.Equals(
+                         map,
+                         StringComparison.OrdinalIgnoreCase)) &&
+                    (string.IsNullOrWhiteSpace(side) ||
+                     x.Side.Equals(
+                         side,
+                         StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(x => x.UpdatedUtc)
+                .Select(x => new DigitalTwinRouteNode
+                {
+                    Map = x.Map,
+                    Side = x.Side,
+                    Intent = x.Intent,
+                    Route = x.Route,
+                    SpawnBias = x.SpawnBias,
+                    RoundType = x.RoundType,
+                    Attempts = x.Attempts,
+                    Wins = x.Wins,
+                    Survived = x.Survived,
+                    Kills = x.Kills,
+                    Deaths = x.Deaths,
+                    MultiKillRounds = x.MultiKillRounds,
+                    ZeroImpactDeaths = x.ZeroImpactDeaths,
+                    ImpactLostRounds = x.ImpactLostRounds,
+                    OutcomeScoreSum = x.OutcomeScoreSum,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .ToList();
+        }
+    }
+
+    public static IReadOnlyList<CoachDecisionCalibration> LoadCalibrations(
+        string? map = null)
+    {
+        lock (Gate)
+        {
+            return LoadUnsafe()
+                .Decisions
+                .Where(x =>
+                    string.IsNullOrWhiteSpace(map) ||
+                    x.Map.Equals(
+                        map,
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => Math.Abs(x.TrustAdjustment))
+                .ThenByDescending(x => x.Samples)
+                .Select(x => new CoachDecisionCalibration
+                {
+                    ContextKey = x.ContextKey,
+                    Map = x.Map,
+                    Side = x.Side,
+                    Route = x.Route,
+                    Samples = x.Samples,
+                    PredictedScoreSum = x.PredictedScoreSum,
+                    ActualOutcomeSum = x.ActualOutcomeSum,
+                    AbsoluteErrorSum = x.AbsoluteErrorSum,
+                    OverPredictedFailures = x.OverPredictedFailures,
+                    UnderPredictedSuccesses = x.UnderPredictedSuccesses,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .ToList();
+        }
+    }
+
     public static DigitalTwinSnapshot Analyze(
         string map,
         string side)
