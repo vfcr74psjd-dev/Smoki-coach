@@ -731,6 +731,7 @@ public static class DemoGroundTruthAnalyzer
 
             var evidence =
                 EvaluateRoute(
+                    map,
                     trace.Route,
                     demoRound.Path,
                     demoRound.FirstContactPlace,
@@ -886,6 +887,7 @@ public static class DemoGroundTruthAnalyzer
     }
 
     private static string EvaluateRoute(
+        string map,
         string recommended,
         IReadOnlyList<GroundTruthPathSample> path,
         string firstContactPlace,
@@ -894,6 +896,17 @@ public static class DemoGroundTruthAnalyzer
         if (string.IsNullOrWhiteSpace(
                 recommended))
             return "UNKNOWN";
+
+        var graphEvidence =
+            MapKnowledgeGraphV7.RouteEvidence(
+                map,
+                recommended,
+                path);
+
+        if (graphEvidence is
+            "SUPPORTED" or
+            "CONTRADICTED")
+            return graphEvidence;
 
         var route =
             Normalize(recommended);
