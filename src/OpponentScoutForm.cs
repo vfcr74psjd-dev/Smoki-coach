@@ -161,9 +161,29 @@ public sealed class OpponentScoutForm : Form
                     _currentMap,
                     progress);
 
-            Render(result);
+            Render(result, null);
             _status.Text =
-                $"Scout ready • {result.Confidence} confidence • {result.Opponents.Count} opponents";
+                $"Stats ready • {result.Opponents.Count} opponents • checking old demos…";
+
+            try
+            {
+                var demoIntel =
+                    await new OpponentDemoIntelService()
+                        .BuildAsync(
+                            result,
+                            3,
+                            progress);
+
+                Render(result, demoIntel);
+                _status.Text =
+                    $"Scout ready • stats {result.Confidence} • demos {demoIntel.Confidence}";
+            }
+            catch (Exception demoEx)
+            {
+                Render(result, null);
+                _status.Text =
+                    $"Scout ready • stats only • demos unavailable: {demoEx.Message}";
+            }
         }
         catch (Exception ex)
         {
@@ -186,10 +206,15 @@ public sealed class OpponentScoutForm : Form
             OpponentScoutStore.LoadLatest(_currentMap);
 
         if (cached != null)
-            Render(cached);
+            Render(
+                cached,
+                OpponentDemoIntelStore.LoadLatest(
+                    cached.Map));
     }
 
-    private void Render(OpponentScoutReport report)
+    private void Render(
+        OpponentScoutReport report,
+        OpponentDemoIntelReport? demoIntel)
     {
         var lines = new List<string>
         {
@@ -219,11 +244,41 @@ public sealed class OpponentScoutForm : Form
         }
 
         lines.Add("");
+        lines.Add("DEMO PATTERNS");
+
+        if (demoIntel == null)
+        {
+            lines.Add("No usable opponent demo sample yet.");
+        }
+        else
+        {
+            lines.Add(
+                $"Sample     {demoIntel.DemosAnalyzed} demos / {demoIntel.OpeningSamples} opening contacts");
+            lines.Add(
+                $"T opening  {FormatZone(demoIntel.TopTOpeningZone, demoIntel.TTopZoneShare)}  " +
+                $"K/D {demoIntel.TOpeningKills}/{demoIntel.TOpeningDeaths}");
+            lines.Add(
+                $"CT opening {FormatZone(demoIntel.TopCtOpeningZone, demoIntel.CtTopZoneShare)}  " +
+                $"K/D {demoIntel.CtOpeningKills}/{demoIntel.CtOpeningDeaths}");
+            lines.Add(
+                $"Opener     {(string.IsNullOrWhiteSpace(demoIntel.OpeningThreat) ? "—" : demoIntel.OpeningThreat)}");
+            lines.Add(
+                $"Confidence {demoIntel.Confidence}");
+        }
+
+        lines.Add("");
         lines.Add(
-            "Scout is pre-match context only. Tactical OS treats tendencies as weighted evidence, never certainty.");
+            "Counter-Strat uses this only as weighted pre-match evidence. Current-match evidence takes priority after a few rounds.");
 
         _report.Text = string.Join(
             Environment.NewLine,
             lines);
     }
+
+    private static string FormatZone(
+        string zone,
+        double share)
+        => string.IsNullOrWhiteSpace(zone)
+            ? "—"
+            : $"{zone} {share * 100:0}%";
 }
