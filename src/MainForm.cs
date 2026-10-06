@@ -2305,13 +2305,13 @@ public sealed class MainForm : Form
 
         if (sample.Count == 0)
         {
-            var missionText =
+            var initialMissionText =
                 !string.IsNullOrWhiteSpace(mission.Key)
                     ? $" • MISSION: {mission.Label}"
                     : "";
 
             return
-                $"DIGITAL TWIN • {twin.Compact}{missionText} • play normal CS2; v7 learns both your outcomes and its own recommendation accuracy.";
+                $"DIGITAL TWIN • {twin.Compact}{initialMissionText} • play normal CS2; v7 learns both your outcomes and its own recommendation accuracy.";
         }
 
         int kills =
