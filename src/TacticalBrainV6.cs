@@ -87,6 +87,20 @@ public static class TacticalBrainV6
             effectiveIntent = demoIntel.TopTOpeningZone;
         }
 
+        var simulation =
+            StrategySimulatorV7.Simulate(
+                snapshot,
+                rounds,
+                effectiveIntent,
+                manualIntent);
+
+        if (!manualIntent &&
+            simulation.Winner.Intent is "A" or "B")
+        {
+            effectiveIntent =
+                simulation.Winner.Intent;
+        }
+
         var options = CoachEngine.GetPositionOptions(
             snapshot.Map,
             sideMode,
@@ -297,6 +311,26 @@ public static class TacticalBrainV6
                 spawn.Bias,
                 roundType);
 
+            var simulated =
+                simulation.Candidates
+                    .FirstOrDefault(x =>
+                        x.Intent.Equals(
+                            effectiveIntent,
+                            StringComparison.OrdinalIgnoreCase) &&
+                        x.Route.Equals(
+                            route,
+                            StringComparison.OrdinalIgnoreCase));
+
+            if (simulated != null)
+            {
+                // Strategy Simulator is the v7 decision layer. The legacy
+                // tactical score remains useful for safety/fallback, but no
+                // longer owns the primary route choice.
+                score +=
+                    (simulated.Score - 50) *
+                    0.35;
+            }
+
             candidates.Add(
                 new Candidate(
                     route,
@@ -313,10 +347,37 @@ public static class TacticalBrainV6
             .ThenBy(x => x.Index)
             .ToList();
 
-        var best = ranked[0];
-        var fallbackCandidate = ranked
-            .Skip(1)
-            .FirstOrDefault();
+        var best =
+            ranked.FirstOrDefault(x =>
+                x.Route.Equals(
+                    simulation.Winner.Route,
+                    StringComparison.OrdinalIgnoreCase))
+            ?? ranked[0];
+
+        var simulatedFallback =
+            simulation.Candidates
+                .Where(x =>
+                    x.Intent.Equals(
+                        effectiveIntent,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !x.Route.Equals(
+                        best.Route,
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.Score)
+                .FirstOrDefault();
+
+        var fallbackCandidate =
+            ranked
+                .Where(x =>
+                    !x.Route.Equals(
+                        best.Route,
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.Score)
+                .FirstOrDefault();
+
+        var fallbackRoute =
+            simulatedFallback?.Route ??
+            fallbackCandidate?.Route;
 
         var buy = CoachEngine.RoundBuyPlan(snapshot);
         var expect = BuildExpectation(
@@ -336,7 +397,7 @@ public static class TacticalBrainV6
         var fallback = Fallback(
             snapshot,
             best.Route,
-            fallbackCandidate?.Route,
+            fallbackRoute,
             effectiveIntent,
             ct);
 
@@ -358,6 +419,11 @@ public static class TacticalBrainV6
                 : twin.Confidence == "MEDIUM"
                     ? 7
                     : 3;
+        if (simulation.Confidence == "HIGH")
+            confidencePoints += 10;
+        else if (simulation.Confidence == "MEDIUM")
+            confidencePoints += 5;
+
         if (manualIntent) confidencePoints += 8;
 
         var confidence =
@@ -432,6 +498,17 @@ public static class TacticalBrainV6
         if (twin.Samples >= 4)
             whyParts.Add($"twin {twin.Archetype} • {twin.Samples}R");
 
+        whyParts.Add(
+            $"sim {simulation.Candidates.Count} plans • {simulation.Winner.Score:0}/100 • {simulation.Confidence}");
+
+        if (!string.IsNullOrWhiteSpace(
+                simulation.Winner.Evidence))
+        {
+            whyParts.Add(
+                "sim " +
+                simulation.Winner.Evidence);
+        }
+
         var calibration = DigitalTwinStore.FindCalibration(
             snapshot.Map,
             sideMode,
@@ -447,7 +524,7 @@ public static class TacticalBrainV6
                 $"coach trust {calibration.TrustAdjustment:+0;-0;0}");
         }
 
-        var why = string.Join(" • ", whyParts.Take(6));
+        var why = string.Join(" • ", whyParts.Take(7));
 
         var tacticalFocus =
             brain.Priority != "KEEP PLAN"
@@ -471,7 +548,8 @@ public static class TacticalBrainV6
             tacticalFocus,
             why,
             confidence,
-            (int)Math.Round(best.Score))
+            (int)Math.Round(
+                simulation.Winner.Score))
         {
             SpawnBias = spawn.Bias,
             RoundType = roundType
