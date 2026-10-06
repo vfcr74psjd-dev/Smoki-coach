@@ -25,6 +25,10 @@ public sealed class GroundTruthDemoRound
     public bool? Won { get; set; }
     public bool OpeningDuel { get; set; }
     public string OpeningResult { get; set; } = "";
+    public int RoundStartTick { get; set; } = -1;
+    public int FirstContactTick { get; set; } = -1;
+    public int FirstKillTick { get; set; } = -1;
+    public int DeathTick { get; set; } = -1;
     public string FirstContactPlace { get; set; } = "";
     public string FirstContactZone { get; set; } = "";
     public string DeathPlace { get; set; } = "";
@@ -32,6 +36,19 @@ public sealed class GroundTruthDemoRound
     public bool BombPlantedByPlayer { get; set; }
     public string BombSite { get; set; } = "";
     public int UtilityThrown { get; set; }
+
+    public double? SecondsToFirstContact =>
+        RoundStartTick >= 0 &&
+        FirstContactTick >= RoundStartTick
+            ? (FirstContactTick - RoundStartTick) / 64.0
+            : null;
+
+    public double? SecondsAfterFirstKillToDeath =>
+        FirstKillTick >= 0 &&
+        DeathTick >= FirstKillTick
+            ? (DeathTick - FirstKillTick) / 64.0
+            : null;
+
     public List<GroundTruthPathSample> Path { get; set; } = new();
 }
 
@@ -52,6 +69,11 @@ public sealed class GroundTruthRoundVerdict
     public bool Survived { get; set; }
     public bool OpeningDuel { get; set; }
     public string OpeningResult { get; set; } = "";
+    public int FirstContactTick { get; set; } = -1;
+    public int FirstKillTick { get; set; } = -1;
+    public int DeathTick { get; set; } = -1;
+    public double? SecondsToFirstContact { get; set; }
+    public double? SecondsAfterFirstKillToDeath { get; set; }
     public string FirstContactPlace { get; set; } = "";
     public string DeathPlace { get; set; } = "";
     public string ActualRoute { get; set; } = "";
@@ -355,6 +377,14 @@ public static class DemoGroundTruthAnalyzer
                 _ => ""
             };
 
+        static bool IsEnemy(
+            CCSPlayerController? a,
+            CCSPlayerController? b)
+            => a != null &&
+               b != null &&
+               a.SteamID != b.SteamID &&
+               a.CSTeamNum != b.CSTeamNum;
+
         GroundTruthDemoRound Current()
         {
             var r =
@@ -454,7 +484,67 @@ public static class DemoGroundTruthAnalyzer
                 return;
 
             round++;
-            Current();
+            var current = Current();
+            current.RoundStartTick =
+                demo.CurrentDemoTick.Value;
+        };
+
+        demo.Source1GameEvents.PlayerHurt += e =>
+        {
+            if (demo.GameRules.CSGamePhase ==
+                    CSGamePhase.WarmupRound ||
+                round <= 0)
+                return;
+
+            var targetVictim =
+                IsTarget(e.Player);
+            var targetAttacker =
+                IsTarget(e.Attacker);
+
+            if (!targetVictim &&
+                !targetAttacker)
+                return;
+
+            if (!IsEnemy(
+                    e.Player,
+                    e.Attacker))
+                return;
+
+            var current = Current();
+
+            if (current.FirstContactTick >= 0)
+                return;
+
+            current.FirstContactTick =
+                demo.CurrentDemoTick.Value;
+
+            var actor =
+                targetAttacker
+                    ? e.Attacker
+                    : e.Player;
+
+            if (current.Side.Length == 0)
+                current.Side =
+                    SideOf(actor);
+
+            var pawn =
+                actor?.Pawn;
+
+            var csPawn =
+                pawn as CCSPlayerPawn;
+
+            current.FirstContactPlace =
+                csPawn?.LastPlaceName ?? "";
+
+            current.FirstContactZone =
+                OpponentDemoPatternAnalyzer
+                    .NormalizeZone(
+                        current.FirstContactPlace);
+
+            AddPath(
+                current,
+                current.FirstContactTick,
+                actor);
         };
 
         demo.Source1GameEvents.PlayerDeath += e =>
@@ -501,6 +591,12 @@ public static class DemoGroundTruthAnalyzer
                 var place =
                     csPawn?.LastPlaceName ?? "";
 
+                if (current.FirstContactTick < 0)
+                {
+                    current.FirstContactTick =
+                        demo.CurrentDemoTick.Value;
+                }
+
                 if (string.IsNullOrWhiteSpace(
                         current.FirstContactPlace))
                 {
@@ -513,12 +609,20 @@ public static class DemoGroundTruthAnalyzer
             }
 
             if (targetAttacker)
+            {
                 current.Kills++;
+
+                if (current.FirstKillTick < 0)
+                    current.FirstKillTick =
+                        demo.CurrentDemoTick.Value;
+            }
 
             if (targetVictim)
             {
                 current.Deaths++;
                 current.Survived = false;
+                current.DeathTick =
+                    demo.CurrentDemoTick.Value;
 
                 if (pawn != null)
                 {
@@ -745,6 +849,7 @@ public static class DemoGroundTruthAnalyzer
                     trace.ContextKey,
                     evidence,
                     outcome,
+                    demoRound,
                     GroundTruthStore.ContextStats(
                         trace.ContextKey));
 
@@ -778,6 +883,16 @@ public static class DemoGroundTruthAnalyzer
                         demoRound.OpeningDuel,
                     OpeningResult =
                         demoRound.OpeningResult,
+                    FirstContactTick =
+                        demoRound.FirstContactTick,
+                    FirstKillTick =
+                        demoRound.FirstKillTick,
+                    DeathTick =
+                        demoRound.DeathTick,
+                    SecondsToFirstContact =
+                        demoRound.SecondsToFirstContact,
+                    SecondsAfterFirstKillToDeath =
+                        demoRound.SecondsAfterFirstKillToDeath,
                     FirstContactPlace =
                         demoRound.FirstContactPlace,
                     DeathPlace =
@@ -1055,6 +1170,7 @@ public static class DemoGroundTruthAnalyzer
         string contextKey,
         string evidence,
         double outcome,
+        GroundTruthDemoRound round,
         PlanGroundTruthStats prior)
     {
         if (evidence == "CONTRADICTED")
@@ -1062,6 +1178,18 @@ public static class DemoGroundTruthAnalyzer
 
         if (evidence != "SUPPORTED")
             return "INSUFFICIENT_EVIDENCE";
+
+        // Route was followed and produced impact, but the player died almost
+        // immediately after their first kill. This is a measurable execution
+        // leak signal; it is not evidence that the route itself was bad.
+        if (round.Kills >= 1 &&
+            round.Deaths > 0 &&
+            round.SecondsAfterFirstKillToDeath is double postKill &&
+            postKill >= 0 &&
+            postKill <= 5.0)
+        {
+            return "POST_IMPACT_EXECUTION";
+        }
 
         if (outcome >= 0.62)
             return "PLAN_WORKED";
@@ -1169,6 +1297,17 @@ public static class DemoGroundTruthAnalyzer
     {
         if (report.MatchedRounds == 0)
             return "No recommendation rounds could be aligned to this demo.";
+
+        var postImpact =
+            report.Rounds.Count(x =>
+                x.Verdict ==
+                "POST_IMPACT_EXECUTION");
+
+        if (postImpact >= 3)
+        {
+            return
+                $"{postImpact} route-confirmed rounds show a death within 5s after first kill; plan created impact, post-impact execution is the stronger leak signal.";
+        }
 
         if (report.ExecutionDivergedRounds >=
             Math.Max(
