@@ -9,6 +9,7 @@ public sealed record StrategyCandidateV7(
     double GroundTruthFit,
     double EnemyFit,
     double CurrentMatchFit,
+    double MapGraphFit,
     double EconomyFit,
     double DisciplineFit,
     double Score,
@@ -159,6 +160,11 @@ public static class StrategySimulatorV7
                         route,
                         rounds);
 
+                var mapGraphFit =
+                    MapKnowledgeGraphV7.ConnectivityScore(
+                        snapshot.Map,
+                        route);
+
                 var economyFit =
                     ScoreEconomy(
                         roundType,
@@ -175,13 +181,14 @@ public static class StrategySimulatorV7
                         options.Length);
 
                 var score =
-                    spawnFit * 0.22 +
-                    twinFit * 0.20 +
-                    groundFit * 0.18 +
-                    enemyFit * 0.15 +
-                    currentFit * 0.15 +
-                    economyFit * 0.05 +
-                    disciplineFit * 0.05;
+                    spawnFit * 0.20 +
+                    twinFit * 0.18 +
+                    groundFit * 0.17 +
+                    enemyFit * 0.14 +
+                    currentFit * 0.13 +
+                    mapGraphFit * 0.10 +
+                    economyFit * 0.04 +
+                    disciplineFit * 0.04;
 
                 if (!manualIntent &&
                     intent.Equals(
@@ -202,7 +209,8 @@ public static class StrategySimulatorV7
                         demoIntel,
                         side,
                         intent,
-                        currentFit);
+                        currentFit,
+                        mapGraphFit);
 
                 candidates.Add(
                     new StrategyCandidateV7(
@@ -214,6 +222,7 @@ public static class StrategySimulatorV7
                         groundFit,
                         enemyFit,
                         currentFit,
+                        mapGraphFit,
                         economyFit,
                         disciplineFit,
                         Math.Clamp(
@@ -233,6 +242,7 @@ public static class StrategySimulatorV7
                         : autoIntent,
                     "safe tradeable opening",
                     0,
+                    50,
                     50,
                     50,
                     50,
@@ -587,7 +597,8 @@ public static class StrategySimulatorV7
         OpponentDemoIntelReport? demo,
         string side,
         string intent,
-        double currentFit)
+        double currentFit,
+        double mapGraphFit)
     {
         var parts =
             new List<string>();
@@ -630,6 +641,11 @@ public static class StrategySimulatorV7
             parts.Add("live +");
         else if (currentFit <= 40)
             parts.Add("live -");
+
+        if (mapGraphFit >= 80)
+            parts.Add("graph ✓");
+        else if (mapGraphFit <= 45)
+            parts.Add("graph ?");
 
         return parts.Count == 0
             ? "limited evidence"
