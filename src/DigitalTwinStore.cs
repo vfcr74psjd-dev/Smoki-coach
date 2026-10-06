@@ -54,6 +54,10 @@ public sealed class CoachDecisionCalibration
     public double AbsoluteErrorSum { get; set; }
     public int OverPredictedFailures { get; set; }
     public int UnderPredictedSuccesses { get; set; }
+    public int GroundTruthVerified { get; set; }
+    public int GroundTruthDiverged { get; set; }
+    public int GroundTruthPositive { get; set; }
+    public int GroundTruthPoor { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 
     public double AveragePrediction =>
@@ -82,21 +86,56 @@ public sealed class CoachDecisionCalibration
                 AverageOutcome -
                 AveragePrediction;
 
+            var effectiveSamples =
+                Math.Max(
+                    1,
+                    Samples - GroundTruthDiverged);
+
             var sampleWeight =
-                Math.Min(1.0, Samples / 10.0);
+                Math.Min(
+                    1.0,
+                    effectiveSamples / 10.0);
+
+            // Before demo verification, live outcome correlation is useful but
+            // deliberately weak. Ground Truth raises trust only when the demo
+            // supports that the recommended route was actually followed.
+            var verificationWeight =
+                GroundTruthVerified > 0
+                    ? Math.Clamp(
+                        0.35 +
+                        (double)GroundTruthVerified /
+                        Math.Max(1, Samples) *
+                        0.65,
+                        0.35,
+                        1.0)
+                    : 0.35;
 
             var raw =
-                delta * 28.0 * sampleWeight;
+                delta *
+                28.0 *
+                sampleWeight *
+                verificationWeight;
 
+            if (GroundTruthPoor >= 3)
+                raw -= Math.Min(
+                    7,
+                    GroundTruthPoor * 1.3);
+
+            if (GroundTruthPositive >= 3)
+                raw += Math.Min(
+                    6,
+                    GroundTruthPositive);
+
+            // Legacy live-only indicators remain a small secondary signal.
             if (OverPredictedFailures >= 3)
                 raw -= Math.Min(
-                    8,
-                    OverPredictedFailures * 1.5);
+                    3,
+                    OverPredictedFailures * 0.5);
 
             if (UnderPredictedSuccesses >= 3)
                 raw += Math.Min(
-                    6,
-                    UnderPredictedSuccesses);
+                    2,
+                    UnderPredictedSuccesses * 0.35);
 
             return Math.Clamp(raw, -14, 12);
         }
@@ -213,6 +252,10 @@ public static class DigitalTwinStore
                     AbsoluteErrorSum = x.AbsoluteErrorSum,
                     OverPredictedFailures = x.OverPredictedFailures,
                     UnderPredictedSuccesses = x.UnderPredictedSuccesses,
+                    GroundTruthVerified = x.GroundTruthVerified,
+                    GroundTruthDiverged = x.GroundTruthDiverged,
+                    GroundTruthPositive = x.GroundTruthPositive,
+                    GroundTruthPoor = x.GroundTruthPoor,
                     UpdatedUtc = x.UpdatedUtc
                 })
                 .ToList();
@@ -486,6 +529,10 @@ public static class DigitalTwinStore
                 AbsoluteErrorSum = found.AbsoluteErrorSum,
                 OverPredictedFailures = found.OverPredictedFailures,
                 UnderPredictedSuccesses = found.UnderPredictedSuccesses,
+                GroundTruthVerified = found.GroundTruthVerified,
+                GroundTruthDiverged = found.GroundTruthDiverged,
+                GroundTruthPositive = found.GroundTruthPositive,
+                GroundTruthPoor = found.GroundTruthPoor,
                 UpdatedUtc = found.UpdatedUtc
             };
         }
@@ -629,6 +676,59 @@ public static class DigitalTwinStore
                 .ToList();
 
             state.UpdatedUtc = DateTime.UtcNow;
+            SaveUnsafe(state);
+        }
+    }
+
+    public static void ApplyGroundTruth(
+        GroundTruthMatchReport report)
+    {
+        if (report == null ||
+            report.Rounds.Count == 0)
+            return;
+
+        lock (Gate)
+        {
+            var state = LoadUnsafe();
+
+            foreach (var round in report.Rounds)
+            {
+                if (string.IsNullOrWhiteSpace(
+                        round.ContextKey))
+                    continue;
+
+                var decision = state.Decisions
+                    .FirstOrDefault(x =>
+                        x.ContextKey.Equals(
+                            round.ContextKey,
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (decision == null)
+                    continue;
+
+                if (round.RouteEvidence ==
+                    "SUPPORTED")
+                {
+                    decision.GroundTruthVerified++;
+
+                    if (round.OutcomeScore >= 0.62)
+                        decision.GroundTruthPositive++;
+                    else if (round.OutcomeScore <= 0.35)
+                        decision.GroundTruthPoor++;
+                }
+                else if (round.RouteEvidence ==
+                         "CONTRADICTED")
+                {
+                    decision.GroundTruthDiverged++;
+                }
+
+                decision.UpdatedUtc =
+                    DateTime.UtcNow;
+            }
+
+            state.UpdatedUtc =
+                DateTime.UtcNow;
+
             SaveUnsafe(state);
         }
     }
