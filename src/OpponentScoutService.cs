@@ -38,6 +38,10 @@ public sealed class OpponentScoutReport
     public string Map { get; set; } = "";
     public DateTime ScannedUtc { get; set; } = DateTime.UtcNow;
     public List<OpponentScoutPlayer> Opponents { get; set; } = new();
+    public List<OpponentScoutPlayer> Teammates { get; set; } = new();
+    public string TeamFitRole { get; set; } = "BALANCED FLEX";
+    public string TeamFitReason { get; set; } = "Not enough teammate data.";
+    public string TeamFitConfidence { get; set; } = "LOW";
     public double TeamAverageElo { get; set; }
     public double? TeamRecentKd { get; set; }
     public double? TeamMapWinRate { get; set; }
@@ -169,6 +173,49 @@ public sealed class OpponentScoutService
             .OrderByDescending(x => x.ThreatScore)
             .ToList();
 
+        // Team Fit uses a lighter profile scan. It is advisory only and never
+        // overrides an explicit role selected by the player.
+        var teammateRoster = ownFaction.Value
+            .Where(x => !x.Nickname.Equals(
+                ownNickname,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var teammates = new List<OpponentScoutPlayer>();
+        using var teamGate = new SemaphoreSlim(2, 2);
+
+        var teammateTasks = teammateRoster.Select(async rosterPlayer =>
+        {
+            await teamGate.WaitAsync(cancellationToken);
+            try
+            {
+                progress?.Report($"Team fit • {rosterPlayer.Nickname}…");
+                try
+                {
+                    var teammate = await ScanTeamPlayerAsync(
+                        rosterPlayer.Nickname,
+                        rosterPlayer.PlayerId,
+                        cancellationToken);
+                    lock (teammates)
+                        teammates.Add(teammate);
+                }
+                catch
+                {
+                    // Team Fit is optional; one inaccessible profile should
+                    // never block the opponent scout.
+                }
+            }
+            finally
+            {
+                teamGate.Release();
+            }
+        }).ToArray();
+
+        await Task.WhenAll(teammateTasks);
+        report.Teammates = teammates
+            .OrderByDescending(x => x.RecentKd ?? 0)
+            .ToList();
+        ApplyTeamFit(report);
+
         if (report.Opponents.Count > 0)
         {
             report.TeamAverageElo =
@@ -207,6 +254,80 @@ public sealed class OpponentScoutService
 
         OpponentScoutStore.Save(report);
         return report;
+    }
+
+    private static async Task<OpponentScoutPlayer> ScanTeamPlayerAsync(
+        string nickname,
+        string rosterPlayerId,
+        CancellationToken ct)
+    {
+        var snapshot = await new FaceitService()
+            .LoadAsync(nickname, ct);
+
+        return new OpponentScoutPlayer
+        {
+            Nickname = snapshot.Nickname,
+            PlayerId = !string.IsNullOrWhiteSpace(snapshot.PlayerId)
+                ? snapshot.PlayerId
+                : rosterPlayerId,
+            Elo = snapshot.Elo,
+            SkillLevel = snapshot.SkillLevel,
+            RecentKd = snapshot.RecentAverageKd,
+            RecentKills = snapshot.RecentAverageKills,
+            RecentMatches = snapshot.RecentMatchesRead
+        };
+    }
+
+    private static void ApplyTeamFit(
+        OpponentScoutReport report)
+    {
+        var sample = report.Teammates
+            .Where(x =>
+                x.RecentMatches >= 5 &&
+                (x.RecentKd.HasValue ||
+                 x.RecentKills.HasValue))
+            .ToList();
+
+        if (sample.Count < 2)
+        {
+            report.TeamFitRole = "BALANCED FLEX";
+            report.TeamFitReason =
+                "Too little teammate recent-form data; keep your normal role.";
+            report.TeamFitConfidence = "LOW";
+            return;
+        }
+
+        var strong = sample.Count(x =>
+            (x.RecentKd ?? 0) >= 1.10 ||
+            (x.RecentKills ?? 0) >= 19.0);
+
+        var weak = sample.Count(x =>
+            (x.RecentKd ?? 1.0) <= 0.90 &&
+            (x.RecentKills ?? 99) < 16.0);
+
+        if (strong >= 2)
+        {
+            report.TeamFitRole = "SECOND CONTACT";
+            report.TeamFitReason =
+                $"{strong} teammates show strong recent frag form; prioritize trade/support behind their first contact.";
+        }
+        else if (strong == 0 && weak >= 2)
+        {
+            report.TeamFitRole = "IMPACT FLEX";
+            report.TeamFitReason =
+                "Team has limited recent frag form; be ready to create one utility-supported opening when the round stalls.";
+        }
+        else
+        {
+            report.TeamFitRole = "BALANCED FLEX";
+            report.TeamFitReason =
+                "Team frag profile is mixed; keep spawn-driven flex and trade the strongest nearby teammate.";
+        }
+
+        report.TeamFitConfidence =
+            sample.Count >= 4
+                ? "MEDIUM"
+                : "LOW";
     }
 
     private static async Task<OpponentScoutPlayer> ScanPlayerAsync(
