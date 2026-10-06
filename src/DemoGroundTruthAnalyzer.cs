@@ -646,7 +646,7 @@ public static class DemoGroundTruthAnalyzer
 
             AddPath(
                 current,
-                0,
+                demo.CurrentDemoTick.Value,
                 actor);
         };
 
@@ -702,7 +702,7 @@ public static class DemoGroundTruthAnalyzer
 
                 AddPath(
                     current,
-                    0,
+                    demo.CurrentDemoTick.Value,
                     e.Player);
             }
 
