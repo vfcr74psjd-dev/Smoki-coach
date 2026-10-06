@@ -28,7 +28,30 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore
+      - name: Restore app
         run: dotnet restore src/Sm0kiSoloCoach.csproj
+
+      - name: Restore V7 smoke tests
+        run: dotnet restore tests/Sm0kiSoloCoach.Smoke/Sm0kiSoloCoach.Smoke.csproj
+
       - name: Build
         run: dotnet build src/Sm0kiSoloCoach.csproj -c Release --no-restore
+
+      - name: Build V7 smoke tests
+        run: dotnet build tests/Sm0kiSoloCoach.Smoke/Sm0kiSoloCoach.Smoke.csproj -c Release --no-restore
+
+      - name: Download pinned CS2 demo fixture
+        shell: pwsh
+        run: |
+          $url = "https://raw.githubusercontent.com/saul/demofile-net/fd59701a998cf30a46adc4942e063d90de73c07a/demos/14160.dem"
+          $path = Join-Path $env:RUNNER_TEMP "smoki-v7-smoke.dem"
+          Invoke-WebRequest -Uri $url -OutFile $path
+          if (-not (Test-Path $path)) { throw "CS2 demo fixture was not downloaded." }
+          if ((Get-Item $path).Length -lt 100000) { throw "CS2 demo fixture is unexpectedly small." }
+
+      - name: Run V7 Ground Truth smoke tests
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "smoki-v7-smoke.dem"
+          dotnet run --project tests/Sm0kiSoloCoach.Smoke/Sm0kiSoloCoach.Smoke.csproj -c Release --no-build -- $path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

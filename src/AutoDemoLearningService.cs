@@ -229,22 +229,13 @@ public sealed class AutoDemoLearningService : IDisposable
             StatusChanged?.Invoke(
                 $"AUTO DEMO • analyzing {CoachEngine.PrettyMap(match.Map)}…");
 
-            var imported =
-                await _inbox.ImportFileAsync(
-                    downloaded,
-                    ct);
-
-            if (imported == null)
-                throw new InvalidOperationException(
-                    "Demo import ni vrnil rezultata.");
-
             var nickname =
                 (_nicknameProvider() ?? "").Trim();
 
             var recommendationSession =
                 RecommendationTraceStore.FindBestSession(
                     nickname,
-                    imported.Map,
+                    match.Map,
                     match.FinishedUtc);
 
             StatusChanged?.Invoke(
@@ -270,16 +261,51 @@ public sealed class AutoDemoLearningService : IDisposable
                 match.MatchId,
                 groundTruth);
 
+            // Heat-map import is useful, but it is not Ground Truth.
+            // A no-death match must still be allowed to teach the Digital Twin.
+            HeatMapMatchRecord? imported = null;
+            string heatMapWarning = "";
+
+            try
+            {
+                imported =
+                    await _inbox.ImportFileAsync(
+                        downloaded,
+                        ct);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                heatMapWarning = ex.Message;
+            }
+
             DemoLearningQueueStore.SetState(
                 match.MatchId,
                 "LEARNED",
                 localPath: downloaded,
-                importedDeaths: imported.Deaths.Count);
+                importedDeaths:
+                    imported?.Deaths.Count ?? 0);
+
+            var learnedMap =
+                !string.IsNullOrWhiteSpace(
+                    groundTruth.Map)
+                    ? groundTruth.Map
+                    : match.Map;
+
+            var warning =
+                string.IsNullOrWhiteSpace(
+                    heatMapWarning)
+                    ? ""
+                    : " • heatmap skipped";
 
             StatusChanged?.Invoke(
-                $"AUTO DEMO • LEARNED ✓ {CoachEngine.PrettyMap(imported.Map)} • " +
-                $"{groundTruth.MatchedRounds} Ground Truth rounds • " +
-                $"{groundTruth.ExecutionDivergedRounds} diverged");
+                $"AUTO DEMO • LEARNED ✓ {CoachEngine.PrettyMap(learnedMap)} • " +
+                $"{groundTruth.GroundTruthEligibleRounds}/{groundTruth.MatchedRounds} verified • " +
+                $"{groundTruth.ExecutionDivergedRounds} diverged" +
+                warning);
         }
         catch (OperationCanceledException)
         {
@@ -332,18 +358,23 @@ public sealed class AutoDemoLearningService : IDisposable
                     out var uri))
                 continue;
 
-            var ext = GuessExtension(uri);
-            var destination =
-                Path.Combine(
-                    AutoDemoInboxService.InboxFolder,
-                    match.MatchId + ext);
+            var reusable =
+                FindReusableDownload(
+                    match.MatchId);
 
-            if (File.Exists(destination) &&
-                new FileInfo(destination).Length > 1024)
-                return destination;
+            if (reusable != null)
+                return reusable;
+
+            var ext =
+                GuessExtension(uri);
 
             var partial =
-                destination + ".partial";
+                Path.Combine(
+                    AutoDemoInboxService.InboxFolder,
+                    match.MatchId +
+                    ".download.partial");
+
+            var destination = "";
 
             try
             {
@@ -419,6 +450,20 @@ public sealed class AutoDemoLearningService : IDisposable
                         "Downloaded demo je prazen.");
                 }
 
+                ext =
+                    DetectDownloadedExtension(
+                        partial,
+                        ext);
+
+                destination =
+                    Path.Combine(
+                        AutoDemoInboxService.InboxFolder,
+                        match.MatchId + ext);
+
+                DeleteOtherDownloadVariants(
+                    match.MatchId,
+                    destination);
+
                 File.Move(
                     partial,
                     destination,
@@ -446,6 +491,121 @@ public sealed class AutoDemoLearningService : IDisposable
         throw last ??
               new InvalidOperationException(
                   "FACEIT demo URL ni uporaben.");
+    }
+
+    private static string? FindReusableDownload(
+        string matchId)
+    {
+        foreach (var ext in new[]
+                 {
+                     ".dem",
+                     ".dem.gz",
+                     ".zip"
+                 })
+        {
+            var path =
+                Path.Combine(
+                    AutoDemoInboxService.InboxFolder,
+                    matchId + ext);
+
+            try
+            {
+                if (!File.Exists(path))
+                    continue;
+
+                if (new FileInfo(path).Length < 1024)
+                {
+                    File.Delete(path);
+                    continue;
+                }
+
+                var detected =
+                    DetectDownloadedExtension(
+                        path,
+                        ext);
+
+                if (!detected.Equals(
+                        ext,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(path);
+                    continue;
+                }
+
+                return path;
+            }
+            catch
+            {
+                try
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                }
+                catch { }
+            }
+        }
+
+        return null;
+    }
+
+    private static string DetectDownloadedExtension(
+        string path,
+        string fallback)
+    {
+        using var stream =
+            File.OpenRead(path);
+
+        Span<byte> header =
+            stackalloc byte[4];
+
+        var read =
+            stream.Read(header);
+
+        if (read >= 2 &&
+            header[0] == 0x1f &&
+            header[1] == 0x8b)
+            return ".dem.gz";
+
+        if (read >= 4 &&
+            header[0] == 0x50 &&
+            header[1] == 0x4b &&
+            header[2] == 0x03 &&
+            header[3] == 0x04)
+            return ".zip";
+
+        // FACEIT presigned URLs do not always expose a useful suffix.
+        // Anything that is neither gzip nor zip is treated as a raw demo.
+        return ".dem";
+    }
+
+    private static void DeleteOtherDownloadVariants(
+        string matchId,
+        string keepPath)
+    {
+        foreach (var ext in new[]
+                 {
+                     ".dem",
+                     ".dem.gz",
+                     ".zip"
+                 })
+        {
+            var path =
+                Path.Combine(
+                    AutoDemoInboxService.InboxFolder,
+                    matchId + ext);
+
+            if (path.Equals(
+                    keepPath,
+                    StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch { }
+        }
     }
 
     private static string GuessExtension(

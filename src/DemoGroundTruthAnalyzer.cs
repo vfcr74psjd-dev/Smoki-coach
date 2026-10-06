@@ -336,6 +336,15 @@ public static class DemoGroundTruthAnalyzer
             if (string.IsNullOrWhiteSpace(map))
                 map = rounds.Map;
 
+            // FACEIT history can occasionally arrive without a resolved map.
+            // Once the demo itself tells us the real map, retry trace matching
+            // before declaring the Ground Truth session unknown.
+            recommendationSession ??=
+                RecommendationTraceStore.FindBestSession(
+                    nickname,
+                    map,
+                    matchFinishedUtc);
+
             return BuildReport(
                 matchId,
                 matchFinishedUtc,

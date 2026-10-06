@@ -16,6 +16,8 @@ public sealed class DemoLearningQueueItem
     public string LocalDemoPath { get; set; } = "";
     public int ImportedDeaths { get; set; }
     public int GroundTruthMatchedRounds { get; set; }
+    public int GroundTruthVerifiedRounds { get; set; }
+    public double GroundTruthAverageQuality { get; set; }
     public string GroundTruthSummary { get; set; } = "";
 
     public bool Learned =>
@@ -152,11 +154,19 @@ public static class DemoLearningQueueStore
             item.State = state;
             item.UpdatedUtc = DateTime.UtcNow;
 
-            if (state is "DOWNLOADING" or "ANALYZING")
+            // One DOWNLOADING transition equals one complete pipeline attempt.
+            // ANALYZING used to increment this a second time.
+            if (state == "DOWNLOADING")
                 item.Attempts++;
 
             if (error != null)
                 item.LastError = error;
+            else if (state is
+                     "READY" or
+                     "DOWNLOADING" or
+                     "ANALYZING" or
+                     "LEARNED")
+                item.LastError = "";
 
             if (localPath != null)
                 item.LocalDemoPath = localPath;
@@ -198,6 +208,10 @@ public static class DemoLearningQueueStore
 
             item.GroundTruthMatchedRounds =
                 report.MatchedRounds;
+            item.GroundTruthVerifiedRounds =
+                report.GroundTruthEligibleRounds;
+            item.GroundTruthAverageQuality =
+                report.AverageEvidenceQuality;
             item.GroundTruthSummary =
                 report.BiggestFinding;
             item.UpdatedUtc =
@@ -276,6 +290,8 @@ public static class DemoLearningQueueStore
             LocalDemoPath = x.LocalDemoPath,
             ImportedDeaths = x.ImportedDeaths,
             GroundTruthMatchedRounds = x.GroundTruthMatchedRounds,
+            GroundTruthVerifiedRounds = x.GroundTruthVerifiedRounds,
+            GroundTruthAverageQuality = x.GroundTruthAverageQuality,
             GroundTruthSummary = x.GroundTruthSummary
         };
 }
