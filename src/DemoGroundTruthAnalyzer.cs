@@ -660,7 +660,7 @@ public static class DemoGroundTruthAnalyzer
                 continue;
 
             var target =
-                demo.Entities.Players
+                demo.Players
                     .FirstOrDefault(IsTarget);
 
             if (target == null)
