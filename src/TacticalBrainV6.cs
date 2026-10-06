@@ -314,7 +314,8 @@ public static class TacticalBrainV6
             role,
             focus,
             mode,
-            brain);
+            brain,
+            scout?.TeamFitRole ?? "BALANCED FLEX");
 
         var fallback = Fallback(
             snapshot,
@@ -376,6 +377,16 @@ public static class TacticalBrainV6
                         : "scout loaded";
 
             whyParts.Add(scoutSignal);
+
+            if (!string.Equals(
+                    scout.TeamFitRole,
+                    "BALANCED FLEX",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                whyParts.Add(
+                    "team fit " +
+                    scout.TeamFitRole);
+            }
         }
 
         if (demoIntel != null)
@@ -505,7 +516,8 @@ public static class TacticalBrainV6
         string role,
         string focus,
         string mode,
-        SmartMatchBrainReport brain)
+        SmartMatchBrainReport brain,
+        string teamFitRole)
     {
         var ct = string.Equals(
             s.Team,
@@ -527,13 +539,20 @@ public static class TacticalBrainV6
             return "prvi kontakt samo z escape potjo → info → reposition";
         }
 
-        var roleStep = role switch
-        {
-            "Entry" => "vstopi samo s flash/trade podporo",
-            "Lurk" => "vzemi info → ne zamudi join timinga",
-            "Support" => "utility pred kontaktom → takoj za trade",
-            _ => "ostani na trade razdalji"
-        };
+        var roleStep =
+            role == "Flex" &&
+            teamFitRole == "SECOND CONTACT"
+                ? "sledi najboljšemu openerju na trade razdalji"
+                : role == "Flex" &&
+                  teamFitRole == "IMPACT FLEX"
+                    ? "če team obstane, ustvari 1 utility-supported opening"
+                    : role switch
+                    {
+                        "Entry" => "vstopi samo s flash/trade podporo",
+                        "Lurk" => "vzemi info → ne zamudi join timinga",
+                        "Support" => "utility pred kontaktom → takoj za trade",
+                        _ => "ostani na trade razdalji"
+                    };
 
         if (brain.MistakeKey == "post_impact")
             return $"{roleStep} → po prvem killu STOP + reposition";
