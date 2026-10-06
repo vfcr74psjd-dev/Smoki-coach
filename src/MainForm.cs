@@ -1370,21 +1370,30 @@ public sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
-            Width = 160,
-            Height = 38,
+            Width = 188,
+            Height = 44,
             FlatStyle = FlatStyle.Flat,
             TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(12, 0, 0, 0),
-            Margin = new Padding(0, 2, 0, 2),
-            Font = new Font("Segoe UI", 8.3f, FontStyle.Bold),
-            ForeColor = active ? Color.White : Color.FromArgb(145, 151, 159),
-            BackColor = active ? Color.FromArgb(38, 31, 23) : Color.FromArgb(13, 14, 16),
+            Padding = new Padding(14, 0, 0, 0),
+            Margin = new Padding(0, 3, 0, 3),
+            Font = new Font("Segoe UI", 8.4f, FontStyle.Bold),
+            ForeColor = active
+                ? Color.White
+                : Color.FromArgb(132, 143, 156),
+            BackColor = active
+                ? Color.FromArgb(38, 28, 19)
+                : Color.FromArgb(9, 11, 14),
             Cursor = Cursors.Hand,
             TabStop = false
         };
+
         button.FlatAppearance.BorderSize = active ? 1 : 0;
-        button.FlatAppearance.BorderColor = Color.FromArgb(255, 156, 44);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(24, 26, 29);
+        button.FlatAppearance.BorderColor =
+            Color.FromArgb(132, 82, 35);
+        button.FlatAppearance.MouseOverBackColor =
+            Color.FromArgb(24, 27, 32);
+        button.FlatAppearance.MouseDownBackColor =
+            Color.FromArgb(42, 31, 20);
         button.Click += click;
         return button;
     }
@@ -1395,20 +1404,25 @@ public sealed class MainForm : Form
         {
             Text = text,
             Tag = preset,
-            Width = 76,
-            Height = 26,
+            Width = 72,
+            Height = 28,
             FlatStyle = FlatStyle.Flat,
-            Margin = new Padding(0, 0, 5, 4),
-            Font = new Font("Segoe UI", 7.2f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(202, 210, 223),
-            BackColor = Color.FromArgb(20, 22, 24),
+            Margin = new Padding(0, 0, 5, 5),
+            Font = new Font("Segoe UI", 7.1f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(183, 193, 205),
+            BackColor = Color.FromArgb(18, 21, 25),
             Cursor = Cursors.Hand,
             TabStop = false
         };
+
         button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.BorderColor = Color.FromArgb(58, 52, 45);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(38, 34, 29);
-        button.Click += (_,__) => ApplyCoachPreset(preset);
+        button.FlatAppearance.BorderColor =
+            Color.FromArgb(48, 54, 62);
+        button.FlatAppearance.MouseOverBackColor =
+            Color.FromArgb(34, 29, 23);
+        button.Click += (_,__) =>
+            ApplyCoachPreset(preset);
+
         _presetButtons.Add(button);
         return button;
     }
@@ -1458,25 +1472,37 @@ public sealed class MainForm : Form
 
     private Control MakeMiniMetric(string title, Label value)
     {
-        var metric = new TableLayoutPanel
+        var card = new ModernCardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            Padding = new Padding(10, 6, 10, 6),
+            BackColor = Color.FromArgb(14, 17, 21),
+            GradientEndColor = Color.FromArgb(11, 13, 16),
+            BorderColor = Color.FromArgb(37, 43, 50),
+            Radius = 13
+        };
+
+        var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
-            Margin = new Padding(0, 1, 5, 1),
-            Padding = new Padding(6, 3, 6, 3),
-            BackColor = Color.FromArgb(16, 18, 20)
+            Margin = Padding.Empty,
+            BackColor = Color.Transparent
         };
-        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
-        metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        layout.RowStyles.Add(
+            new RowStyle(SizeType.Absolute, 18));
+        layout.RowStyles.Add(
+            new RowStyle(SizeType.Percent, 100));
 
-        metric.Controls.Add(new Label
+        layout.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
             AutoSize = false,
-            Font = new Font("Segoe UI", 6.6f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(92, 106, 128),
+            Font = new Font("Segoe UI", 6.8f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(84, 96, 111),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
 
@@ -1485,12 +1511,14 @@ public sealed class MainForm : Form
         value.AutoSize = false;
         value.Margin = Padding.Empty;
         value.Padding = Padding.Empty;
-        value.Font = new Font("Segoe UI", 9.4f, FontStyle.Bold);
-        value.ForeColor = Color.White;
+        value.Font = new Font("Segoe UI", 11.2f, FontStyle.Bold);
+        value.ForeColor = Color.FromArgb(239, 243, 248);
         value.TextAlign = ContentAlignment.MiddleLeft;
-        metric.Controls.Add(value, 0, 1);
+        value.AutoEllipsis = true;
+        layout.Controls.Add(value, 0, 1);
 
-        return metric;
+        card.Controls.Add(layout);
+        return card;
     }
 
     private Control MakeCompactSelector(string title, ComboBox combo)
@@ -1500,20 +1528,27 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             Margin = Padding.Empty,
-            Padding = new Padding(0, 2, 0, 2)
+            Padding = new Padding(0, 2, 0, 2),
+            BackColor = Color.Transparent
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Absolute, 72));
+        row.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 100));
+
         row.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(105, 118, 140),
+            Font = new Font("Segoe UI", 7.2f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(91, 103, 117),
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
+
         combo.Dock = DockStyle.Fill;
+        combo.Margin = new Padding(0, 1, 0, 1);
         row.Controls.Add(combo, 1, 0);
+
         return row;
     }
 
@@ -1552,19 +1587,23 @@ public sealed class MainForm : Form
         UpdatePresetSelection(preset);
     }
 
-    private Label MakeRoundPill(string text, Color backColor, Color foreColor)
+    private Label MakeRoundPill(
+        string text,
+        Color backColor,
+        Color foreColor)
     {
         return new Label
         {
             Text = text,
             AutoSize = false,
-            Width = 54,
-            Height = 28,
-            Margin = new Padding(0, 0, 6, 0),
+            Width = 62,
+            Height = 34,
+            Margin = new Padding(0, 0, 7, 0),
             BackColor = backColor,
             ForeColor = foreColor,
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleCenter
+            Font = new Font("Segoe UI", 7.4f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter,
+            BorderStyle = BorderStyle.FixedSingle
         };
     }
 
@@ -1596,9 +1635,10 @@ public sealed class MainForm : Form
     {
         combo.DropDownStyle = ComboBoxStyle.DropDownList;
         combo.FlatStyle = FlatStyle.Flat;
-        combo.BackColor = Color.FromArgb(26, 28, 30);
-        combo.ForeColor = Color.White;
-        combo.Font = new Font("Segoe UI", 9);
+        combo.BackColor = Color.FromArgb(20, 23, 28);
+        combo.ForeColor = Color.FromArgb(232, 236, 241);
+        combo.Font = new Font("Segoe UI", 8.6f, FontStyle.Bold);
+        combo.IntegralHeight = true;
     }
 
     private Panel MakeStatCard(string caption, out Label value)
@@ -1656,30 +1696,36 @@ public sealed class MainForm : Form
 
     private void StyleButton(Button b, bool primary)
     {
-        b.Height = 32;
+        b.Height = 34;
         b.FlatStyle = FlatStyle.Flat;
         b.FlatAppearance.BorderSize = 1;
         b.FlatAppearance.BorderColor = primary
             ? Color.FromArgb(255, 156, 44)
-            : Color.FromArgb(43, 46, 50);
+            : Color.FromArgb(45, 51, 59);
         b.Cursor = Cursors.Hand;
-        b.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        b.Font = new Font("Segoe UI", 8.3f, FontStyle.Bold);
         b.BackColor = primary
             ? Color.FromArgb(255, 156, 44)
-            : Color.FromArgb(21, 23, 26);
-        b.ForeColor = primary ? Color.Black : Color.White;
+            : Color.FromArgb(17, 20, 24);
+        b.ForeColor = primary
+            ? Color.FromArgb(16, 12, 8)
+            : Color.FromArgb(226, 231, 237);
         b.FlatAppearance.MouseOverBackColor = primary
-            ? Color.FromArgb(255, 174, 72)
-            : Color.FromArgb(29, 32, 36);
+            ? Color.FromArgb(255, 177, 79)
+            : Color.FromArgb(28, 32, 38);
+        b.FlatAppearance.MouseDownBackColor = primary
+            ? Color.FromArgb(225, 131, 30)
+            : Color.FromArgb(34, 39, 45);
     }
 
     private Panel MakeCard()
     {
         return new ModernCardPanel
         {
-            BackColor = Color.FromArgb(18, 20, 22),
-            BorderColor = Color.FromArgb(42, 45, 49),
-            Radius = 14,
+            BackColor = Color.FromArgb(14, 17, 21),
+            GradientEndColor = Color.FromArgb(10, 12, 15),
+            BorderColor = Color.FromArgb(38, 44, 51),
+            Radius = 17,
             Margin = new Padding(4),
             Dock = DockStyle.Fill
         };
