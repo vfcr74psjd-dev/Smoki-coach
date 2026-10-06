@@ -11,11 +11,13 @@ public static class OpponentDemoIntelStore
             "Sm0kiSoloCoach");
     private static readonly string FilePath =
         Path.Combine(Dir, "opponent-demo-intel.json");
+    private static OpponentDemoIntelReport? _cache;
 
     public static void Save(OpponentDemoIntelReport report)
     {
         lock (Gate)
         {
+            _cache = report;
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -40,12 +42,18 @@ public static class OpponentDemoIntelStore
         {
             try
             {
-                if (!File.Exists(FilePath))
-                    return null;
+                var result = _cache;
 
-                var result =
-                    JsonSerializer.Deserialize<OpponentDemoIntelReport>(
-                        File.ReadAllText(FilePath));
+                if (result == null)
+                {
+                    if (!File.Exists(FilePath))
+                        return null;
+
+                    result =
+                        JsonSerializer.Deserialize<OpponentDemoIntelReport>(
+                            File.ReadAllText(FilePath));
+                    _cache = result;
+                }
 
                 if (result == null)
                     return null;
@@ -73,6 +81,7 @@ public static class OpponentDemoIntelStore
     {
         lock (Gate)
         {
+            _cache = null;
             try
             {
                 if (File.Exists(FilePath))
