@@ -15,6 +15,12 @@ public sealed record TacticalPlanV6(
 {
     public string SpawnBias { get; init; } = "";
     public string RoundType { get; init; } = "";
+    public string SimulationConfidence { get; init; } = "LOW";
+    public double SimulationMargin { get; init; }
+    public int SimulationCandidateCount { get; init; }
+    public string SimulationWinnerEvidence { get; init; } = "";
+    public string RunnerUpRoute { get; init; } = "";
+    public double RunnerUpScore { get; init; }
 
     public string PlanKey =>
         $"{SideMode}|{Intent}|{Route}|{FirstMove}|{Fallback}|{Focus}";
@@ -552,7 +558,33 @@ public static class TacticalBrainV6
                 simulation.Winner.Score))
         {
             SpawnBias = spawn.Bias,
-            RoundType = roundType
+            RoundType = roundType,
+            SimulationConfidence = simulation.Confidence,
+            SimulationMargin = simulation.Margin,
+            SimulationCandidateCount = simulation.Candidates.Count,
+            SimulationWinnerEvidence = simulation.Winner.Evidence,
+            RunnerUpRoute = simulation.Candidates
+                .Where(x =>
+                    !x.Route.Equals(
+                        simulation.Winner.Route,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !x.Intent.Equals(
+                        simulation.Winner.Intent,
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.Score)
+                .Select(x => x.Route)
+                .FirstOrDefault() ?? "",
+            RunnerUpScore = simulation.Candidates
+                .Where(x =>
+                    !x.Route.Equals(
+                        simulation.Winner.Route,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !x.Intent.Equals(
+                        simulation.Winner.Intent,
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.Score)
+                .Select(x => x.Score)
+                .FirstOrDefault()
         };
     }
 
