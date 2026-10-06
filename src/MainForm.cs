@@ -296,6 +296,16 @@ public sealed class MainForm : Form
                 _faceitSnapshot);
             dialog.ShowDialog(this);
         }));
+        nav.Controls.Add(MakeNavButton("SCOUT", false, (_,__) =>
+        {
+            using var scout = new OpponentScoutForm(
+                _current.Map,
+                FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
+            scout.ShowDialog(this);
+
+            if (_current.Round is int)
+                _ = RefreshAiCoachAsync(_current, true);
+        }));
         nav.Controls.Add(MakeNavButton("TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
 
@@ -1099,6 +1109,7 @@ public sealed class MainForm : Form
         FaceitHistoryStore.Clear();
         HeatMapStore.Clear();
         AdaptivePlaybookStore.Clear();
+        OpponentScoutStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
