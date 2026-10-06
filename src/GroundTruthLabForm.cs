@@ -357,7 +357,7 @@ public sealed class GroundTruthLabForm : Form
                 r.ActualRoute);
 
             item.SubItems.Add(
-                r.RouteEvidence);
+                $"{r.RouteEvidence} • {r.RouteAdherenceScore * 100:0}");
 
             item.SubItems.Add(
                 PrettyVerdict(

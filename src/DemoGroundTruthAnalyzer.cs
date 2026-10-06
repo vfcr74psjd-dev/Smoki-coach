@@ -84,6 +84,7 @@ public sealed class GroundTruthRoundVerdict
     public bool BombPlantedByPlayer { get; set; }
     public string BombSite { get; set; } = "";
     public double EvidenceQualityScore { get; set; }
+    public double RouteAdherenceScore { get; set; }
     public bool GroundTruthEligible { get; set; }
     public string Diagnosis { get; set; } = "LOW_EVIDENCE";
     public List<GroundTruthPathSample> Path { get; set; } = new();
@@ -875,13 +876,37 @@ public static class DemoGroundTruthAnalyzer
             if (demoRound == null)
                 continue;
 
+            var routeAssessment =
+                MapKnowledgeGraphV7.AssessRoute(
+                    map,
+                    trace.Route,
+                    demoRound.Path);
+
             var evidence =
                 EvaluateRoute(
                     map,
                     trace.Route,
                     demoRound.Path,
                     demoRound.FirstContactPlace,
-                    demoRound.DeathPlace);
+                    demoRound.DeathPlace,
+                    routeAssessment);
+
+            var routeAdherence =
+                routeAssessment.AdherenceScore;
+
+            if (routeAssessment.Evidence ==
+                    "UNKNOWN")
+            {
+                routeAdherence =
+                    Math.Max(
+                        routeAdherence,
+                        evidence switch
+                        {
+                            "SUPPORTED" => 0.60,
+                            "CONTRADICTED" => 0.15,
+                            _ => 0
+                        });
+            }
 
             var outcome =
                 OutcomeScore(demoRound);
@@ -976,6 +1001,8 @@ public static class DemoGroundTruthAnalyzer
                     OutcomeScore = outcome,
                     EvidenceQualityScore =
                         evidenceQuality,
+                    RouteAdherenceScore =
+                        routeAdherence,
                     GroundTruthEligible =
                         groundTruthEligible,
                     Diagnosis =
@@ -1107,17 +1134,19 @@ public static class DemoGroundTruthAnalyzer
         string recommended,
         IReadOnlyList<GroundTruthPathSample> path,
         string firstContactPlace,
-        string deathPlace)
+        string deathPlace,
+        MapRouteAssessmentV7? routeAssessment = null)
     {
         if (string.IsNullOrWhiteSpace(
                 recommended))
             return "UNKNOWN";
 
         var graphEvidence =
-            MapKnowledgeGraphV7.RouteEvidence(
-                map,
-                recommended,
-                path);
+            (routeAssessment ??
+             MapKnowledgeGraphV7.AssessRoute(
+                 map,
+                 recommended,
+                 path)).Evidence;
 
         if (graphEvidence is
             "SUPPORTED" or

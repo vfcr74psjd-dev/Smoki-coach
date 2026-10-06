@@ -10,6 +10,14 @@ public sealed record MapGraphEdgeV7(
     string From,
     string To);
 
+public sealed record MapRouteAssessmentV7(
+    string Evidence,
+    double AdherenceScore,
+    int ExpectedNodeCount,
+    int ObservedNodeCount,
+    int OrderedHitCount,
+    bool DestinationReached);
+
 public sealed class MapGraphDefinitionV7
 {
     public string Map { get; init; } = "";
@@ -476,7 +484,7 @@ public static class MapKnowledgeGraphV7
             : "";
     }
 
-    public static string RouteEvidence(
+    public static MapRouteAssessmentV7 AssessRoute(
         string map,
         string route,
         IReadOnlyList<GroundTruthPathSample> path)
@@ -485,76 +493,214 @@ public static class MapKnowledgeGraphV7
 
         if (graph == null ||
             path.Count == 0)
-            return "UNKNOWN";
+        {
+            return new MapRouteAssessmentV7(
+                "UNKNOWN",
+                0,
+                0,
+                0,
+                0,
+                false);
+        }
 
         var expected =
             ResolveRoute(
                 map,
-                route);
+                route)
+            .ToList();
 
         if (expected.Count == 0)
-            return "UNKNOWN";
+        {
+            return new MapRouteAssessmentV7(
+                "UNKNOWN",
+                0,
+                0,
+                0,
+                0,
+                false);
+        }
 
         var observed =
-            path
-                .SelectMany(sample =>
-                {
-                    var text =
-                        Normalize(
-                            sample.PlaceName);
+            new List<string>();
 
-                    return graph.Nodes.Values
-                        .Where(node =>
-                            node.Aliases.Any(alias =>
-                                text.Contains(
-                                    Normalize(alias),
-                                    StringComparison.OrdinalIgnoreCase)));
-                })
-                .Select(x => x.Id)
-                .Distinct(
-                    StringComparer.OrdinalIgnoreCase)
-                .ToHashSet(
-                    StringComparer.OrdinalIgnoreCase);
+        foreach (var sample in path)
+        {
+            var text =
+                Normalize(
+                    sample.PlaceName);
+
+            if (text.Length == 0)
+                continue;
+
+            foreach (var node in graph.Nodes.Values)
+            {
+                if (!node.Aliases.Any(alias =>
+                        text.Contains(
+                            Normalize(alias),
+                            StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                if (observed.Count == 0 ||
+                    !observed[^1].Equals(
+                        node.Id,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    observed.Add(
+                        node.Id);
+                }
+            }
+        }
 
         if (observed.Count == 0)
-            return "UNKNOWN";
+        {
+            return new MapRouteAssessmentV7(
+                "UNKNOWN",
+                0,
+                expected.Count,
+                0,
+                0,
+                false);
+        }
 
         var expectedIds =
             expected
                 .Select(x => x.Id)
-                .ToHashSet(
-                    StringComparer.OrdinalIgnoreCase);
-
-        var hits =
-            expectedIds.Count(
-                observed.Contains);
-
-        if (hits >= 1)
-            return "SUPPORTED";
-
-        var expectedZones =
-            expected
-                .Select(x => x.Zone)
-                .Where(x =>
-                    x is "A" or "B" or "MID")
-                .ToHashSet(
-                    StringComparer.OrdinalIgnoreCase);
-
-        var observedZones =
-            path
-                .Select(x => x.Zone)
-                .Where(x =>
-                    x is "A" or "B" or "MID")
                 .ToList();
 
-        if (expectedZones.Count == 1 &&
-            observedZones.Count >= 3 &&
-            !observedZones.Any(
-                expectedZones.Contains))
-            return "CONTRADICTED";
+        var expectedSet =
+            expectedIds
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
 
-        return "UNKNOWN";
+        var observedSet =
+            observed
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
+
+        var uniqueHits =
+            expectedSet.Count(
+                observedSet.Contains);
+
+        var expectedCursor = 0;
+        var orderedHits = 0;
+
+        foreach (var observedId in observed)
+        {
+            for (var i = expectedCursor;
+                 i < expectedIds.Count;
+                 i++)
+            {
+                if (!expectedIds[i].Equals(
+                        observedId,
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                orderedHits++;
+                expectedCursor = i + 1;
+                break;
+            }
+
+            if (expectedCursor >=
+                expectedIds.Count)
+                break;
+        }
+
+        var destinationReached =
+            observedSet.Contains(
+                expectedIds[^1]);
+
+        var coverage =
+            (double)uniqueHits /
+            expectedIds.Count;
+
+        var orderedCoverage =
+            (double)orderedHits /
+            expectedIds.Count;
+
+        var adherence =
+            Math.Clamp(
+                coverage * 0.55 +
+                orderedCoverage * 0.30 +
+                (destinationReached
+                    ? 0.15
+                    : 0),
+                0,
+                1);
+
+        var evidence = "UNKNOWN";
+
+        if (expectedIds.Count == 1 &&
+            uniqueHits == 1)
+        {
+            evidence = "SUPPORTED";
+            adherence = 1;
+        }
+        else if (expectedIds.Count >= 2 &&
+                 orderedHits >= 2 &&
+                 (coverage >= 0.60 ||
+                  (destinationReached &&
+                   coverage >= 0.50)))
+        {
+            evidence = "SUPPORTED";
+        }
+        else
+        {
+            var expectedZones =
+                expected
+                    .Select(x => x.Zone)
+                    .Where(x =>
+                        x is "A" or "B" or "MID")
+                    .ToHashSet(
+                        StringComparer.OrdinalIgnoreCase);
+
+            var observedZones =
+                path
+                    .Select(x => x.Zone)
+                    .Where(x =>
+                        x is "A" or "B" or "MID")
+                    .ToList();
+
+            if (expectedZones.Count == 1 &&
+                observedZones.Count >= 3)
+            {
+                var expectedZoneHits =
+                    observedZones.Count(
+                        expectedZones.Contains);
+
+                var conflictingZoneHits =
+                    observedZones.Count -
+                    expectedZoneHits;
+
+                if (expectedZoneHits == 0 &&
+                    conflictingZoneHits >= 3)
+                {
+                    evidence =
+                        "CONTRADICTED";
+                    adherence =
+                        Math.Min(
+                            adherence,
+                            0.20);
+                }
+            }
+        }
+
+        return new MapRouteAssessmentV7(
+            evidence,
+            adherence,
+            expectedIds.Count,
+            observed.Count,
+            orderedHits,
+            destinationReached);
     }
+
+    public static string RouteEvidence(
+        string map,
+        string route,
+        IReadOnlyList<GroundTruthPathSample> path)
+        => AssessRoute(
+            map,
+            route,
+            path).Evidence;
 
     private static bool AreConnected(
         MapGraphDefinitionV7 graph,
