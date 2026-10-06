@@ -128,19 +128,46 @@ public sealed class DigitalTwinForm : Form
             });
         root.Controls.Add(_calibration, 0, 3);
 
+        var footer = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+
         var close = new Button
         {
             Text = "CLOSE",
             Width = 110,
             Height = 34,
-            Anchor = AnchorStyles.Right,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(22, 25, 29),
             ForeColor = Color.White
         };
         close.FlatAppearance.BorderColor = Color.FromArgb(53, 59, 67);
         close.Click += (_,__) => Close();
-        root.Controls.Add(close, 0, 4);
+
+        var ledger = new Button
+        {
+            Text = "DECISION LEDGER",
+            Width = 150,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(52, 35, 20),
+            ForeColor = Color.FromArgb(255, 184, 98)
+        };
+        ledger.FlatAppearance.BorderColor = Color.FromArgb(112, 72, 32);
+        ledger.Click += (_,__) =>
+        {
+            using var view = new DecisionLedgerForm(_map);
+            view.ShowDialog(this);
+        };
+
+        footer.Controls.Add(close);
+        footer.Controls.Add(ledger);
+        root.Controls.Add(footer, 0, 4);
 
         Controls.Add(root);
     }
