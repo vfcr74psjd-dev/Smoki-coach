@@ -218,7 +218,7 @@ public sealed class GroundTruthLabForm : Form
         _rounds.Columns.Add("EVIDENCE", 105);
         _rounds.Columns.Add("VERDICT", 155);
         _rounds.Columns.Add("K/D", 65);
-        _rounds.Columns.Add("OPENING", 90);
+        _rounds.Columns.Add("CONTACT", 125);
         _rounds.Columns.Add("OUTCOME", 75);
         _rounds.Columns.Add("CONF", 70);
 
@@ -366,9 +366,11 @@ public sealed class GroundTruthLabForm : Form
                 $"{r.Kills}/{r.Deaths}");
 
             item.SubItems.Add(
-                r.OpeningDuel
-                    ? r.OpeningResult
-                    : "—");
+                r.SecondsToFirstContact is double contact
+                    ? $"{(r.OpeningDuel ? r.OpeningResult : "DUEL")} • {contact:0.0}s"
+                    : r.OpeningDuel
+                        ? r.OpeningResult
+                        : "—");
 
             item.SubItems.Add(
                 $"{r.OutcomeScore * 100:0}");
@@ -407,6 +409,8 @@ public sealed class GroundTruthLabForm : Form
                 "PLAN UNDERPERFORMING",
             "EXECUTION_DIVERGED" =>
                 "EXECUTION DIVERGED",
+            "POST_IMPACT_EXECUTION" =>
+                "POST-IMPACT EXECUTION",
             _ =>
                 "NOT ENOUGH EVIDENCE"
         };
