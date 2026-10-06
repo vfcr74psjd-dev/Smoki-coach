@@ -240,7 +240,7 @@ public sealed class MainForm : Form
         });
         brand.Controls.Add(new Label
         {
-            Text = "SOLO COACH",
+            Text = "TACTICAL OS",
             Left = 14,
             Top = 36,
             Width = 145,
@@ -305,6 +305,12 @@ public sealed class MainForm : Form
 
             if (_current.Round is int)
                 _ = RefreshAiCoachAsync(_current, true);
+        }));
+        nav.Controls.Add(MakeNavButton("MATCH LAB", false, (_,__) =>
+        {
+            using var lab = new ReviewLabForm(
+                FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
+            lab.ShowDialog(this);
         }));
         nav.Controls.Add(MakeNavButton("TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
@@ -409,7 +415,7 @@ public sealed class MainForm : Form
         liveTitle.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         liveTitle.Controls.Add(new Label
         {
-            Text = "LIVE COACH",
+            Text = "TACTICAL OS • LIVE",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 17, FontStyle.Bold),
             ForeColor = Color.White,
@@ -516,7 +522,7 @@ public sealed class MainForm : Form
         planHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         planHeader.Controls.Add(new Label
         {
-            Text = "NEXT ROUND",
+            Text = "TACTICAL DECISION",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(116, 122, 132)
@@ -532,7 +538,7 @@ public sealed class MainForm : Form
 
         planLayout.Controls.Add(new Label
         {
-            Text = "ONE CLEAR PLAN. PLAY IT.",
+            Text = "ONE PLAN • ONE FOCUS • NO NOISE",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 16.5f, FontStyle.Bold),
             ForeColor = Color.White,
@@ -1094,6 +1100,7 @@ public sealed class MainForm : Form
             "• lokalni FACEIT history cache\n" +
             "• demo / heatmap history\n" +
             "• Personal Playbook + Opponent Scout intel\n" +
+            "• cross-match Mistake Library\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1112,6 +1119,7 @@ public sealed class MainForm : Form
         AdaptivePlaybookStore.Clear();
         OpponentScoutStore.Clear();
         OpponentDemoIntelStore.Clear();
+        MistakeLibraryStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
@@ -1812,6 +1820,14 @@ public sealed class MainForm : Form
         {
             var review = MatchReviewAnalyzer.Analyze(rounds);
             var development = PlayerDevelopmentEngine.Analyze(rounds);
+            var matchKey =
+                $"{map}|{_sessionStartedUtc:O}|{rounds.Count}|" +
+                $"{snapshot.CtScore?.ToString() ?? "—"}:{snapshot.TScore?.ToString() ?? "—"}";
+
+            MistakeLibraryStore.RecordMatch(
+                matchKey,
+                map,
+                rounds);
 
             SessionHistoryStore.Save(new SessionSummary
             {
@@ -2001,23 +2017,53 @@ public sealed class MainForm : Form
 
     private string SessionInsight()
     {
+        var halftime =
+            HalftimeBrainV6.Analyze(
+                _current.Team,
+                _rounds);
+
+        if (halftime.Active)
+        {
+            return
+                $"HALFTIME BRAIN • {halftime.FromSide} → {halftime.ToSide} • " +
+                $"KEEP: {halftime.Keep} • CHANGE: {halftime.Change} • " +
+                $"OPEN: {halftime.Opening} • {halftime.Confidence}";
+        }
+
         var sample = _rounds.TakeLast(10).ToList();
         if (sample.Count == 0)
-            return "Po nekaj zaključenih rundah bom tukaj prikazal K/R, 0-kill runde, multi-kille in survival trend.";
+            return "TACTICAL OS learning • play normal CS2; route memory, current-match brain and cross-match leaks will appear here.";
 
         int kills = sample.Sum(r => r.KillsRound);
         int zero = sample.Count(r => r.KillsRound == 0);
         int multi = sample.Count(r => r.KillsRound >= 2);
         int deathRounds = sample.Count(r => r.DeathsRound > 0);
         double kr = (double)kills / sample.Count;
-        double survival = 100.0 * (sample.Count - deathRounds) / sample.Count;
+        double survival =
+            100.0 *
+            (sample.Count - deathRounds) /
+            sample.Count;
+
+        var recurring =
+            MistakeLibraryStore.TopRecurring(
+                _current.Map,
+                10);
+
+        var memory =
+            recurring.Matches >= 3
+                ? $" • MEMORY: {recurring.Label} {recurring.Matches}/{recurring.RecentMatchesRead} • {recurring.Trend}"
+                : "";
 
         string trend =
-            kr >= 1.0 ? "Impact je trenutno visok."
-            : kr >= 0.7 ? "Solidno — išči še en varen trade na rundo."
-            : "Zmanjšaj early deaths in igraj bližje trade razdalji.";
+            kr >= 1.0
+                ? "Impact high."
+                : kr >= 0.7
+                    ? "Solid • look for one more safe trade."
+                    : "Reduce early deaths • stay closer to trade distance.";
 
-        return $"Last {sample.Count} rounds • {kr:0.00} K/R • {zero} zero-kill • {multi} multi-kill • {survival:0}% survival. {trend}";
+        return
+            $"LAST {sample.Count} • {kr:0.00} K/R • {zero} zero-kill • " +
+            $"{multi} multi • {survival:0}% survival • {trend}{memory}";
     }
 
     private async Task CheckForUpdatesSilentAsync()
@@ -2260,6 +2306,7 @@ public sealed class MainForm : Form
                     _sessionStartedUtc = DateTime.UtcNow;
                     _rounds.Clear();
                     _roundIntents.Clear();
+                    _v6Plans.Clear();
                     _matchReviewShownKey = "";
                 }
                 else
