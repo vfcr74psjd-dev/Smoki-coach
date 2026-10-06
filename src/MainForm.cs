@@ -86,6 +86,7 @@ public sealed class MainForm : Form
     private GameSnapshot _current = new();
     private GameSnapshot? _previous;
     private readonly List<RoundRecord> _rounds = new();
+    private readonly Dictionary<int, TacticalPlanV6> _v6Plans = new();
 
     public MainForm()
     {
@@ -1096,9 +1097,11 @@ public sealed class MainForm : Form
         SessionHistoryStore.Clear();
         FaceitHistoryStore.Clear();
         HeatMapStore.Clear();
+        AdaptivePlaybookStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
+        _v6Plans.Clear();
         _history.Items.Clear();
         _history.Items.Add("Test data reset • waiting for completed rounds.");
 
@@ -1528,15 +1531,20 @@ public sealed class MainForm : Form
         var focus = _focus.SelectedItem?.ToString() ?? "More kills";
         var intent = GetRoundIntent(snapshot.Round);
 
-        // Every round gets a useful deterministic plan immediately.
-        var instant = CoachEngine.InstantRoundPlan(
+        // Tactical OS v6 makes the deterministic decision first. Local AI
+        // may refine wording, but route selection is never blocked by the model.
+        var tactical = TacticalBrainV6.Generate(
             snapshot,
             mode,
             role,
             focus,
             _rounds.ToList(),
-            intent
-        );
+            intent);
+
+        if (snapshot.Round is int tacticalRound)
+            _v6Plans[tacticalRound] = tactical;
+
+        var instant = tactical.RenderLegacyCompatible();
 
         var prefetched = TryUsePrefetchedAi(snapshot, intent, instant, out var immediate);
         _latestAiAdvice = immediate;
@@ -1849,10 +1857,13 @@ public sealed class MainForm : Form
                 ? _trackedRoundPrimaryWeapon
                 : "",
             Intent = intent,
-            PositionPlan = CoachEngine.PositionPlan(
-                snapshot,
-                GetRoundIntent(tracked),
-                result),
+            PositionPlan =
+                _v6Plans.TryGetValue(tracked, out var reviewPlan)
+                    ? reviewPlan.Route
+                    : CoachEngine.PositionPlan(
+                        snapshot,
+                        GetRoundIntent(tracked),
+                        result),
             BombPlanted = _trackedBombPlanted,
             BombSite = _trackedBombSite,
             BombPlantSeconds = _trackedBombPlantSeconds
@@ -2194,6 +2205,7 @@ public sealed class MainForm : Form
                 _sessionStartedUtc = DateTime.UtcNow;
                 _rounds.Clear();
                 _roundIntents.Clear();
+                _v6Plans.Clear();
                 _matchReviewShownKey = "";
                 _trackedRound = s.Round;
                 _roundStartKills = s.Kills ?? 0;
@@ -2238,7 +2250,15 @@ public sealed class MainForm : Form
                 }
                 else
                 {
-                    _rounds.Add(new RoundRecord
+                    var completedRoute =
+                        _v6Plans.TryGetValue(pr, out var completedPlan)
+                            ? completedPlan.Route
+                            : CoachEngine.PositionPlan(
+                                _previous,
+                                GetRoundIntent(pr),
+                                _rounds);
+
+                    var completedRound = new RoundRecord
                     {
                         Round = pr,
                         Side = _previous.Team,
@@ -2260,14 +2280,25 @@ public sealed class MainForm : Form
                         Intent = string.IsNullOrWhiteSpace(GetRoundIntent(pr))
                             ? CoachEngine.AutoRoundIntent(_previous, _rounds)
                             : GetRoundIntent(pr),
-                        PositionPlan = CoachEngine.PositionPlan(
-                            _previous,
-                            GetRoundIntent(pr),
-                            _rounds),
+                        PositionPlan = completedRoute,
                         BombPlanted = _trackedBombPlanted,
                         BombSite = _trackedBombSite,
                         BombPlantSeconds = _trackedBombPlantSeconds
-                    });
+                    };
+
+                    _rounds.Add(completedRound);
+                    AdaptivePlaybookStore.Record(
+                        _previous.Map,
+                        completedRound,
+                        completedRoute);
+
+                    foreach (var oldPlanRound in _v6Plans.Keys
+                                 .Where(x => x <= pr - 2)
+                                 .ToList())
+                    {
+                        _v6Plans.Remove(oldPlanRound);
+                    }
+
                     while (_rounds.Count > 40) _rounds.RemoveAt(0);
                 }
 
