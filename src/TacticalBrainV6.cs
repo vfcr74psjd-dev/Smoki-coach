@@ -13,6 +13,9 @@ public sealed record TacticalPlanV6(
     string Confidence,
     int DecisionScore)
 {
+    public string SpawnBias { get; init; } = "";
+    public string RoundType { get; init; } = "";
+
     public string PlanKey =>
         $"{SideMode}|{Intent}|{Route}|{FirstMove}|{Fallback}|{Focus}";
 
@@ -103,6 +106,9 @@ public static class TacticalBrainV6
         var scout = OpponentScoutStore.LoadLatest(snapshot.Map);
         var halftime = HalftimeBrainV6.Analyze(snapshot.Team, rounds);
         var recurring = MistakeLibraryStore.TopRecurring(snapshot.Map, 10);
+        var twin = DigitalTwinStore.Analyze(snapshot.Map, sideMode);
+        var mission = TrainingMissionStore.Current(snapshot.Map);
+        var roundType = CoachEngine.ClassifyRound(snapshot);
         var candidates = new List<Candidate>();
 
         for (var i = 0; i < options.Length; i++)
@@ -193,7 +199,6 @@ public static class TacticalBrainV6
                 score += 5;
             }
 
-            var roundType = CoachEngine.ClassifyRound(snapshot);
             if (roundType is "Eco" or "Force / light")
             {
                 // Light buys should avoid the highest-risk direct route unless
@@ -281,6 +286,17 @@ public static class TacticalBrainV6
                     score -= 3;
             }
 
+            // v7 Digital Twin: personal context + calibration of the coach's
+            // own past recommendations. Repeated over-predictions get
+            // automatically de-weighted in the same context.
+            score += DigitalTwinStore.RouteAdjustment(
+                snapshot.Map,
+                sideMode,
+                effectiveIntent,
+                route,
+                spawn.Bias,
+                roundType);
+
             candidates.Add(
                 new Candidate(
                     route,
@@ -334,6 +350,12 @@ public static class TacticalBrainV6
             confidencePoints += demoIntel.Confidence == "HIGH"
                 ? 12
                 : demoIntel.Confidence == "MEDIUM"
+                    ? 7
+                    : 3;
+        if (twin.Samples >= 8)
+            confidencePoints += twin.Confidence == "HIGH"
+                ? 12
+                : twin.Confidence == "MEDIUM"
                     ? 7
                     : 3;
         if (manualIntent) confidencePoints += 8;
@@ -407,16 +429,36 @@ public static class TacticalBrainV6
         if (recurring.Matches >= 3)
             whyParts.Add($"memory {recurring.Label}");
 
-        var why = string.Join(" • ", whyParts.Take(5));
+        if (twin.Samples >= 4)
+            whyParts.Add($"twin {twin.Archetype} • {twin.Samples}R");
+
+        var calibration = DigitalTwinStore.FindCalibration(
+            snapshot.Map,
+            sideMode,
+            effectiveIntent,
+            best.Route,
+            spawn.Bias,
+            roundType);
+
+        if (calibration != null &&
+            calibration.Samples >= 3)
+        {
+            whyParts.Add(
+                $"coach trust {calibration.TrustAdjustment:+0;-0;0}");
+        }
+
+        var why = string.Join(" • ", whyParts.Take(6));
 
         var tacticalFocus =
             brain.Priority != "KEEP PLAN"
                 ? brain.OneFocus
                 : halftime.Active
                     ? halftime.Focus
-                    : recurring.Matches >= 3
-                        ? recurring.CoachingFocus
-                        : brain.OneFocus;
+                    : !string.IsNullOrWhiteSpace(mission.Key)
+                        ? mission.Instruction
+                        : recurring.Matches >= 3
+                            ? recurring.CoachingFocus
+                            : brain.OneFocus;
 
         return new TacticalPlanV6(
             sideMode,
@@ -429,7 +471,11 @@ public static class TacticalBrainV6
             tacticalFocus,
             why,
             confidence,
-            (int)Math.Round(best.Score));
+            (int)Math.Round(best.Score))
+        {
+            SpawnBias = spawn.Bias,
+            RoundType = roundType
+        };
     }
 
     private static string BuildExpectation(
