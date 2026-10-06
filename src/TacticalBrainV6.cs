@@ -58,10 +58,31 @@ public static class TacticalBrainV6
         var spawn = CoachEngine.SpawnProfile(snapshot);
         var manualIntent =
             !string.IsNullOrWhiteSpace(CoachEngine.NormalizeRoundIntent(intent));
+        var demoIntel = OpponentDemoIntelStore.LoadLatest(snapshot.Map);
 
         var effectiveIntent = manualIntent
             ? CoachEngine.NormalizeRoundIntent(intent)
             : CoachEngine.AutoRoundIntent(snapshot, rounds);
+
+        // Early CT rounds can use pre-match opponent demo evidence as a small
+        // site bias. It never overrides a manual call, and after the current
+        // match produces enough evidence the live match takes priority.
+        var sameSideRounds = rounds.Count(r =>
+            string.Equals(
+                r.Side,
+                sideMode,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (ct &&
+            !manualIntent &&
+            sameSideRounds < 3 &&
+            demoIntel != null &&
+            demoIntel.OpeningSamples >= 6 &&
+            demoIntel.TTopZoneShare >= 0.55 &&
+            demoIntel.TopTOpeningZone is "A" or "B")
+        {
+            effectiveIntent = demoIntel.TopTOpeningZone;
+        }
 
         var options = CoachEngine.GetPositionOptions(
             snapshot.Map,
@@ -202,6 +223,37 @@ public static class TacticalBrainV6
                 }
             }
 
+            if (!ct &&
+                demoIntel != null &&
+                demoIntel.OpeningSamples >= 6)
+            {
+                var routeZone = RouteZone(route);
+                var hotCtZone = demoIntel.TopCtOpeningZone;
+
+                if (!string.IsNullOrWhiteSpace(routeZone) &&
+                    routeZone == hotCtZone &&
+                    demoIntel.CtTopZoneShare >= 0.45)
+                {
+                    // If their historical CT opening contacts repeatedly happen
+                    // here and they win more of those openings than they lose,
+                    // avoid making the most direct variant the default.
+                    if (demoIntel.CtOpeningKills >
+                        demoIntel.CtOpeningDeaths)
+                    {
+                        if (i == 0) score -= 8;
+                        if (i == options.Length - 1) score += 4;
+                    }
+                    else if (demoIntel.CtOpeningDeaths >
+                             demoIntel.CtOpeningKills)
+                    {
+                        // A repeatedly weak opening zone is a small positive
+                        // signal, but never strong enough to override spawn or
+                        // the player's own playbook.
+                        if (i == 0) score += 4;
+                    }
+                }
+            }
+
             candidates.Add(
                 new Candidate(
                     route,
@@ -224,7 +276,11 @@ public static class TacticalBrainV6
             .FirstOrDefault();
 
         var buy = CoachEngine.RoundBuyPlan(snapshot);
-        var expect = CoachEngine.EnemyExpectation(snapshot, rounds);
+        var expect = BuildExpectation(
+            snapshot,
+            rounds,
+            demoIntel,
+            CoachEngine.EnemyExpectation(snapshot, rounds));
         var firstMove = FirstMove(
             snapshot,
             best.Route,
@@ -246,6 +302,12 @@ public static class TacticalBrainV6
         if (best.Personal != null)
             confidencePoints += Math.Min(30, best.Personal.Attempts * 4);
         if (scout != null) confidencePoints += 8;
+        if (demoIntel != null)
+            confidencePoints += demoIntel.Confidence == "HIGH"
+                ? 12
+                : demoIntel.Confidence == "MEDIUM"
+                    ? 7
+                    : 3;
         if (manualIntent) confidencePoints += 8;
 
         var confidence =
@@ -289,6 +351,15 @@ public static class TacticalBrainV6
             whyParts.Add(scoutSignal);
         }
 
+        if (demoIntel != null)
+        {
+            var demoSignal = ct
+                ? $"demo T-open {demoIntel.TopTOpeningZone} {demoIntel.TTopZoneShare * 100:0}%"
+                : $"demo CT-open {demoIntel.TopCtOpeningZone} {demoIntel.CtTopZoneShare * 100:0}%";
+
+            whyParts.Add(demoSignal);
+        }
+
         if (manualIntent)
             whyParts.Add("manual " + effectiveIntent);
 
@@ -306,6 +377,84 @@ public static class TacticalBrainV6
             why,
             confidence,
             (int)Math.Round(best.Score));
+    }
+
+    private static string BuildExpectation(
+        GameSnapshot snapshot,
+        IReadOnlyList<RoundRecord> rounds,
+        OpponentDemoIntelReport? demoIntel,
+        string liveExpectation)
+    {
+        if (demoIntel == null ||
+            demoIntel.OpeningSamples < 6)
+            return liveExpectation;
+
+        var sameSideRounds = rounds.Count(r =>
+            string.Equals(
+                r.Side,
+                snapshot.Team,
+                StringComparison.OrdinalIgnoreCase));
+
+        // Once enough current-match rounds exist, current evidence is more
+        // valuable than pre-match demo history.
+        if (sameSideRounds >= 3)
+            return liveExpectation;
+
+        var ct = string.Equals(
+            snapshot.Team,
+            "CT",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (ct &&
+            demoIntel.TTopZoneShare >= 0.55 &&
+            demoIntel.TopTOpeningZone is "A" or "B" or "MID")
+        {
+            return
+                $"pre-match demo tendency • T opening contact {demoIntel.TopTOpeningZone} " +
+                $"{demoIntel.TTopZoneShare * 100:0}% • {demoIntel.Confidence}";
+        }
+
+        if (!ct &&
+            demoIntel.CtTopZoneShare >= 0.45 &&
+            demoIntel.TopCtOpeningZone is "A" or "B" or "MID")
+        {
+            return
+                $"pre-match demo tendency • CT opening contact {demoIntel.TopCtOpeningZone} " +
+                $"{demoIntel.CtTopZoneShare * 100:0}% • {demoIntel.Confidence}";
+        }
+
+        return liveExpectation;
+    }
+
+    private static string RouteZone(string route)
+    {
+        var r = (route ?? "").ToLowerInvariant();
+
+        if (r.Contains("mid") ||
+            r.Contains("short") ||
+            r.Contains("cat") ||
+            r.Contains("connector") ||
+            r.Contains("water"))
+            return "MID";
+
+        if (r.Contains("b ") ||
+            r.StartsWith("b") ||
+            r.Contains("tunnel") ||
+            r.Contains("banana") ||
+            r.Contains("monster") ||
+            r.Contains("cave"))
+            return "B";
+
+        if (r.Contains("a ") ||
+            r.StartsWith("a") ||
+            r.Contains("long") ||
+            r.Contains("palace") ||
+            r.Contains("ivy") ||
+            r.Contains("hut") ||
+            r.Contains("squeaky"))
+            return "A";
+
+        return "";
     }
 
     private static string FirstMove(
