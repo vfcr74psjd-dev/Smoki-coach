@@ -8,7 +8,7 @@ public sealed class CoachPlanView : Control
 {
     private static readonly Color Orange = Color.FromArgb(255, 156, 44);
     private static readonly Color OrangeSoft = Color.FromArgb(255, 188, 105);
-    private static readonly Color Text = Color.FromArgb(244, 246, 249);
+    private static readonly Color PrimaryText = Color.FromArgb(244, 246, 249);
     private static readonly Color Muted = Color.FromArgb(143, 151, 162);
     private static readonly Color Border = Color.FromArgb(48, 53, 60);
     private static readonly Color Green = Color.FromArgb(126, 240, 174);
@@ -140,7 +140,7 @@ public sealed class CoachPlanView : Control
         using var labelFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
         using var routeFont = new Font("Segoe UI", 21f, FontStyle.Bold);
         using var labelBrush = new SolidBrush(Orange);
-        using var textBrush = new SolidBrush(Text);
+        using var textBrush = new SolidBrush(PrimaryText);
 
         g.DrawString(
             "TACTICAL ROUTE / START",
@@ -228,7 +228,7 @@ public sealed class CoachPlanView : Control
         using var labelFont = new Font("Segoe UI", 8f, FontStyle.Bold);
         using var valueFont = new Font("Segoe UI", 14.5f, FontStyle.Bold);
         using var labelBrush = new SolidBrush(Color.FromArgb(128, 139, 151));
-        using var valueBrush = new SolidBrush(Text);
+        using var valueBrush = new SolidBrush(PrimaryText);
 
         g.DrawString(
             "FIRST MOVE",
@@ -313,7 +313,7 @@ public sealed class CoachPlanView : Control
         using var labelFont = new Font("Segoe UI", 7.2f, FontStyle.Bold);
         using var focusFont = new Font("Segoe UI", 9.6f, FontStyle.Bold);
         using var labelBrush = new SolidBrush(Orange);
-        using var focusBrush = new SolidBrush(Text);
+        using var focusBrush = new SolidBrush(PrimaryText);
         using var whyBrush = new SolidBrush(Muted);
 
         g.DrawString(
