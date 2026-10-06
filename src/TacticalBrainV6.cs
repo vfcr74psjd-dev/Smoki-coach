@@ -101,6 +101,8 @@ public static class TacticalBrainV6
 
         var brain = SmartMatchBrainEngine.Analyze(rounds);
         var scout = OpponentScoutStore.LoadLatest(snapshot.Map);
+        var halftime = HalftimeBrainV6.Analyze(snapshot.Team, rounds);
+        var recurring = MistakeLibraryStore.TopRecurring(snapshot.Map, 10);
         var candidates = new List<Candidate>();
 
         for (var i = 0; i < options.Length; i++)
@@ -254,6 +256,31 @@ public static class TacticalBrainV6
                 }
             }
 
+            if (recurring.Matches >= 3)
+            {
+                if (recurring.Key is "discipline" or "post_impact")
+                {
+                    if (i == 0) score -= 5;
+                    if (i == options.Length - 1) score += 5;
+                }
+                else if (recurring.Key == "impact" && i == 0)
+                {
+                    score += 3;
+                }
+            }
+
+            if (halftime.Active)
+            {
+                // New side = new job. Favor the middle/support variant unless
+                // spawn clearly makes the direct option valuable.
+                if (i == Math.Min(1, options.Length - 1))
+                    score += 4;
+
+                if (i == 0 &&
+                    !(spawn.Known && spawn.Bias == effectiveIntent))
+                    score -= 3;
+            }
+
             candidates.Add(
                 new Candidate(
                     route,
@@ -363,7 +390,22 @@ public static class TacticalBrainV6
         if (manualIntent)
             whyParts.Add("manual " + effectiveIntent);
 
-        var why = string.Join(" • ", whyParts.Take(4));
+        if (halftime.Active)
+            whyParts.Add($"half {halftime.FromSide}→{halftime.ToSide}");
+
+        if (recurring.Matches >= 3)
+            whyParts.Add($"memory {recurring.Label}");
+
+        var why = string.Join(" • ", whyParts.Take(5));
+
+        var tacticalFocus =
+            brain.Priority != "KEEP PLAN"
+                ? brain.OneFocus
+                : halftime.Active
+                    ? halftime.Focus
+                    : recurring.Matches >= 3
+                        ? recurring.CoachingFocus
+                        : brain.OneFocus;
 
         return new TacticalPlanV6(
             sideMode,
@@ -373,7 +415,7 @@ public static class TacticalBrainV6
             firstMove,
             expect,
             fallback,
-            brain.OneFocus,
+            tacticalFocus,
             why,
             confidence,
             (int)Math.Round(best.Score));
