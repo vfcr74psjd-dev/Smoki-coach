@@ -238,6 +238,38 @@ public sealed class AutoDemoLearningService : IDisposable
                 throw new InvalidOperationException(
                     "Demo import ni vrnil rezultata.");
 
+            var nickname =
+                (_nicknameProvider() ?? "").Trim();
+
+            var recommendationSession =
+                RecommendationTraceStore.FindBestSession(
+                    nickname,
+                    imported.Map,
+                    match.FinishedUtc);
+
+            StatusChanged?.Invoke(
+                $"AUTO DEMO • Ground Truth • aligning rounds…");
+
+            var groundTruth =
+                await DemoGroundTruthAnalyzer.AnalyzeSourceAsync(
+                    downloaded,
+                    match.MatchId,
+                    match.FinishedUtc,
+                    nickname,
+                    FaceitSettingsStore.LoadSteamId64(),
+                    recommendationSession,
+                    ct);
+
+            GroundTruthStore.Save(
+                groundTruth);
+
+            DigitalTwinStore.ApplyGroundTruth(
+                groundTruth);
+
+            DemoLearningQueueStore.SetGroundTruth(
+                match.MatchId,
+                groundTruth);
+
             DemoLearningQueueStore.SetState(
                 match.MatchId,
                 "LEARNED",
@@ -245,7 +277,9 @@ public sealed class AutoDemoLearningService : IDisposable
                 importedDeaths: imported.Deaths.Count);
 
             StatusChanged?.Invoke(
-                $"AUTO DEMO • LEARNED ✓ {CoachEngine.PrettyMap(imported.Map)} • {imported.Deaths.Count} deaths");
+                $"AUTO DEMO • LEARNED ✓ {CoachEngine.PrettyMap(imported.Map)} • " +
+                $"{groundTruth.MatchedRounds} Ground Truth rounds • " +
+                $"{groundTruth.ExecutionDivergedRounds} diverged");
         }
         catch (OperationCanceledException)
         {
