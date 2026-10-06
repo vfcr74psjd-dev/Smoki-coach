@@ -267,6 +267,46 @@ public sealed class OpponentScoutForm : Form
         }
 
         lines.Add("");
+        lines.Add("PRE-MATCH COUNTER BRIEF");
+
+        if (demoIntel == null)
+        {
+            lines.Add(
+                "CT plan  • play standard setup until current-match evidence appears.");
+            lines.Add(
+                "T plan   • use spawn + Personal Playbook; no historical demo bias.");
+        }
+        else
+        {
+            var ctBrief =
+                demoIntel.TTopZoneShare >= 0.55 &&
+                demoIntel.TopTOpeningZone is "A" or "B" or "MID"
+                    ? $"CT plan  • be rotate-ready toward {demoIntel.TopTOpeningZone}; " +
+                      "hold info first, do not overrotate before contact."
+                    : "CT plan  • no strong historical T opening bias; keep standard setup.";
+
+            var tBrief =
+                demoIntel.CtTopZoneShare >= 0.45 &&
+                demoIntel.TopCtOpeningZone is "A" or "B" or "MID"
+                    ? demoIntel.CtOpeningKills > demoIntel.CtOpeningDeaths
+                        ? $"T plan   • avoid dry first contact into {demoIntel.TopCtOpeningZone}; " +
+                          "use utility/trade or hit a different opening lane."
+                        : $"T plan   • {demoIntel.TopCtOpeningZone} is a repeated CT contact area, " +
+                          "but they lose many openings there; punish only with trade support."
+                    : "T plan   • no strong historical CT opening bias; let spawn + playbook lead.";
+
+            lines.Add(ctBrief);
+            lines.Add(tBrief);
+
+            if (!string.IsNullOrWhiteSpace(report.BiggestThreat))
+            {
+                lines.Add(
+                    $"WATCH     • {report.BiggestThreat} is the top statistical threat; " +
+                    "do not turn this into a solo-hunt.");
+            }
+        }
+
+        lines.Add("");
         lines.Add(
             "Counter-Strat uses this only as weighted pre-match evidence. Current-match evidence takes priority after a few rounds.");
 
