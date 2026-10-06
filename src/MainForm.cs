@@ -57,6 +57,12 @@ public sealed class MainForm : Form
     private string _aiPrefetchIntent = "";
     private string _aiPrefetchedAdvice = "";
     private int? _trackedRound;
+    private int? _ownKills;
+    private int? _ownDeaths;
+    private int? _ownAssists;
+    private int? _lastOwnRound;
+    private int? _lastOwnHealth;
+    private string _ownStatsMap = "";
     private int? _spawnRound;
     private string _spawnMap = "";
     private float? _roundSpawnX;
@@ -2056,6 +2062,59 @@ public sealed class MainForm : Form
         {
             _lastGsiUtc = DateTime.UtcNow;
 
+            var incomingMap = s.Map ?? "";
+            var ownStatsMapChanged =
+                !string.IsNullOrWhiteSpace(_ownStatsMap) &&
+                !string.IsNullOrWhiteSpace(incomingMap) &&
+                !string.Equals(
+                    _ownStatsMap,
+                    incomingMap,
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (ownStatsMapChanged)
+            {
+                _ownKills = null;
+                _ownDeaths = null;
+                _ownAssists = null;
+                _lastOwnRound = null;
+                _lastOwnHealth = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(incomingMap))
+                _ownStatsMap = incomingMap;
+
+            if (!s.IsSpectating)
+            {
+                if (s.Kills.HasValue) _ownKills = s.Kills;
+                if (s.Deaths.HasValue) _ownDeaths = s.Deaths;
+                if (s.Assists.HasValue) _ownAssists = s.Assists;
+
+                _lastOwnRound = s.Round;
+                _lastOwnHealth = s.Health;
+            }
+            else
+            {
+                // Some GSI transitions jump straight from our live player
+                // state to a teammate's spectated state. If the last own
+                // snapshot was alive in this same live round, count exactly
+                // one death before freezing our personal match stats.
+                if (_lastOwnRound == s.Round &&
+                    (_lastOwnHealth ?? 0) > 0 &&
+                    string.Equals(
+                        s.RoundPhase,
+                        "live",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    _ownDeaths = (_ownDeaths ?? 0) + 1;
+                    _lastOwnHealth = 0;
+                }
+
+                // Never allow spectated teammate stats into our Progress data.
+                s.Kills = _ownKills;
+                s.Deaths = _ownDeaths;
+                s.Assists = _ownAssists;
+            }
+
             var spawnIdentityChanged =
                 _spawnRound != s.Round ||
                 !string.Equals(
@@ -2104,10 +2163,22 @@ public sealed class MainForm : Form
                 if (!string.IsNullOrWhiteSpace(s.RoundWinTeam))
                     _trackedRoundWinTeam = s.RoundWinTeam;
 
-                _trackedRoundLastHealth = s.Health ?? _trackedRoundLastHealth;
+                // Survival/carry data must also remain personal. Spectated
+                // teammate HP and weapons are never allowed into RoundRecord.
+                if (!s.IsSpectating)
+                {
+                    _trackedRoundLastHealth = s.Health ?? _trackedRoundLastHealth;
 
-                if ((s.Health ?? 0) > 0 && !string.IsNullOrWhiteSpace(s.PrimaryWeapon))
-                    _trackedRoundPrimaryWeapon = s.PrimaryWeapon;
+                    if ((s.Health ?? 0) > 0 &&
+                        !string.IsNullOrWhiteSpace(s.PrimaryWeapon))
+                    {
+                        _trackedRoundPrimaryWeapon = s.PrimaryWeapon;
+                    }
+                }
+                else if ((_lastOwnHealth ?? 0) <= 0)
+                {
+                    _trackedRoundLastHealth = 0;
+                }
 
                 TrackRoundPatternSnapshot(s);
             }
@@ -2128,8 +2199,14 @@ public sealed class MainForm : Form
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
                 _trackedRoundWinTeam = s.RoundWinTeam;
-                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
-                _trackedRoundLastHealth = s.Health ?? 0;
+                _trackedRoundPrimaryWeapon =
+                    !s.IsSpectating && (s.Health ?? 0) > 0
+                        ? s.PrimaryWeapon
+                        : "";
+                _trackedRoundLastHealth =
+                    !s.IsSpectating
+                        ? s.Health ?? 0
+                        : _lastOwnHealth ?? 0;
                 ResetRoundPatternTracking(s);
             }
             else if (_trackedRound == null && s.Round is int initialRound)
@@ -2138,8 +2215,14 @@ public sealed class MainForm : Form
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
                 _trackedRoundWinTeam = s.RoundWinTeam;
-                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
-                _trackedRoundLastHealth = s.Health ?? 0;
+                _trackedRoundPrimaryWeapon =
+                    !s.IsSpectating && (s.Health ?? 0) > 0
+                        ? s.PrimaryWeapon
+                        : "";
+                _trackedRoundLastHealth =
+                    !s.IsSpectating
+                        ? s.Health ?? 0
+                        : _lastOwnHealth ?? 0;
                 ResetRoundPatternTracking(s);
             }
 
@@ -2192,8 +2275,14 @@ public sealed class MainForm : Form
                 _roundStartKills = s.Kills ?? 0;
                 _roundStartDeaths = s.Deaths ?? 0;
                 _trackedRoundWinTeam = s.RoundWinTeam;
-                _trackedRoundPrimaryWeapon = (s.Health ?? 0) > 0 ? s.PrimaryWeapon : "";
-                _trackedRoundLastHealth = s.Health ?? 0;
+                _trackedRoundPrimaryWeapon =
+                    !s.IsSpectating && (s.Health ?? 0) > 0
+                        ? s.PrimaryWeapon
+                        : "";
+                _trackedRoundLastHealth =
+                    !s.IsSpectating
+                        ? s.Health ?? 0
+                        : _lastOwnHealth ?? 0;
                 ResetRoundPatternTracking(s);
             }
 
