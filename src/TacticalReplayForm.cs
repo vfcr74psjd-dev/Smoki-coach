@@ -542,9 +542,11 @@ public sealed class TacticalReplayForm : Form
             round.ActualRoute +
             "\n\n" +
             $"First contact: " +
-            $"{(string.IsNullOrWhiteSpace(round.FirstContactPlace) ? "—" : round.FirstContactPlace)}\n" +
+            $"{(string.IsNullOrWhiteSpace(round.FirstContactPlace) ? "—" : round.FirstContactPlace)}" +
+            $"{(round.SecondsToFirstContact is double contact ? $" • {contact:0.0}s" : "")}\n" +
             $"Death: " +
-            $"{(string.IsNullOrWhiteSpace(round.DeathPlace) ? "—" : round.DeathPlace)}";
+            $"{(string.IsNullOrWhiteSpace(round.DeathPlace) ? "—" : round.DeathPlace)}" +
+            $"{(round.SecondsAfterFirstKillToDeath is double postKill ? $" • {postKill:0.0}s after first kill" : "")}";
 
         _verdict.Text =
             $"{round.RouteEvidence} • {round.Confidence}\n" +
@@ -821,14 +823,30 @@ public sealed class TacticalReplayForm : Form
                     164),
                 7);
 
-            if (_round.OpeningDuel)
+            if (_round.FirstContactTick >= 0)
             {
                 var firstIndex =
-                    Math.Min(
-                        points.Length - 1,
-                        Math.Max(
-                            0,
-                            points.Length / 3));
+                    _round.Path
+                        .Select((sample,index) =>
+                            new
+                            {
+                                index,
+                                distance =
+                                    Math.Abs(
+                                        sample.Tick -
+                                        _round.FirstContactTick)
+                            })
+                        .OrderBy(x =>
+                            x.distance)
+                        .Select(x =>
+                            x.index)
+                        .FirstOrDefault();
+
+                firstIndex =
+                    Math.Clamp(
+                        firstIndex,
+                        0,
+                        points.Length - 1);
 
                 DrawPoint(
                     e.Graphics,
