@@ -124,6 +124,7 @@ public sealed class MainForm : Form
             () => _prefs.AutoAi,
             () => _latestAiAdvice,
             () => _rounds.ToArray(),
+            GetRoundIntent,
             ApplyPhoneSettings
         );
         _phoneServer.Start();
