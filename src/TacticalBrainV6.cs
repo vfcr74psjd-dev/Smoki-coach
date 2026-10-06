@@ -79,6 +79,7 @@ public static class TacticalBrainV6
         }
 
         var brain = SmartMatchBrainEngine.Analyze(rounds);
+        var scout = OpponentScoutStore.LoadLatest(snapshot.Map);
         var candidates = new List<Candidate>();
 
         for (var i = 0; i < options.Length; i++)
@@ -182,6 +183,25 @@ public static class TacticalBrainV6
             if (manualIntent)
                 score += 3;
 
+            if (scout != null)
+            {
+                var strongEnemyMap =
+                    scout.TeamMapWinRate is double scoutWr &&
+                    scoutWr >= 58;
+
+                var strongEnemyForm =
+                    scout.TeamRecentKd is double scoutKd &&
+                    scoutKd >= 1.10;
+
+                if (strongEnemyMap || strongEnemyForm)
+                {
+                    // Against a strong-scoped opponent profile, reduce hero-route
+                    // bias slightly and prefer trade/support variants.
+                    if (i == 0) score -= 4;
+                    if (i == options.Length - 1) score += 3;
+                }
+            }
+
             candidates.Add(
                 new Candidate(
                     route,
@@ -225,6 +245,7 @@ public static class TacticalBrainV6
         confidencePoints += Math.Min(30, rounds.Count * 4);
         if (best.Personal != null)
             confidencePoints += Math.Min(30, best.Personal.Attempts * 4);
+        if (scout != null) confidencePoints += 8;
         if (manualIntent) confidencePoints += 8;
 
         var confidence =
@@ -255,6 +276,18 @@ public static class TacticalBrainV6
 
         if (brain.Priority != "KEEP PLAN")
             whyParts.Add("brain: " + brain.Priority);
+
+        if (scout != null)
+        {
+            var scoutSignal =
+                scout.TeamMapWinRate is double scoutWr
+                    ? $"scout map WR {scoutWr:0}%"
+                    : scout.TeamRecentKd is double scoutKd
+                        ? $"scout KD {scoutKd:0.00}"
+                        : "scout loaded";
+
+            whyParts.Add(scoutSignal);
+        }
 
         if (manualIntent)
             whyParts.Add("manual " + effectiveIntent);
