@@ -217,6 +217,7 @@ public sealed class GroundTruthLabForm : Form
         _rounds.Columns.Add("ACTUAL ROUTE", 330);
         _rounds.Columns.Add("EVIDENCE", 105);
         _rounds.Columns.Add("VERDICT", 155);
+        _rounds.Columns.Add("DIAGNOSIS", 190);
         _rounds.Columns.Add("K/D", 65);
         _rounds.Columns.Add("CONTACT", 125);
         _rounds.Columns.Add("OUTCOME", 75);
@@ -363,6 +364,10 @@ public sealed class GroundTruthLabForm : Form
                     r.Verdict));
 
             item.SubItems.Add(
+                PrettyDiagnosis(
+                    r.Diagnosis));
+
+            item.SubItems.Add(
                 $"{r.Kills}/{r.Deaths}");
 
             item.SubItems.Add(
@@ -376,7 +381,7 @@ public sealed class GroundTruthLabForm : Form
                 $"{r.OutcomeScore * 100:0}");
 
             item.SubItems.Add(
-                r.Confidence);
+                $"{r.Confidence} • {r.EvidenceQualityScore * 100:0}");
 
             _rounds.Items.Add(item);
         }
@@ -394,6 +399,28 @@ public sealed class GroundTruthLabForm : Form
             ? _reports[index]
             : null;
     }
+
+    private static string PrettyDiagnosis(
+        string diagnosis)
+        => diagnosis switch
+        {
+            "COACH_PLAN_CONFIRMED" =>
+                "COACH PLAN CONFIRMED",
+            "COACH_PLAN_UNDERPERFORMING" =>
+                "COACH PLAN WEAK",
+            "COACH_PLAN_REVIEW" =>
+                "COACH PLAN REVIEW",
+            "EXECUTION_ROUTE_DIVERGENCE" =>
+                "EXECUTION: ROUTE",
+            "POST_IMPACT_OVEREXTEND" =>
+                "EXECUTION: POST-KILL",
+            "OPENING_DUEL_LOSS" =>
+                "OPENING DUEL LOSS",
+            "MIXED_RESULT" =>
+                "MIXED",
+            _ =>
+                "LOW EVIDENCE"
+        };
 
     private static string PrettyVerdict(
         string verdict)

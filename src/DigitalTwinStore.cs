@@ -708,6 +708,10 @@ public static class DigitalTwinStore
                         round.ContextKey))
                     continue;
 
+                if (!IsReliableGroundTruth(
+                        round))
+                    continue;
+
                 var decision = state.Decisions
                     .FirstOrDefault(x =>
                         x.ContextKey.Equals(
@@ -755,6 +759,21 @@ public static class DigitalTwinStore
 
             SaveUnsafe(state);
         }
+    }
+
+    private static bool IsReliableGroundTruth(
+        GroundTruthRoundVerdict round)
+    {
+        if (round.EvidenceQualityScore > 0)
+            return round.GroundTruthEligible;
+
+        return round.RouteEvidence != "UNKNOWN" &&
+               (round.Confidence.Equals(
+                    "MEDIUM",
+                    StringComparison.OrdinalIgnoreCase) ||
+                round.Confidence.Equals(
+                    "HIGH",
+                    StringComparison.OrdinalIgnoreCase));
     }
 
     public static void Clear()

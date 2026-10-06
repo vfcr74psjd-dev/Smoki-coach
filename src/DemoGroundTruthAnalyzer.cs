@@ -78,6 +78,14 @@ public sealed class GroundTruthRoundVerdict
     public string DeathPlace { get; set; } = "";
     public string ActualRoute { get; set; } = "";
     public double OutcomeScore { get; set; }
+    public string FirstContactZone { get; set; } = "";
+    public string DeathZone { get; set; } = "";
+    public int UtilityThrown { get; set; }
+    public bool BombPlantedByPlayer { get; set; }
+    public string BombSite { get; set; } = "";
+    public double EvidenceQualityScore { get; set; }
+    public bool GroundTruthEligible { get; set; }
+    public string Diagnosis { get; set; } = "LOW_EVIDENCE";
     public List<GroundTruthPathSample> Path { get; set; } = new();
 }
 
@@ -96,11 +104,15 @@ public sealed class GroundTruthMatchReport
     public int PlanReviewRounds { get; set; }
     public int PlanWorkedRounds { get; set; }
     public int UnknownRounds { get; set; }
+    public int GroundTruthEligibleRounds { get; set; }
+    public int ExecutionLeakRounds { get; set; }
+    public int LowQualityRounds { get; set; }
+    public double AverageEvidenceQuality { get; set; }
     public string BiggestFinding { get; set; } = "";
     public List<GroundTruthRoundVerdict> Rounds { get; set; } = new();
 
     public string Compact =>
-        $"{MatchedRounds} matched • {RouteSupportedRounds} route-confirmed • " +
+        $"{MatchedRounds} matched • {GroundTruthEligibleRounds} verified • " +
         $"{ExecutionDivergedRounds} diverged • {PlanReviewRounds} plan-review";
 }
 
@@ -179,12 +191,20 @@ public static class GroundTruthStore
     }
 
     public static PlanGroundTruthStats ContextStats(
-        string contextKey)
+        string contextKey,
+        string? excludeMatchId = null)
     {
         lock (Gate)
         {
             var rounds = LoadUnsafe()
-                .SelectMany(x => x.Rounds)
+                .Where(report =>
+                    string.IsNullOrWhiteSpace(excludeMatchId) ||
+                    !report.MatchId.Equals(
+                        excludeMatchId,
+                        StringComparison.OrdinalIgnoreCase))
+                .SelectMany(x =>
+                    x.Rounds ??
+                    new List<GroundTruthRoundVerdict>())
                 .Where(x =>
                     x.ContextKey.Equals(
                         contextKey,
@@ -193,7 +213,8 @@ public static class GroundTruthStore
 
             var supported = rounds
                 .Where(x =>
-                    x.RouteEvidence == "SUPPORTED")
+                    x.RouteEvidence == "SUPPORTED" &&
+                    IsReliableRound(x))
                 .ToList();
 
             return new PlanGroundTruthStats(
@@ -204,8 +225,24 @@ public static class GroundTruthStore
                 supported.Count(x =>
                     x.OutcomeScore <= 0.35),
                 rounds.Count(x =>
-                    x.RouteEvidence == "CONTRADICTED"));
+                    x.RouteEvidence == "CONTRADICTED" &&
+                    IsReliableRound(x)));
         }
+    }
+
+    private static bool IsReliableRound(
+        GroundTruthRoundVerdict round)
+    {
+        if (round.EvidenceQualityScore > 0)
+            return round.GroundTruthEligible;
+
+        return round.RouteEvidence != "UNKNOWN" &&
+               (round.Confidence.Equals(
+                    "MEDIUM",
+                    StringComparison.OrdinalIgnoreCase) ||
+                round.Confidence.Equals(
+                    "HIGH",
+                    StringComparison.OrdinalIgnoreCase));
     }
 
     public static void Clear()
@@ -233,10 +270,15 @@ public static class GroundTruthStore
             if (!File.Exists(FilePath))
                 return _cache = new();
 
-            return _cache =
+            var loaded =
                 JsonSerializer.Deserialize<List<GroundTruthMatchReport>>(
                     File.ReadAllText(FilePath))
                 ?? new();
+
+            foreach (var report in loaded)
+                report.Rounds ??= new();
+
+            return _cache = loaded;
         }
         catch
         {
@@ -844,20 +886,43 @@ public static class DemoGroundTruthAnalyzer
             var outcome =
                 OutcomeScore(demoRound);
 
+            var evidenceQuality =
+                EvidenceQualityScore(
+                    evidence,
+                    demoRound);
+
+            var groundTruthEligible =
+                evidence != "UNKNOWN" &&
+                evidenceQuality >= 0.60 &&
+                (demoRound.Path.Count >= 4 ||
+                 (demoRound.FirstContactTick >= 0 &&
+                  (demoRound.DeathTick >= 0 ||
+                   demoRound.FirstKillTick >= 0)));
+
+            var prior =
+                GroundTruthStore.ContextStats(
+                    trace.ContextKey,
+                    matchId);
+
             var verdict =
                 Verdict(
                     trace.ContextKey,
                     evidence,
                     outcome,
                     demoRound,
-                    GroundTruthStore.ContextStats(
-                        trace.ContextKey));
+                    prior,
+                    groundTruthEligible);
+
+            var diagnosis =
+                Diagnosis(
+                    evidence,
+                    verdict,
+                    demoRound,
+                    groundTruthEligible);
 
             var confidence =
                 EvidenceConfidence(
-                    evidence,
-                    demoRound.Path.Count,
-                    demoRound.FirstContactPlace);
+                    evidenceQuality);
 
             var routeText =
                 BuildActualRoute(
@@ -895,10 +960,26 @@ public static class DemoGroundTruthAnalyzer
                         demoRound.SecondsAfterFirstKillToDeath,
                     FirstContactPlace =
                         demoRound.FirstContactPlace,
+                    FirstContactZone =
+                        demoRound.FirstContactZone,
                     DeathPlace =
                         demoRound.DeathPlace,
+                    DeathZone =
+                        demoRound.DeathZone,
+                    UtilityThrown =
+                        demoRound.UtilityThrown,
+                    BombPlantedByPlayer =
+                        demoRound.BombPlantedByPlayer,
+                    BombSite =
+                        demoRound.BombSite,
                     ActualRoute = routeText,
                     OutcomeScore = outcome,
+                    EvidenceQualityScore =
+                        evidenceQuality,
+                    GroundTruthEligible =
+                        groundTruthEligible,
+                    Diagnosis =
+                        diagnosis,
                     Path = demoRound.Path
                         .ToList()
                 });
@@ -932,6 +1013,26 @@ public static class DemoGroundTruthAnalyzer
             report.Rounds.Count(x =>
                 x.RouteEvidence ==
                 "UNKNOWN");
+
+        report.GroundTruthEligibleRounds =
+            report.Rounds.Count(x =>
+                x.GroundTruthEligible);
+
+        report.ExecutionLeakRounds =
+            report.Rounds.Count(x =>
+                x.Diagnosis is
+                    "EXECUTION_ROUTE_DIVERGENCE" or
+                    "POST_IMPACT_OVEREXTEND");
+
+        report.LowQualityRounds =
+            report.Rounds.Count(x =>
+                !x.GroundTruthEligible);
+
+        report.AverageEvidenceQuality =
+            report.Rounds.Count == 0
+                ? 0
+                : report.Rounds.Average(x =>
+                    x.EvidenceQualityScore);
 
         report.BiggestFinding =
             BuildFinding(report);
@@ -1171,8 +1272,12 @@ public static class DemoGroundTruthAnalyzer
         string evidence,
         double outcome,
         GroundTruthDemoRound round,
-        PlanGroundTruthStats prior)
+        PlanGroundTruthStats prior,
+        bool groundTruthEligible)
     {
+        if (!groundTruthEligible)
+            return "INSUFFICIENT_EVIDENCE";
+
         if (evidence == "CONTRADICTED")
             return "EXECUTION_DIVERGED";
 
@@ -1211,22 +1316,101 @@ public static class DemoGroundTruthAnalyzer
     }
 
     private static string EvidenceConfidence(
-        string evidence,
-        int pathSamples,
-        string firstContact)
+        double quality)
     {
-        if (evidence == "UNKNOWN")
-            return "LOW";
-
-        if (pathSamples >= 8 &&
-            !string.IsNullOrWhiteSpace(
-                firstContact))
+        if (quality >= 0.80)
             return "HIGH";
 
-        if (pathSamples >= 4)
+        if (quality >= 0.60)
             return "MEDIUM";
 
         return "LOW";
+    }
+
+    private static double EvidenceQualityScore(
+        string evidence,
+        GroundTruthDemoRound round)
+    {
+        var score = 0.0;
+
+        if (evidence is
+            "SUPPORTED" or
+            "CONTRADICTED")
+            score += 0.22;
+
+        if (round.Path.Count >= 8)
+            score += 0.32;
+        else if (round.Path.Count >= 4)
+            score += 0.24;
+        else if (round.Path.Count >= 2)
+            score += 0.12;
+        else if (round.Path.Count == 1)
+            score += 0.05;
+
+        if (round.FirstContactTick >= 0 &&
+            !string.IsNullOrWhiteSpace(
+                round.FirstContactPlace))
+            score += 0.14;
+
+        if (!string.IsNullOrWhiteSpace(
+                round.Side))
+            score += 0.08;
+
+        if (round.Won.HasValue)
+            score += 0.08;
+
+        if (round.RoundStartTick >= 0)
+            score += 0.06;
+
+        if (round.Deaths == 0 ||
+            round.DeathTick >= 0)
+            score += 0.05;
+
+        if (round.Kills == 0 ||
+            round.FirstKillTick >= 0)
+            score += 0.05;
+
+        return Math.Clamp(
+            score,
+            0,
+            1);
+    }
+
+    private static string Diagnosis(
+        string evidence,
+        string verdict,
+        GroundTruthDemoRound round,
+        bool groundTruthEligible)
+    {
+        if (!groundTruthEligible)
+            return "LOW_EVIDENCE";
+
+        if (evidence == "CONTRADICTED")
+            return "EXECUTION_ROUTE_DIVERGENCE";
+
+        if (verdict ==
+            "POST_IMPACT_EXECUTION")
+            return "POST_IMPACT_OVEREXTEND";
+
+        if (round.OpeningDuel &&
+            round.OpeningResult ==
+                "DEATH" &&
+            round.Kills == 0)
+            return "OPENING_DUEL_LOSS";
+
+        return verdict switch
+        {
+            "PLAN_WORKED" =>
+                "COACH_PLAN_CONFIRMED",
+            "PLAN_UNDERPERFORMING" =>
+                "COACH_PLAN_UNDERPERFORMING",
+            "PLAN_REVIEW" =>
+                "COACH_PLAN_REVIEW",
+            "PLAN_MIXED" =>
+                "MIXED_RESULT",
+            _ =>
+                "LOW_EVIDENCE"
+        };
     }
 
     private static double OutcomeScore(
@@ -1297,6 +1481,23 @@ public static class DemoGroundTruthAnalyzer
     {
         if (report.MatchedRounds == 0)
             return "No recommendation rounds could be aligned to this demo.";
+
+        if (report.GroundTruthEligibleRounds == 0)
+        {
+            return
+                "Demo rounds aligned, but evidence quality is too low to recalibrate the Digital Twin.";
+        }
+
+        var underperforming =
+            report.Rounds.Count(x =>
+                x.Diagnosis ==
+                "COACH_PLAN_UNDERPERFORMING");
+
+        if (underperforming >= 2)
+        {
+            return
+                $"{underperforming} verified route-followed rounds point to an underperforming coach plan; this context should be de-weighted.";
+        }
 
         var postImpact =
             report.Rounds.Count(x =>
