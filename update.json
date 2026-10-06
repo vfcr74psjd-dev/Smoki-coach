@@ -1,8 +1,8 @@
 {
-  "sha256": "5E9CAB87EF7E3C06A589D920E2284D9324A20D71CA57DE06A38359594CCD833F",
-  "setupSha256": "5FD9A5EA783BD2531252292B0591E4A0EAA60AE2D6360A0C26ADDF30924A53AE",
-  "version": "5.1.2",
-  "setupUrl": "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v5.1.2/Sm0kiSoloCoach-Setup.exe",
-  "url": "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v5.1.2/Sm0kiSoloCoach.exe",
-  "notes": "Sm0ki Solo Coach 5.1.2"
+  "version": "5.1.3",
+  "url": "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v5.1.3/Sm0kiSoloCoach.exe",
+  "setupUrl": "https://github.com/vfcr74psjd-dev/Smoki-coach/releases/download/v5.1.3/Sm0kiSoloCoach-Setup.exe",
+  "sha256": "DD307E4DE5BFC3D59F14B1E6136200D15DE245CA614B6329E3E017A309C33B68",
+  "setupSha256": "B7A1865E8A066A3E938A4B7CD5997E2B5C7E30F38794ADA3232B23386771B7BD",
+  "notes": "Sm0ki Solo Coach 5.1.3"
 }
