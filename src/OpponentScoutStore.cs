@@ -13,11 +13,13 @@ public static class OpponentScoutStore
 
     private static readonly string FilePath =
         Path.Combine(Dir, "opponent-scout.json");
+    private static OpponentScoutReport? _cache;
 
     public static void Save(OpponentScoutReport report)
     {
         lock (Gate)
         {
+            _cache = report;
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -42,12 +44,18 @@ public static class OpponentScoutStore
         {
             try
             {
-                if (!File.Exists(FilePath))
-                    return null;
+                var report = _cache;
 
-                var report =
-                    JsonSerializer.Deserialize<OpponentScoutReport>(
-                        File.ReadAllText(FilePath));
+                if (report == null)
+                {
+                    if (!File.Exists(FilePath))
+                        return null;
+
+                    report =
+                        JsonSerializer.Deserialize<OpponentScoutReport>(
+                            File.ReadAllText(FilePath));
+                    _cache = report;
+                }
 
                 if (report == null)
                     return null;
@@ -77,6 +85,7 @@ public static class OpponentScoutStore
     {
         lock (Gate)
         {
+            _cache = null;
             try
             {
                 if (File.Exists(FilePath))
