@@ -222,6 +222,8 @@ public sealed class OpponentScoutForm : Form
             $"TEAM      avg ELO {report.TeamAverageElo:0}",
             $"SCOUT     {report.CompactSummary}",
             $"PREMADE   {report.PremadeSignal}",
+            $"TEAM FIT  {report.TeamFitRole} • {report.TeamFitConfidence}",
+            $"FIT WHY   {report.TeamFitReason}",
             "",
             "OPPONENTS"
         };
@@ -241,6 +243,23 @@ public sealed class OpponentScoutForm : Form
                 $"map {p.MapMatches,2}x / WR {mapWr,4}  " +
                 $"KD {(kd?.ToString("0.00") ?? "—"),4}  " +
                 $"threat {p.ThreatScore,3:0}");
+        }
+
+        lines.Add("");
+        lines.Add("TEAMMATES");
+        if (report.Teammates.Count == 0)
+        {
+            lines.Add("No teammate form sample.");
+        }
+        else
+        {
+            foreach (var p in report.Teammates)
+            {
+                lines.Add(
+                    $"{p.Nickname,-18} ELO {p.Elo,4}  " +
+                    $"recent KD {(p.RecentKd?.ToString("0.00") ?? "—"),4}  " +
+                    $"kills {(p.RecentKills?.ToString("0.0") ?? "—"),4}");
+            }
         }
 
         lines.Add("");
