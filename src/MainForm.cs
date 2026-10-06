@@ -366,6 +366,11 @@ public sealed class MainForm : Form
                 _current.Team);
             twin.ShowDialog(this);
         }));
+        nav.Controls.Add(MakeNavButton("◎  GROUND TRUTH", false, (_,__) =>
+        {
+            using var truth = new GroundTruthLabForm();
+            truth.ShowDialog(this);
+        }));
         nav.Controls.Add(MakeNavButton("⚙  TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
 
