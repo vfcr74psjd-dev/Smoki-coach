@@ -86,6 +86,7 @@ public sealed class MainForm : Form
     private GameSnapshot _current = new();
     private GameSnapshot? _previous;
     private readonly List<RoundRecord> _rounds = new();
+    private readonly Dictionary<int, TacticalPlanV6> _v6Plans = new();
 
     public MainForm()
     {
@@ -123,6 +124,7 @@ public sealed class MainForm : Form
             () => _prefs.AutoAi,
             () => _latestAiAdvice,
             () => _rounds.ToArray(),
+            GetRoundIntent,
             ApplyPhoneSettings
         );
         _phoneServer.Start();
@@ -238,7 +240,7 @@ public sealed class MainForm : Form
         });
         brand.Controls.Add(new Label
         {
-            Text = "SOLO COACH",
+            Text = "TACTICAL OS",
             Left = 14,
             Top = 36,
             Width = 145,
@@ -293,6 +295,28 @@ public sealed class MainForm : Form
                 _rounds.ToList(),
                 _faceitSnapshot);
             dialog.ShowDialog(this);
+        }));
+        nav.Controls.Add(MakeNavButton("SCOUT", false, (_,__) =>
+        {
+            using var scout = new OpponentScoutForm(
+                _current.Map,
+                FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
+            scout.ShowDialog(this);
+
+            if (_current.Round is int)
+                _ = RefreshAiCoachAsync(_current, true);
+        }));
+        nav.Controls.Add(MakeNavButton("MATCH LAB", false, (_,__) =>
+        {
+            using var lab = new ReviewLabForm(
+                FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
+            lab.ShowDialog(this);
+        }));
+        nav.Controls.Add(MakeNavButton("PLAYBOOK", false, (_,__) =>
+        {
+            using var playbook = new TacticalMemoryForm(
+                _current.Map);
+            playbook.ShowDialog(this);
         }));
         nav.Controls.Add(MakeNavButton("TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
@@ -397,7 +421,7 @@ public sealed class MainForm : Form
         liveTitle.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         liveTitle.Controls.Add(new Label
         {
-            Text = "LIVE COACH",
+            Text = "TACTICAL OS • LIVE",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 17, FontStyle.Bold),
             ForeColor = Color.White,
@@ -504,7 +528,7 @@ public sealed class MainForm : Form
         planHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         planHeader.Controls.Add(new Label
         {
-            Text = "NEXT ROUND",
+            Text = "TACTICAL DECISION",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(116, 122, 132)
@@ -520,7 +544,7 @@ public sealed class MainForm : Form
 
         planLayout.Controls.Add(new Label
         {
-            Text = "ONE CLEAR PLAN. PLAY IT.",
+            Text = "ONE PLAN • ONE FOCUS • NO NOISE",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 16.5f, FontStyle.Bold),
             ForeColor = Color.White,
@@ -1081,6 +1105,8 @@ public sealed class MainForm : Form
             "• Progress / session statistiko\n" +
             "• lokalni FACEIT history cache\n" +
             "• demo / heatmap history\n" +
+            "• Personal Playbook + Opponent Scout intel\n" +
+            "• cross-match Mistake Library\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1096,9 +1122,14 @@ public sealed class MainForm : Form
         SessionHistoryStore.Clear();
         FaceitHistoryStore.Clear();
         HeatMapStore.Clear();
+        AdaptivePlaybookStore.Clear();
+        OpponentScoutStore.Clear();
+        OpponentDemoIntelStore.Clear();
+        MistakeLibraryStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
+        _v6Plans.Clear();
         _history.Items.Clear();
         _history.Items.Add("Test data reset • waiting for completed rounds.");
 
@@ -1528,15 +1559,20 @@ public sealed class MainForm : Form
         var focus = _focus.SelectedItem?.ToString() ?? "More kills";
         var intent = GetRoundIntent(snapshot.Round);
 
-        // Every round gets a useful deterministic plan immediately.
-        var instant = CoachEngine.InstantRoundPlan(
+        // Tactical OS v6 makes the deterministic decision first. Local AI
+        // may refine wording, but route selection is never blocked by the model.
+        var tactical = TacticalBrainV6.Generate(
             snapshot,
             mode,
             role,
             focus,
             _rounds.ToList(),
-            intent
-        );
+            intent);
+
+        if (snapshot.Round is int tacticalRound)
+            _v6Plans[tacticalRound] = tactical;
+
+        var instant = tactical.RenderLegacyCompatible();
 
         var prefetched = TryUsePrefetchedAi(snapshot, intent, instant, out var immediate);
         _latestAiAdvice = immediate;
@@ -1790,6 +1826,14 @@ public sealed class MainForm : Form
         {
             var review = MatchReviewAnalyzer.Analyze(rounds);
             var development = PlayerDevelopmentEngine.Analyze(rounds);
+            var matchKey =
+                $"{map}|{_sessionStartedUtc:O}|{rounds.Count}|" +
+                $"{snapshot.CtScore?.ToString() ?? "—"}:{snapshot.TScore?.ToString() ?? "—"}";
+
+            MistakeLibraryStore.RecordMatch(
+                matchKey,
+                map,
+                rounds);
 
             SessionHistoryStore.Save(new SessionSummary
             {
@@ -1849,10 +1893,13 @@ public sealed class MainForm : Form
                 ? _trackedRoundPrimaryWeapon
                 : "",
             Intent = intent,
-            PositionPlan = CoachEngine.PositionPlan(
-                snapshot,
-                GetRoundIntent(tracked),
-                result),
+            PositionPlan =
+                _v6Plans.TryGetValue(tracked, out var reviewPlan)
+                    ? reviewPlan.Route
+                    : CoachEngine.PositionPlan(
+                        snapshot,
+                        GetRoundIntent(tracked),
+                        result),
             BombPlanted = _trackedBombPlanted,
             BombSite = _trackedBombSite,
             BombPlantSeconds = _trackedBombPlantSeconds
@@ -1976,23 +2023,53 @@ public sealed class MainForm : Form
 
     private string SessionInsight()
     {
+        var halftime =
+            HalftimeBrainV6.Analyze(
+                _current.Team,
+                _rounds);
+
+        if (halftime.Active)
+        {
+            return
+                $"HALFTIME BRAIN • {halftime.FromSide} → {halftime.ToSide} • " +
+                $"KEEP: {halftime.Keep} • CHANGE: {halftime.Change} • " +
+                $"OPEN: {halftime.Opening} • {halftime.Confidence}";
+        }
+
         var sample = _rounds.TakeLast(10).ToList();
         if (sample.Count == 0)
-            return "Po nekaj zaključenih rundah bom tukaj prikazal K/R, 0-kill runde, multi-kille in survival trend.";
+            return "TACTICAL OS learning • play normal CS2; route memory, current-match brain and cross-match leaks will appear here.";
 
         int kills = sample.Sum(r => r.KillsRound);
         int zero = sample.Count(r => r.KillsRound == 0);
         int multi = sample.Count(r => r.KillsRound >= 2);
         int deathRounds = sample.Count(r => r.DeathsRound > 0);
         double kr = (double)kills / sample.Count;
-        double survival = 100.0 * (sample.Count - deathRounds) / sample.Count;
+        double survival =
+            100.0 *
+            (sample.Count - deathRounds) /
+            sample.Count;
+
+        var recurring =
+            MistakeLibraryStore.TopRecurring(
+                _current.Map,
+                10);
+
+        var memory =
+            recurring.Matches >= 3
+                ? $" • MEMORY: {recurring.Label} {recurring.Matches}/{recurring.RecentMatchesRead} • {recurring.Trend}"
+                : "";
 
         string trend =
-            kr >= 1.0 ? "Impact je trenutno visok."
-            : kr >= 0.7 ? "Solidno — išči še en varen trade na rundo."
-            : "Zmanjšaj early deaths in igraj bližje trade razdalji.";
+            kr >= 1.0
+                ? "Impact high."
+                : kr >= 0.7
+                    ? "Solid • look for one more safe trade."
+                    : "Reduce early deaths • stay closer to trade distance.";
 
-        return $"Last {sample.Count} rounds • {kr:0.00} K/R • {zero} zero-kill • {multi} multi-kill • {survival:0}% survival. {trend}";
+        return
+            $"LAST {sample.Count} • {kr:0.00} K/R • {zero} zero-kill • " +
+            $"{multi} multi • {survival:0}% survival • {trend}{memory}";
     }
 
     private async Task CheckForUpdatesSilentAsync()
@@ -2194,6 +2271,7 @@ public sealed class MainForm : Form
                 _sessionStartedUtc = DateTime.UtcNow;
                 _rounds.Clear();
                 _roundIntents.Clear();
+                _v6Plans.Clear();
                 _matchReviewShownKey = "";
                 _trackedRound = s.Round;
                 _roundStartKills = s.Kills ?? 0;
@@ -2234,11 +2312,20 @@ public sealed class MainForm : Form
                     _sessionStartedUtc = DateTime.UtcNow;
                     _rounds.Clear();
                     _roundIntents.Clear();
+                    _v6Plans.Clear();
                     _matchReviewShownKey = "";
                 }
                 else
                 {
-                    _rounds.Add(new RoundRecord
+                    var completedRoute =
+                        _v6Plans.TryGetValue(pr, out var completedPlan)
+                            ? completedPlan.Route
+                            : CoachEngine.PositionPlan(
+                                _previous,
+                                GetRoundIntent(pr),
+                                _rounds);
+
+                    var completedRound = new RoundRecord
                     {
                         Round = pr,
                         Side = _previous.Team,
@@ -2260,14 +2347,25 @@ public sealed class MainForm : Form
                         Intent = string.IsNullOrWhiteSpace(GetRoundIntent(pr))
                             ? CoachEngine.AutoRoundIntent(_previous, _rounds)
                             : GetRoundIntent(pr),
-                        PositionPlan = CoachEngine.PositionPlan(
-                            _previous,
-                            GetRoundIntent(pr),
-                            _rounds),
+                        PositionPlan = completedRoute,
                         BombPlanted = _trackedBombPlanted,
                         BombSite = _trackedBombSite,
                         BombPlantSeconds = _trackedBombPlantSeconds
-                    });
+                    };
+
+                    _rounds.Add(completedRound);
+                    AdaptivePlaybookStore.Record(
+                        _previous.Map,
+                        completedRound,
+                        completedRoute);
+
+                    foreach (var oldPlanRound in _v6Plans.Keys
+                                 .Where(x => x <= pr - 2)
+                                 .ToList())
+                    {
+                        _v6Plans.Remove(oldPlanRound);
+                    }
+
                     while (_rounds.Count > 40) _rounds.RemoveAt(0);
                 }
 

@@ -126,16 +126,13 @@ public static class CoachEngine
         IReadOnlyList<RoundRecord> rounds,
         string intent)
     {
-        var variant = Math.Abs((s.Round ?? 0) % 3);
-        var buy = RoundBuyPlan(s);
-        var position = PositionPlan(s, intent, rounds);
-        var expectation = EnemyExpectation(s, rounds);
-        var action = CompactActionPlan(s, role, focus, variant, rounds);
-        var adapt = CompactAdaptPlan(rounds, mode);
-        var development = PlayerDevelopmentEngine.Analyze(rounds);
-        var brain = SmartMatchBrainEngine.Analyze(rounds);
-
-        return $"BUY: {buy}\nPOSITION: {position}\nEXPECT: {expectation}\nDO: {action}\nADAPT: {adapt}\nFOCUS: {brain.OneFocus}\nBRAIN: {brain.Priority}\nWHY: {brain.Evidence} • {brain.Confidence}\nDEV: {development.BiggestLeak}";
+        return TacticalBrainV6.Generate(
+            s,
+            mode,
+            role,
+            focus,
+            rounds,
+            intent).RenderLegacyCompatible();
     }
 
     public static string NormalizeRoundIntent(string? raw)
@@ -511,6 +508,21 @@ public static class CoachEngine
 
         return
             $"{defensePart}{pressure} • sample {recent.Count}/8 • confidence {defenseConfidence}";
+    }
+
+    public static string[] GetPositionOptions(
+        string map,
+        string side,
+        string intent)
+    {
+        intent = NormalizeRoundIntent(intent);
+
+        return string.Equals(
+                side,
+                "CT",
+                StringComparison.OrdinalIgnoreCase)
+            ? CtPositionOptions(map, intent)
+            : TPositionOptions(map, intent);
     }
 
     private static string[] CtPositionOptions(string map, string intent)

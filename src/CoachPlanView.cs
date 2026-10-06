@@ -64,13 +64,13 @@ public sealed class CoachPlanView : Control
         var y = 4;
 
         DrawPrimary(g, new Rectangle(pad, y, width, 72),
-            "POSITION",
+            "ROUTE / START",
             data["POSITION"],
             true);
         y += 80;
 
         DrawPrimary(g, new Rectangle(pad, y, width, 64),
-            "DO",
+            "FIRST MOVE",
             data["DO"],
             false);
         y += 72;
@@ -87,7 +87,7 @@ public sealed class CoachPlanView : Control
             data["BUY"],
             Color.FromArgb(210, 214, 220));
         DrawSlim(g, new Rectangle(pad + half + 8, y, half, 52),
-            "ADAPT",
+            "IF BLOCKED",
             data["ADAPT"],
             Muted);
     }
