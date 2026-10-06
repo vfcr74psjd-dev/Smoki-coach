@@ -45,9 +45,13 @@ public sealed class PhoneDashboardServer : IDisposable
         public string buyTitle { get; init; } = "";
         public string buyAdvice { get; init; } = "";
         public string position { get; init; } = "—";
+        public string routeLabel { get; init; } = "ROUTE";
         public string expect { get; init; } = "—";
         public string action { get; init; } = "—";
         public string adapt { get; init; } = "—";
+        public string planWhy { get; init; } = "";
+        public string planConfidence { get; init; } = "LOW";
+        public int decisionScore { get; init; }
         public int devScore { get; init; }
         public string devLeak { get; init; } = "Collecting evidence";
         public string devFocus { get; init; } = "Play normal CS2 while the coach learns.";
@@ -88,6 +92,7 @@ public sealed class PhoneDashboardServer : IDisposable
     private readonly Func<bool> _autoAiProvider;
     private readonly Func<string> _aiProvider;
     private readonly Func<IReadOnlyList<RoundRecord>> _roundsProvider;
+    private readonly Func<int?, string> _intentProvider;
     private readonly Action<string,string,string,bool> _settingsUpdater;
     private readonly string _accessToken =
         Convert.ToHexString(RandomNumberGenerator.GetBytes(10)).ToLowerInvariant();
@@ -104,6 +109,7 @@ public sealed class PhoneDashboardServer : IDisposable
         Func<bool> autoAiProvider,
         Func<string> aiProvider,
         Func<IReadOnlyList<RoundRecord>> roundsProvider,
+        Func<int?, string> intentProvider,
         Action<string,string,string,bool> settingsUpdater)
     {
         _snapshotProvider = snapshotProvider;
@@ -114,6 +120,7 @@ public sealed class PhoneDashboardServer : IDisposable
         _autoAiProvider = autoAiProvider;
         _aiProvider = aiProvider;
         _roundsProvider = roundsProvider;
+        _intentProvider = intentProvider;
         _settingsUpdater = settingsUpdater;
     }
 
@@ -305,34 +312,26 @@ public sealed class PhoneDashboardServer : IDisposable
             : kills.ToString("0.00");
 
         var advice = _aiProvider() ?? "";
-        var plan = ParseCoachAdvice(advice);
         var development = PlayerDevelopmentEngine.Analyze(rounds);
         var brain = SmartMatchBrainEngine.Analyze(rounds);
-        var (fallbackBuyTitle, fallbackBuyAdvice) =
-            CoachEngine.BuyAdvice(snapshot);
+        var intent = _intentProvider(snapshot.Round);
 
-        // BUY and EXPECT must never wait for Local AI. They are deterministic,
-        // round-critical signals and should update as soon as GSI/round history changes.
-        var buy = fallbackBuyAdvice;
-
-        // POSITION is deterministic and spawn-aware. Do not let an older
-        // AI-refined line hide a newly captured freeze-time spawn.
-        var position = CoachEngine.PositionPlan(
+        // Tactical OS is authoritative for every glance-critical field.
+        // Local AI can refine language elsewhere, but the phone never waits.
+        var tactical = TacticalBrainV6.Generate(
             snapshot,
-            "",
-            rounds);
+            mode,
+            role,
+            focus,
+            rounds,
+            intent);
 
-        var expect = CoachEngine.EnemyExpectation(snapshot, rounds);
-
-        var action = ValueOrFallback(
-            plan,
-            "DO",
-            "Waiting for next round plan");
-
-        var adapt = ValueOrFallback(
-            plan,
-            "ADAPT",
-            "—");
+        var (fallbackBuyTitle, _) = CoachEngine.BuyAdvice(snapshot);
+        var buy = tactical.Buy;
+        var position = tactical.Route;
+        var expect = tactical.Expect;
+        var action = tactical.FirstMove;
+        var adapt = tactical.Fallback;
 
         var weapon = !string.IsNullOrWhiteSpace(snapshot.PrimaryWeapon)
             ? CoachEngine.PrettyWeapon(snapshot.PrimaryWeapon)
@@ -417,21 +416,25 @@ public sealed class PhoneDashboardServer : IDisposable
             buyTitle = fallbackBuyTitle,
             buyAdvice = buy,
             position = position,
+            routeLabel = tactical.SideMode == "CT" ? "START POSITION" : "ROUTE",
             expect = expect,
             action = action,
             adapt = adapt,
+            planWhy = tactical.Why,
+            planConfidence = tactical.Confidence,
+            decisionScore = tactical.DecisionScore,
             devScore = development.OverallScore,
             devLeak = development.BiggestLeak,
             devFocus = development.MatchFocus,
             brainMistake = brain.Mistake,
             brainPriority = brain.Priority,
-            brainFocus = brain.OneFocus,
+            brainFocus = tactical.Focus,
             brainEvidence = brain.Evidence,
             brainConfidence = brain.Confidence,
             brainStatus = brain.FocusStatus,
             brainProgress = brain.FocusProgress,
             roundKey = roundKey,
-            planKey = roundKey + "|" + position + "|" + expect + "|" + action + "|" + buy + "|" + adapt + "|" + development.BiggestLeak,
+            planKey = roundKey + "|" + tactical.PlanKey + "|" + buy + "|" + expect + "|" + tactical.Confidence,
             aiTip = advice,
             tip =
                 CoachEngine.SoloTip(snapshot, mode) +
@@ -599,6 +602,16 @@ button{font:inherit}
 }
 .focusLabel{font-size:8px;font-weight:950;letter-spacing:.12em}
 .focusText{margin-top:4px;font-size:12px;line-height:1.25;font-weight:900}
+.row.fallback .value{font-size:13px;color:#c8ced6}
+.whyBtn{
+  margin-top:7px;padding:5px 7px;border-radius:7px;border:1px solid #34383d;
+  background:#101214;color:#848d98;font-size:8px;font-weight:900;letter-spacing:.06em
+}
+.whyBox{
+  display:none;margin-top:6px;padding-top:6px;border-top:1px solid #272b2f;
+  color:#8f98a3;font-size:9px;line-height:1.3;font-weight:750
+}
+.whyBox.open{display:block}
 .foot{
   display:flex;justify-content:space-between;gap:8px;
   margin:8px 2px 0;color:#69717b;font-size:8px;font-weight:800
@@ -683,7 +696,7 @@ button{font:inherit}
     </div>
 
     <div class="row position">
-      <div class="label">POSITION</div>
+      <div id="routeLabel" class="label">{{Html(state.routeLabel)}}</div>
       <div id="position" class="value">{{Html(state.position)}}</div>
     </div>
 
@@ -693,14 +706,21 @@ button{font:inherit}
     </div>
 
     <div class="row do">
-      <div class="label">DO</div>
+      <div class="label">FIRST MOVE</div>
       <div id="action" class="value">{{Html(state.action)}}</div>
+    </div>
+
+    <div class="row fallback">
+      <div class="label">IF BLOCKED / PRESSURED</div>
+      <div id="fallback" class="value">{{Html(state.adapt)}}</div>
     </div>
   </section>
 
   <section class="focus">
     <div class="focusLabel">FOCUS</div>
     <div id="brainFocus" class="focusText">{{Html(state.brainFocus)}}</div>
+    <button id="whyBtn" class="whyBtn" type="button">WHY • {{Html(state.planConfidence)}} • {{state.decisionScore}}</button>
+    <div id="whyBox" class="whyBox">{{Html(state.planWhy)}}</div>
   </section>
 
   <div class="foot">
@@ -783,10 +803,14 @@ function updateConnection(x){
 
 function applyPlan(x,flash){
   setText('buyAdvice',x.buyAdvice);
+  setText('routeLabel',x.routeLabel);
   setText('position',x.position);
   setText('expect',x.expect);
   setText('action',x.action);
+  setText('fallback',x.adapt);
   setText('brainFocus',x.brainFocus);
+  setText('whyBtn','WHY • '+(x.planConfidence||'LOW')+' • '+(x.decisionScore??0));
+  setText('whyBox',x.planWhy);
 
   if(flash){
     const card=$('tactic');
@@ -893,6 +917,7 @@ async function refreshLive(){
 }
 
 $('activate')?.addEventListener('click',()=>setMatchMode(!matchMode));
+$('whyBtn')?.addEventListener('click',()=>$('whyBox')?.classList.toggle('open'));
 
 $('settingsBtn')?.addEventListener('click',()=>$('settingsSheet')?.classList.add('open'));
 $('closeSettings')?.addEventListener('click',()=>$('settingsSheet')?.classList.remove('open'));
