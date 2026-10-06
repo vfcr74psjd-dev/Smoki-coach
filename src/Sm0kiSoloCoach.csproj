@@ -8,6 +8,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Sm0kiSoloCoach</AssemblyName>
     <RootNamespace>Sm0kiSoloCoach</RootNamespace>
+    <!-- UI controls are constructed in code, not serialized by the WinForms designer. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
