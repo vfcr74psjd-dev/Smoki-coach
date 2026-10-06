@@ -181,11 +181,17 @@ public sealed class MatchReviewForm : Form
         IReadOnlyList<RoundRecord> rounds)
     {
         var review = MatchReviewAnalyzer.Analyze(rounds);
+        var recurring =
+            MistakeLibraryStore.TopRecurring(
+                map,
+                10);
+        var routeReview =
+            BuildRouteReview(rounds);
 
-        Text = "Sm0ki Solo Coach • Match Review";
-        Width = 900;
-        Height = 620;
-        MinimumSize = new Size(760, 560);
+        Text = "Sm0ki Tactical OS • Match Lab";
+        Width = 1020;
+        Height = 760;
+        MinimumSize = new Size(860, 660);
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Bg;
@@ -196,12 +202,13 @@ public sealed class MatchReviewForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 5,
             Padding = new Padding(26, 22, 26, 22),
             BackColor = Bg
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
 
@@ -214,20 +221,20 @@ public sealed class MatchReviewForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
 
-        var title = new Label
+        header.Controls.Add(new Label
         {
-            Text = "MATCH REVIEW\n" +
-                   $"{CoachEngine.PrettyMap(map).ToUpperInvariant()}  •  {ctScore?.ToString() ?? "—"}:{tScore?.ToString() ?? "—"}",
+            Text = "MATCH LAB\n" +
+                   $"{CoachEngine.PrettyMap(map).ToUpperInvariant()}  •  " +
+                   $"{ctScore?.ToString() ?? "—"}:{tScore?.ToString() ?? "—"}",
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 19, FontStyle.Bold),
+            Font = new Font("Segoe UI", 20, FontStyle.Bold),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.MiddleLeft
-        };
-        header.Controls.Add(title, 0, 0);
+        }, 0, 0);
 
         header.Controls.Add(new Label
         {
-            Text = "POST-MATCH COACH",
+            Text = "TACTICAL OS • POST-MATCH",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             ForeColor = Orange,
@@ -243,30 +250,147 @@ public sealed class MatchReviewForm : Form
             Margin = new Padding(0, 4, 0, 8)
         };
         for (int i = 0; i < 5; i++)
-            metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
+            metrics.ColumnStyles.Add(
+                new ColumnStyle(
+                    SizeType.Percent,
+                    20));
 
-        metrics.Controls.Add(Metric("KILLS", review.Kills.ToString()), 0, 0);
-        metrics.Controls.Add(Metric("K / ROUND", review.KillsPerRound.ToString("0.00")), 1, 0);
-        metrics.Controls.Add(Metric("SURVIVAL", review.SurvivalRate.ToString("0") + "%"), 2, 0);
-        metrics.Controls.Add(Metric("0K ROUNDS", review.ZeroKillRounds.ToString()), 3, 0);
-        metrics.Controls.Add(Metric("MULTI", review.MultiKillRounds.ToString()), 4, 0);
+        metrics.Controls.Add(
+            Metric(
+                "KILLS",
+                review.Kills.ToString()),
+            0,
+            0);
+        metrics.Controls.Add(
+            Metric(
+                "K / ROUND",
+                review.KillsPerRound.ToString("0.00")),
+            1,
+            0);
+        metrics.Controls.Add(
+            Metric(
+                "SURVIVAL",
+                review.SurvivalRate.ToString("0") + "%"),
+            2,
+            0);
+        metrics.Controls.Add(
+            Metric(
+                "0K ROUNDS",
+                review.ZeroKillRounds.ToString()),
+            3,
+            0);
+        metrics.Controls.Add(
+            Metric(
+                "WIN RATE",
+                review.WinRate.ToString("0") + "%"),
+            4,
+            0);
         root.Controls.Add(metrics, 0, 1);
+
+        var routes = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0, 2, 0, 8)
+        };
+        routes.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.Percent,
+                50));
+        routes.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.Percent,
+                50));
+
+        routes.Controls.Add(
+            InsightCard(
+                "BEST ROUTE",
+                routeReview.Best,
+                Green),
+            0,
+            0);
+        routes.Controls.Add(
+            InsightCard(
+                "RISK ROUTE",
+                routeReview.Worst,
+                Red),
+            1,
+            0);
+        root.Controls.Add(routes, 0, 2);
 
         var insights = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
+            ColumnCount = 2,
+            RowCount = 2,
             Margin = Padding.Empty
         };
-        insights.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33f));
-        insights.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33f));
-        insights.RowStyles.Add(new RowStyle(SizeType.Percent, 33.34f));
+        insights.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.Percent,
+                50));
+        insights.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.Percent,
+                50));
+        insights.RowStyles.Add(
+            new RowStyle(
+                SizeType.Percent,
+                50));
+        insights.RowStyles.Add(
+            new RowStyle(
+                SizeType.Percent,
+                50));
 
-        insights.Controls.Add(InsightCard(review.BestTitle, review.BestDetail, Green), 0, 0);
-        insights.Controls.Add(InsightCard(review.TroubleTitle, review.TroubleDetail, Red), 0, 1);
-        insights.Controls.Add(InsightCard(review.FocusTitle, review.FocusDetail, Orange), 0, 2);
-        root.Controls.Add(insights, 0, 2);
+        insights.Controls.Add(
+            InsightCard(
+                review.BestTitle,
+                review.BestDetail,
+                Green),
+            0,
+            0);
+
+        insights.Controls.Add(
+            InsightCard(
+                review.TroubleTitle,
+                review.TroubleDetail,
+                Red),
+            1,
+            0);
+
+        var recurringDetail =
+            recurring.Matches > 0
+                ? $"{recurring.Matches}/{recurring.RecentMatchesRead} recent matches • " +
+                  $"{recurring.Trend} • {recurring.CoachingFocus}"
+                : "No repeated cross-match leak is strong enough yet.";
+
+        insights.Controls.Add(
+            InsightCard(
+                "MEMORY • " + recurring.Label,
+                recurringDetail,
+                Orange),
+            0,
+            1);
+
+        var protocolDetail =
+            recurring.Matches >= 3
+                ? recurring.CoachingFocus +
+                  " Keep this as the single focus until the recurrence drops."
+                : review.FocusDetail;
+
+        insights.Controls.Add(
+            InsightCard(
+                "NEXT MATCH PROTOCOL",
+                protocolDetail,
+                Color.FromArgb(
+                    142,
+                    183,
+                    255)),
+            1,
+            1);
+
+        root.Controls.Add(insights, 0, 3);
 
         var close = new Button
         {
@@ -277,14 +401,87 @@ public sealed class MatchReviewForm : Form
             FlatStyle = FlatStyle.Flat,
             BackColor = Orange,
             ForeColor = Color.Black,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Font = new Font(
+                "Segoe UI",
+                9,
+                FontStyle.Bold),
             Cursor = Cursors.Hand
         };
         close.FlatAppearance.BorderSize = 0;
         close.Click += (_,__) => Close();
-        root.Controls.Add(close, 0, 3);
+        root.Controls.Add(close, 0, 4);
 
         Controls.Add(root);
+    }
+
+    private sealed record RouteReview(
+        string Best,
+        string Worst);
+
+    private static RouteReview BuildRouteReview(
+        IReadOnlyList<RoundRecord> rounds)
+    {
+        var groups = rounds
+            .Where(r =>
+                !string.IsNullOrWhiteSpace(
+                    r.PositionPlan))
+            .GroupBy(
+                r => r.PositionPlan,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Route = g.Key,
+                Rounds = g.Count(),
+                Wins = g.Count(r => r.Won == true),
+                Kills = g.Sum(r => r.KillsRound),
+                Deaths = g.Sum(r => r.DeathsRound),
+                Survived = g.Count(r => r.Survived),
+                ZeroDeaths = g.Count(r =>
+                    r.DeathsRound > 0 &&
+                    r.KillsRound == 0)
+            })
+            .Where(x => x.Rounds >= 2)
+            .Select(x => new
+            {
+                x.Route,
+                x.Rounds,
+                x.Wins,
+                x.Kills,
+                x.Deaths,
+                x.Survived,
+                x.ZeroDeaths,
+                Score =
+                    2.0 * x.Wins / x.Rounds +
+                    0.8 * x.Survived / x.Rounds +
+                    0.5 * x.Kills / x.Rounds -
+                    0.7 * x.ZeroDeaths / x.Rounds
+            })
+            .ToList();
+
+        if (groups.Count == 0)
+        {
+            return new RouteReview(
+                "Need at least 2 tracked rounds on the same route.",
+                "No repeated route sample yet.");
+        }
+
+        var best =
+            groups.OrderByDescending(x => x.Score)
+                .First();
+        var worst =
+            groups.OrderBy(x => x.Score)
+                .First();
+
+        static string Format(dynamic x)
+            => $"{x.Route} • {x.Wins}W/{x.Rounds - x.Wins}L • " +
+               $"{(double)x.Kills / x.Rounds:0.00} K/R • " +
+               $"{100.0 * x.Survived / x.Rounds:0}% survival";
+
+        return new RouteReview(
+            Format(best),
+            groups.Count > 1
+                ? Format(worst)
+                : "Only one repeated route sample in this match.");
     }
 
     private static Control Metric(string title, string value)
