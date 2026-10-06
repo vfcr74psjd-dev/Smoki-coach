@@ -1335,6 +1335,7 @@ public sealed class MainForm : Form
             "• cross-match Mistake Library\n" +
             "• Digital Twin + coach self-learning + Training Mission\n" +
             "• persistent Auto Demo learning queue\n" +
+            "• recommendation traces + Demo Ground Truth\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1357,6 +1358,8 @@ public sealed class MainForm : Form
         DigitalTwinStore.Clear();
         TrainingMissionStore.Clear();
         DemoLearningQueueStore.Clear();
+        RecommendationTraceStore.Clear();
+        GroundTruthStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
@@ -2133,6 +2136,12 @@ public sealed class MainForm : Form
                 DevelopmentLeak = development.BiggestLeak,
                 DevelopmentFocus = development.MatchFocus
             });
+
+            RecommendationTraceStore.MarkEnded(
+                _sessionStartedUtc,
+                FaceitSettingsStore.LoadNickname() ?? _profile.Nickname,
+                map,
+                DateTime.UtcNow);
         }
         catch { }
     }
@@ -2688,6 +2697,13 @@ public sealed class MainForm : Form
                             completedPlan,
                             completedPlan.SpawnBias,
                             completedPlan.RoundType);
+
+                        RecommendationTraceStore.RecordRound(
+                            _sessionStartedUtc,
+                            FaceitSettingsStore.LoadNickname() ?? _profile.Nickname,
+                            _previous.Map,
+                            completedRound,
+                            completedPlan);
                     }
 
                     TrainingMissionStore.Update(
