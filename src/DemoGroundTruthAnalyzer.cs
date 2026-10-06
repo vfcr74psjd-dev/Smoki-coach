@@ -385,9 +385,10 @@ public static class DemoGroundTruthAnalyzer
             if (pawn == null)
                 return;
 
+            var csPawn = pawn as CCSPlayerPawn;
             var pos = pawn.Origin;
             var place =
-                pawn.LastPlaceName ?? "";
+                csPawn?.LastPlaceName ?? "";
 
             if (target.Side.Length == 0)
                 target.Side =
@@ -456,32 +457,6 @@ public static class DemoGroundTruthAnalyzer
             Current();
         };
 
-        demo.TickEnd += (_, tick) =>
-        {
-            if (round <= 0 ||
-                demo.GameRules.CSGamePhase ==
-                    CSGamePhase.WarmupRound)
-                return;
-
-            var tickNumber =
-                Convert.ToInt32(tick);
-
-            if (tickNumber % 64 != 0)
-                return;
-
-            var target =
-                demo.Entities.Players
-                    .FirstOrDefault(IsTarget);
-
-            if (target == null)
-                return;
-
-            AddPath(
-                Current(),
-                tickNumber,
-                target);
-        };
-
         demo.Source1GameEvents.PlayerDeath += e =>
         {
             if (demo.GameRules.CSGamePhase ==
@@ -518,10 +493,13 @@ public static class DemoGroundTruthAnalyzer
                     ? e.Attacker?.Pawn
                     : e.PlayerPawn;
 
+            var csPawn =
+                pawn as CCSPlayerPawn;
+
             if (pawn != null)
             {
                 var place =
-                    pawn.LastPlaceName ?? "";
+                    csPawn?.LastPlaceName ?? "";
 
                 if (string.IsNullOrWhiteSpace(
                         current.FirstContactPlace))
@@ -545,7 +523,7 @@ public static class DemoGroundTruthAnalyzer
                 if (pawn != null)
                 {
                     current.DeathPlace =
-                        pawn.LastPlaceName ?? "";
+                        csPawn?.LastPlaceName ?? "";
                     current.DeathZone =
                         OpponentDemoPatternAnalyzer
                             .NormalizeZone(
@@ -644,8 +622,7 @@ public static class DemoGroundTruthAnalyzer
 
             var winner =
                 WinnerSide(
-                    e.Winner?.ToString() ??
-                    "");
+                    e.Winner.ToString());
 
             if (winner.Length > 0)
                 current.Won =
@@ -662,7 +639,41 @@ public static class DemoGroundTruthAnalyzer
                 demo,
                 fs);
 
-        await reader.ReadAllAsync(ct);
+        await reader.StartReadingAsync(ct);
+
+        var lastSampleTick =
+            int.MinValue;
+
+        while (await reader.MoveNextAsync(ct))
+        {
+            if (round <= 0 ||
+                demo.GameRules.CSGamePhase ==
+                    CSGamePhase.WarmupRound)
+                continue;
+
+            var tickNumber =
+                demo.CurrentDemoTick.Value;
+
+            if (tickNumber < 0 ||
+                (lastSampleTick != int.MinValue &&
+                 tickNumber - lastSampleTick < 64))
+                continue;
+
+            var target =
+                demo.Entities.Players
+                    .FirstOrDefault(IsTarget);
+
+            if (target == null)
+                continue;
+
+            AddPath(
+                Current(),
+                tickNumber,
+                target);
+
+            lastSampleTick =
+                tickNumber;
+        }
 
         parsed.Rounds = rounds.Values
             .OrderBy(x => x.Round)
