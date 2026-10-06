@@ -73,6 +73,44 @@ public static class RadarCatalog
 
         var point = WorldToRadar(def, x, y);
 
+        // Dust2 spawns are laid out almost linearly across T/CT spawn.
+        // Bombsite-distance is a poor proxy here: a real B-friendly spawn can
+        // look closer to A after overview transforms. Use the actual spawn
+        // coordinate bands instead.
+        if (string.Equals(map, "de_dust2", StringComparison.OrdinalIgnoreCase))
+        {
+            var isCt = string.Equals(side, "CT", StringComparison.OrdinalIgnoreCase);
+
+            if (!isCt)
+            {
+                // Current CS2 T spawn set runs roughly x=-1181 .. -332.
+                // Lower x = tunnels/B side, higher x = Long side.
+                if (x <= -900)
+                    return new SpawnProfile(
+                        true, "B", "T spawn • B-fast", point.X, point.Y);
+
+                if (x >= -600)
+                    return new SpawnProfile(
+                        true, "A", "T spawn • LONG-fast", point.X, point.Y);
+
+                return new SpawnProfile(
+                    true, "NEUTRAL", "T spawn • MID/FLEX", point.X, point.Y);
+            }
+
+            // CT competitive spawns cluster around x=160 .. 351.
+            // Higher x naturally favors A/Long, lower x favors B/mid.
+            if (x >= 310)
+                return new SpawnProfile(
+                    true, "A", "CT spawn • A/LONG-fast", point.X, point.Y);
+
+            if (x <= 190)
+                return new SpawnProfile(
+                    true, "B", "CT spawn • B-fast", point.X, point.Y);
+
+            return new SpawnProfile(
+                true, "NEUTRAL", "CT spawn • MID/FLEX", point.X, point.Y);
+        }
+
         var bias = "NEUTRAL";
 
         // A/B on Nuke are vertically stacked, so 2D radar distance is not a

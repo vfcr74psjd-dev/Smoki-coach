@@ -221,6 +221,17 @@ public static class CoachEngine
             index = (index + 1) % options.Length;
         }
 
+        // Dust2 safety guard: if patterns still choose A from a B-side T spawn,
+        // never suggest the fast Long option. Use a slower support route instead.
+        if (!ct &&
+            string.Equals(s.Map, "de_dust2", StringComparison.OrdinalIgnoreCase) &&
+            spawn.Bias == "B" &&
+            intent == "A" &&
+            options.Length > 1)
+        {
+            index = options.Length - 1;
+        }
+
         return options[index];
     }
 
@@ -230,9 +241,15 @@ public static class CoachEngine
     {
         var recent = rounds.TakeLast(8).ToList();
         var ct = string.Equals(s.Team, "CT", StringComparison.OrdinalIgnoreCase);
+        var spawn = SpawnProfile(s);
 
         if (recent.Count == 0)
+        {
+            if (spawn.Known && spawn.Bias is "A" or "B")
+                return spawn.Bias;
+
             return (s.Round ?? 0) % 2 == 0 ? "A" : "B";
+        }
 
         if (ct)
         {
@@ -285,9 +302,19 @@ public static class CoachEngine
         var a = ScoreSite("A");
         var b = ScoreSite("B");
 
+        // Spawn is a route advantage, not an absolute command.
+        // On T side it gets meaningful weight; on CT side enemy patterns
+        // should have more authority, so the spawn bonus is smaller.
+        if (spawn.Known)
+        {
+            var spawnWeight = ct ? 2 : 4;
+
+            if (spawn.Bias == "A") a += spawnWeight;
+            if (spawn.Bias == "B") b += spawnWeight;
+        }
+
         if (a == b)
         {
-            var spawn = SpawnProfile(s);
             if (spawn.Known && spawn.Bias is "A" or "B")
                 return spawn.Bias;
 
