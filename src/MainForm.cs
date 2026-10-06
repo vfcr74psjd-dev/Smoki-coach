@@ -1302,6 +1302,7 @@ public sealed class MainForm : Form
             "• demo / heatmap history\n" +
             "• Personal Playbook + Opponent Scout intel\n" +
             "• cross-match Mistake Library\n" +
+            "• Digital Twin + coach self-learning + Training Mission\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1321,6 +1322,8 @@ public sealed class MainForm : Form
         OpponentScoutStore.Clear();
         OpponentDemoIntelStore.Clear();
         MistakeLibraryStore.Clear();
+        DigitalTwinStore.Clear();
+        TrainingMissionStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
@@ -2277,15 +2280,46 @@ public sealed class MainForm : Form
                 $"OPEN: {halftime.Opening} • {halftime.Confidence}";
         }
 
-        var sample = _rounds.TakeLast(10).ToList();
-        if (sample.Count == 0)
-            return "TACTICAL OS learning • play normal CS2; route memory, current-match brain and cross-match leaks will appear here.";
+        var side = string.IsNullOrWhiteSpace(_current.Team)
+            ? ""
+            : _current.Team;
 
-        int kills = sample.Sum(r => r.KillsRound);
-        int zero = sample.Count(r => r.KillsRound == 0);
-        int multi = sample.Count(r => r.KillsRound >= 2);
-        int deathRounds = sample.Count(r => r.DeathsRound > 0);
-        double kr = (double)kills / sample.Count;
+        var twin =
+            DigitalTwinStore.Analyze(
+                _current.Map,
+                side);
+
+        var mission =
+            TrainingMissionStore.Current(
+                _current.Map);
+
+        var sample =
+            _rounds.TakeLast(10).ToList();
+
+        if (sample.Count == 0)
+        {
+            var missionText =
+                !string.IsNullOrWhiteSpace(mission.Key)
+                    ? $" • MISSION: {mission.Label}"
+                    : "";
+
+            return
+                $"DIGITAL TWIN • {twin.Compact}{missionText} • play normal CS2; v7 learns both your outcomes and its own recommendation accuracy.";
+        }
+
+        int kills =
+            sample.Sum(r => r.KillsRound);
+        int zero =
+            sample.Count(r => r.KillsRound == 0);
+        int multi =
+            sample.Count(r => r.KillsRound >= 2);
+        int deathRounds =
+            sample.Count(r => r.DeathsRound > 0);
+
+        double kr =
+            (double)kills /
+            sample.Count;
+
         double survival =
             100.0 *
             (sample.Count - deathRounds) /
@@ -2298,19 +2332,32 @@ public sealed class MainForm : Form
 
         var memory =
             recurring.Matches >= 3
-                ? $" • MEMORY: {recurring.Label} {recurring.Matches}/{recurring.RecentMatchesRead} • {recurring.Trend}"
+                ? $" • MEMORY {recurring.Label} {recurring.Matches}/{recurring.RecentMatchesRead}"
+                : "";
+
+        var twinText =
+            twin.Samples > 0
+                ? $" • TWIN {twin.Archetype} {twin.Confidence} • best {twin.BestRoute}"
+                : " • TWIN LEARNING";
+
+        var missionText =
+            !string.IsNullOrWhiteSpace(mission.Key)
+                ? $" • MISSION {mission.SuccessRounds}/{mission.TrackedRounds} • streak {mission.CurrentStreak}"
                 : "";
 
         string trend =
             kr >= 1.0
                 ? "Impact high."
                 : kr >= 0.7
-                    ? "Solid • look for one more safe trade."
-                    : "Reduce early deaths • stay closer to trade distance.";
+                    ? "Solid impact."
+                    : "Reduce early deaths.";
 
         return
             $"LAST {sample.Count} • {kr:0.00} K/R • {zero} zero-kill • " +
-            $"{multi} multi • {survival:0}% survival • {trend}{memory}";
+            $"{multi} multi • {survival:0}% survival • {trend}" +
+            twinText +
+            missionText +
+            memory;
     }
 
     private async Task CheckForUpdatesSilentAsync()
@@ -2599,6 +2646,20 @@ public sealed class MainForm : Form
                         _previous.Map,
                         completedRound,
                         completedRoute);
+
+                    if (completedPlan != null)
+                    {
+                        DigitalTwinStore.RecordOutcome(
+                            _previous.Map,
+                            completedRound,
+                            completedPlan,
+                            completedPlan.SpawnBias,
+                            completedPlan.RoundType);
+                    }
+
+                    TrainingMissionStore.Update(
+                        _previous.Map,
+                        completedRound);
 
                     foreach (var oldPlanRound in _v6Plans.Keys
                                  .Where(x => x <= pr - 2)
