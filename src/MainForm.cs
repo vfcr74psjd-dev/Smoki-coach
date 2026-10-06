@@ -21,6 +21,7 @@ public sealed class MainForm : Form
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
     private AutoDemoInboxService? _demoInbox;
+    private AutoDemoLearningService? _autoDemoLearning;
     private Cs2ChatIntentWatcher? _chatIntentWatcher;
     private readonly Dictionary<int, string> _roundIntents = new();
     private readonly Label _phoneUrl = new();
@@ -133,6 +134,26 @@ public sealed class MainForm : Form
             () => FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
         _demoInbox.Start();
 
+        _autoDemoLearning = new AutoDemoLearningService(
+            () => FaceitSettingsStore.LoadNickname() ?? _profile.Nickname,
+            _demoInbox);
+        _autoDemoLearning.StatusChanged += status =>
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            try
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    _faceitTrend.Text = status;
+                    _sessionText.Text = SessionInsight();
+                }));
+            }
+            catch { }
+        };
+        _autoDemoLearning.Start();
+
         UpdateAiStatus();
 
         _uiPulseTimer.Interval = 750;
@@ -160,6 +181,8 @@ public sealed class MainForm : Form
             await CheckForUpdatesSilentAsync();
             _ = AiCoachService.WarmUpAsync();
             _ = LoadFaceitSnapshotAsync();
+            if (_autoDemoLearning != null)
+                _ = _autoDemoLearning.TickNowAsync();
         };
 
         FormClosing += (_,__) =>
@@ -171,6 +194,7 @@ public sealed class MainForm : Form
             _aiPrefetchCts?.Dispose();
             _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
+            _autoDemoLearning?.Dispose();
             _demoInbox?.Dispose();
             if (_chatIntentWatcher != null)
                 _chatIntentWatcher.IntentDetected -= OnChatIntentDetected;
@@ -1310,6 +1334,7 @@ public sealed class MainForm : Form
             "• Personal Playbook + Opponent Scout intel\n" +
             "• cross-match Mistake Library\n" +
             "• Digital Twin + coach self-learning + Training Mission\n" +
+            "• persistent Auto Demo learning queue\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1331,6 +1356,7 @@ public sealed class MainForm : Form
         MistakeLibraryStore.Clear();
         DigitalTwinStore.Clear();
         TrainingMissionStore.Clear();
+        DemoLearningQueueStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
