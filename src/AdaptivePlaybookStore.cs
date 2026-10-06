@@ -113,6 +113,41 @@ public static class AdaptivePlaybookStore
         }
     }
 
+    public static IReadOnlyList<AdaptiveRouteStat> Load(
+        string? map = null,
+        string? side = null)
+    {
+        lock (Gate)
+        {
+            return LoadUnsafe()
+                .Where(x =>
+                    (string.IsNullOrWhiteSpace(map) ||
+                     x.Map.Equals(
+                         map,
+                         StringComparison.OrdinalIgnoreCase)) &&
+                    (string.IsNullOrWhiteSpace(side) ||
+                     x.Side.Equals(
+                         side,
+                         StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(x => x.SuccessScore)
+                .ThenByDescending(x => x.Attempts)
+                .Select(x => new AdaptiveRouteStat
+                {
+                    Map = x.Map,
+                    Side = x.Side,
+                    Route = x.Route,
+                    Attempts = x.Attempts,
+                    Wins = x.Wins,
+                    Survived = x.Survived,
+                    Kills = x.Kills,
+                    Deaths = x.Deaths,
+                    ZeroImpactDeaths = x.ZeroImpactDeaths,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .ToList();
+        }
+    }
+
     public static void Record(
         string map,
         RoundRecord round,
