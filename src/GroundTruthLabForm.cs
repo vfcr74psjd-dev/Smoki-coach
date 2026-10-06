@@ -227,12 +227,20 @@ public sealed class GroundTruthLabForm : Form
             0,
             3);
 
+        var footer = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+
         var close = new Button
         {
             Text = "CLOSE",
             Width = 110,
             Height = 34,
-            Anchor = AnchorStyles.Right,
             FlatStyle = FlatStyle.Flat,
             BackColor =
                 Color.FromArgb(22, 25, 29),
@@ -243,8 +251,32 @@ public sealed class GroundTruthLabForm : Form
         close.Click +=
             (_,__) => Close();
 
+        var replay = new Button
+        {
+            Text = "TACTICAL REPLAY",
+            Width = 150,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor =
+                Color.FromArgb(52, 35, 20),
+            ForeColor =
+                Color.FromArgb(255, 184, 98)
+        };
+        replay.FlatAppearance.BorderColor =
+            Color.FromArgb(112, 72, 32);
+        replay.Click += (_,__) =>
+        {
+            var report = SelectedReport();
+            using var form = new TacticalReplayForm(
+                report?.MatchId);
+            form.ShowDialog(this);
+        };
+
+        footer.Controls.Add(close);
+        footer.Controls.Add(replay);
+
         root.Controls.Add(
-            close,
+            footer,
             0,
             4);
 
@@ -348,6 +380,17 @@ public sealed class GroundTruthLabForm : Form
         }
 
         _rounds.EndUpdate();
+    }
+
+    private GroundTruthMatchReport? SelectedReport()
+    {
+        var index =
+            _matches.SelectedIndex;
+
+        return index >= 0 &&
+               index < _reports.Count
+            ? _reports[index]
+            : null;
     }
 
     private static string PrettyVerdict(
