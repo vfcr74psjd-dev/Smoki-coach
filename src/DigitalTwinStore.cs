@@ -144,10 +144,11 @@ public sealed class CoachDecisionCalibration
 
 public sealed class DigitalTwinState
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public List<DigitalTwinRouteNode> Routes { get; set; } = new();
     public List<CoachDecisionCalibration> Decisions { get; set; } = new();
+    public List<string> AppliedGroundTruthMatchIds { get; set; } = new();
 }
 
 public sealed record DigitalTwinSnapshot(
@@ -691,6 +692,16 @@ public static class DigitalTwinStore
         {
             var state = LoadUnsafe();
 
+            state.AppliedGroundTruthMatchIds ??= new();
+
+            if (!string.IsNullOrWhiteSpace(report.MatchId) &&
+                state.AppliedGroundTruthMatchIds.Contains(
+                    report.MatchId,
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             foreach (var round in report.Rounds)
             {
                 if (string.IsNullOrWhiteSpace(
@@ -724,6 +735,19 @@ public static class DigitalTwinStore
 
                 decision.UpdatedUtc =
                     DateTime.UtcNow;
+            }
+
+            if (!string.IsNullOrWhiteSpace(report.MatchId))
+            {
+                state.AppliedGroundTruthMatchIds.Add(
+                    report.MatchId);
+
+                state.AppliedGroundTruthMatchIds =
+                    state.AppliedGroundTruthMatchIds
+                        .Distinct(
+                            StringComparer.OrdinalIgnoreCase)
+                        .TakeLast(250)
+                        .ToList();
             }
 
             state.UpdatedUtc =
@@ -812,6 +836,7 @@ public static class DigitalTwinStore
 
             loaded.Routes ??= new();
             loaded.Decisions ??= new();
+            loaded.AppliedGroundTruthMatchIds ??= new();
             return _cache = loaded;
         }
         catch
