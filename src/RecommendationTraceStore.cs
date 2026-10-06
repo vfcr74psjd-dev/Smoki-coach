@@ -15,6 +15,12 @@ public sealed class RecommendationRoundTrace
     public string SpawnBias { get; set; } = "";
     public string RoundType { get; set; } = "";
     public int DecisionScore { get; set; }
+    public string SimulationConfidence { get; set; } = "LOW";
+    public double SimulationMargin { get; set; }
+    public int SimulationCandidateCount { get; set; }
+    public string SimulationWinnerEvidence { get; set; } = "";
+    public string RunnerUpRoute { get; set; } = "";
+    public double RunnerUpScore { get; set; }
     public string ContextKey { get; set; } = "";
     public int KillsRound { get; set; }
     public int DeathsRound { get; set; }
@@ -109,6 +115,12 @@ public static class RecommendationTraceStore
             trace.SpawnBias = plan.SpawnBias;
             trace.RoundType = plan.RoundType;
             trace.DecisionScore = plan.DecisionScore;
+            trace.SimulationConfidence = plan.SimulationConfidence;
+            trace.SimulationMargin = plan.SimulationMargin;
+            trace.SimulationCandidateCount = plan.SimulationCandidateCount;
+            trace.SimulationWinnerEvidence = plan.SimulationWinnerEvidence;
+            trace.RunnerUpRoute = plan.RunnerUpRoute;
+            trace.RunnerUpScore = plan.RunnerUpScore;
             trace.ContextKey = BuildContextKey(
                 map,
                 round.Side,
@@ -329,6 +341,12 @@ public static class RecommendationTraceStore
                     SpawnBias = r.SpawnBias,
                     RoundType = r.RoundType,
                     DecisionScore = r.DecisionScore,
+                    SimulationConfidence = r.SimulationConfidence,
+                    SimulationMargin = r.SimulationMargin,
+                    SimulationCandidateCount = r.SimulationCandidateCount,
+                    SimulationWinnerEvidence = r.SimulationWinnerEvidence,
+                    RunnerUpRoute = r.RunnerUpRoute,
+                    RunnerUpScore = r.RunnerUpScore,
                     ContextKey = r.ContextKey,
                     KillsRound = r.KillsRound,
                     DeathsRound = r.DeathsRound,
