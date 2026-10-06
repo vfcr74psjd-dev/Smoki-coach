@@ -27,8 +27,65 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-      - name: Restore
+          dotnet-version: '9.0.x'
+      - name: Restore app
         run: dotnet restore src/Sm0kiSoloCoach.csproj
+
+      - name: Restore V7 smoke tests
+        run: dotnet restore tests/Sm0kiSoloCoach.Smoke/Sm0kiSoloCoach.Smoke.csproj
+
       - name: Build
         run: dotnet build src/Sm0kiSoloCoach.csproj -c Release --no-restore
+
+      - name: Build V7 smoke tests
+        run: dotnet build tests/Sm0kiSoloCoach.Smoke/Sm0kiSoloCoach.Smoke.csproj -c Release --no-restore
+
+      - name: Download pinned CS2 demo fixture
+        shell: pwsh
+        run: |
+          $url = "https://raw.githubusercontent.com/saul/demofile-net/fd59701a998cf30a46adc4942e063d90de73c07a/demos/14160.dem"
+          $path = Join-Path $env:RUNNER_TEMP "smoki-v7-smoke.dem"
+          Invoke-WebRequest -Uri $url -OutFile $path
+          if (-not (Test-Path $path)) { throw "CS2 demo fixture was not downloaded." }
+          if ((Get-Item $path).Length -lt 100000) { throw "CS2 demo fixture is unexpectedly small." }
+
+      - name: Run V7 Ground Truth smoke tests
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "smoki-v7-smoke.dem"
+          dotnet run --project tests/Sm0kiSoloCoach.Smoke/Sm0kiSoloCoach.Smoke.csproj -c Release --no-build -- $path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish self-contained V7 release candidate
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "smoki-v7-publish"
+          dotnet publish src/Sm0kiSoloCoach.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=7.0.0 -o $out
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $exe = Join-Path $out "Sm0kiSoloCoach.exe"
+          if (-not (Test-Path $exe)) { throw "V7 self-contained EXE was not created." }
+          if ((Get-Item $exe).Length -lt 20000000) { throw "V7 self-contained EXE is unexpectedly small." }
+
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $exe dist\Sm0kiSoloCoach.exe -Force
+
+      - name: Build V7 installer candidate
+        shell: pwsh
+        run: |
+          $issText = Get-Content installer\Sm0kiSoloCoach.iss -Raw
+          $issText = $issText -replace '#define MyAppVersion "[^"]+"', '#define MyAppVersion "7.0.0"'
+          Set-Content installer\Sm0kiSoloCoach.iss $issText -Encoding UTF8
+
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          & $iscc installer\Sm0kiSoloCoach.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $setup = "dist\Sm0kiSoloCoach-Setup.exe"
+          if (-not (Test-Path $setup)) { throw "V7 installer candidate was not created." }
+          if ((Get-Item $setup).Length -lt 10000000) { throw "V7 installer candidate is unexpectedly small." }

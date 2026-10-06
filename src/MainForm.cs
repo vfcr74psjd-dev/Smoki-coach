@@ -21,6 +21,7 @@ public sealed class MainForm : Form
     private readonly GsiServer _server = new();
     private PhoneDashboardServer? _phoneServer;
     private AutoDemoInboxService? _demoInbox;
+    private AutoDemoLearningService? _autoDemoLearning;
     private Cs2ChatIntentWatcher? _chatIntentWatcher;
     private readonly Dictionary<int, string> _roundIntents = new();
     private readonly Label _phoneUrl = new();
@@ -133,6 +134,26 @@ public sealed class MainForm : Form
             () => FaceitSettingsStore.LoadNickname() ?? _profile.Nickname);
         _demoInbox.Start();
 
+        _autoDemoLearning = new AutoDemoLearningService(
+            () => FaceitSettingsStore.LoadNickname() ?? _profile.Nickname,
+            _demoInbox);
+        _autoDemoLearning.StatusChanged += status =>
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            try
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    _faceitTrend.Text = status;
+                    _sessionText.Text = SessionInsight();
+                }));
+            }
+            catch { }
+        };
+        _autoDemoLearning.Start();
+
         UpdateAiStatus();
 
         _uiPulseTimer.Interval = 750;
@@ -160,6 +181,8 @@ public sealed class MainForm : Form
             await CheckForUpdatesSilentAsync();
             _ = AiCoachService.WarmUpAsync();
             _ = LoadFaceitSnapshotAsync();
+            if (_autoDemoLearning != null)
+                _ = _autoDemoLearning.TickNowAsync();
         };
 
         FormClosing += (_,__) =>
@@ -171,6 +194,7 @@ public sealed class MainForm : Form
             _aiPrefetchCts?.Dispose();
             _uiPulseTimer.Stop();
             _phoneServer?.Dispose();
+            _autoDemoLearning?.Dispose();
             _demoInbox?.Dispose();
             if (_chatIntentWatcher != null)
                 _chatIntentWatcher.IntentDetected -= OnChatIntentDetected;
@@ -334,6 +358,18 @@ public sealed class MainForm : Form
         {
             using var playbook = new TacticalMemoryForm(_current.Map);
             playbook.ShowDialog(this);
+        }));
+        nav.Controls.Add(MakeNavButton("◉  DIGITAL TWIN", false, (_,__) =>
+        {
+            using var twin = new DigitalTwinForm(
+                _current.Map,
+                _current.Team);
+            twin.ShowDialog(this);
+        }));
+        nav.Controls.Add(MakeNavButton("◎  GROUND TRUTH", false, (_,__) =>
+        {
+            using var truth = new GroundTruthLabForm();
+            truth.ShowDialog(this);
         }));
         nav.Controls.Add(MakeNavButton("⚙  TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
@@ -1302,6 +1338,9 @@ public sealed class MainForm : Form
             "• demo / heatmap history\n" +
             "• Personal Playbook + Opponent Scout intel\n" +
             "• cross-match Mistake Library\n" +
+            "• Digital Twin + coach self-learning + Training Mission\n" +
+            "• persistent Auto Demo learning queue\n" +
+            "• recommendation traces + Demo Ground Truth\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1321,6 +1360,11 @@ public sealed class MainForm : Form
         OpponentScoutStore.Clear();
         OpponentDemoIntelStore.Clear();
         MistakeLibraryStore.Clear();
+        DigitalTwinStore.Clear();
+        TrainingMissionStore.Clear();
+        DemoLearningQueueStore.Clear();
+        RecommendationTraceStore.Clear();
+        GroundTruthStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
@@ -2097,6 +2141,12 @@ public sealed class MainForm : Form
                 DevelopmentLeak = development.BiggestLeak,
                 DevelopmentFocus = development.MatchFocus
             });
+
+            RecommendationTraceStore.MarkEnded(
+                _sessionStartedUtc,
+                FaceitSettingsStore.LoadNickname() ?? _profile.Nickname,
+                map,
+                DateTime.UtcNow);
         }
         catch { }
     }
@@ -2277,15 +2327,46 @@ public sealed class MainForm : Form
                 $"OPEN: {halftime.Opening} • {halftime.Confidence}";
         }
 
-        var sample = _rounds.TakeLast(10).ToList();
-        if (sample.Count == 0)
-            return "TACTICAL OS learning • play normal CS2; route memory, current-match brain and cross-match leaks will appear here.";
+        var side = string.IsNullOrWhiteSpace(_current.Team)
+            ? ""
+            : _current.Team;
 
-        int kills = sample.Sum(r => r.KillsRound);
-        int zero = sample.Count(r => r.KillsRound == 0);
-        int multi = sample.Count(r => r.KillsRound >= 2);
-        int deathRounds = sample.Count(r => r.DeathsRound > 0);
-        double kr = (double)kills / sample.Count;
+        var twin =
+            DigitalTwinStore.Analyze(
+                _current.Map,
+                side);
+
+        var mission =
+            TrainingMissionStore.Current(
+                _current.Map);
+
+        var sample =
+            _rounds.TakeLast(10).ToList();
+
+        if (sample.Count == 0)
+        {
+            var initialMissionText =
+                !string.IsNullOrWhiteSpace(mission.Key)
+                    ? $" • MISSION: {mission.Label}"
+                    : "";
+
+            return
+                $"DIGITAL TWIN • {twin.Compact}{initialMissionText} • play normal CS2; v7 learns both your outcomes and its own recommendation accuracy.";
+        }
+
+        int kills =
+            sample.Sum(r => r.KillsRound);
+        int zero =
+            sample.Count(r => r.KillsRound == 0);
+        int multi =
+            sample.Count(r => r.KillsRound >= 2);
+        int deathRounds =
+            sample.Count(r => r.DeathsRound > 0);
+
+        double kr =
+            (double)kills /
+            sample.Count;
+
         double survival =
             100.0 *
             (sample.Count - deathRounds) /
@@ -2298,19 +2379,32 @@ public sealed class MainForm : Form
 
         var memory =
             recurring.Matches >= 3
-                ? $" • MEMORY: {recurring.Label} {recurring.Matches}/{recurring.RecentMatchesRead} • {recurring.Trend}"
+                ? $" • MEMORY {recurring.Label} {recurring.Matches}/{recurring.RecentMatchesRead}"
+                : "";
+
+        var twinText =
+            twin.Samples > 0
+                ? $" • TWIN {twin.Archetype} {twin.Confidence} • best {twin.BestRoute}"
+                : " • TWIN LEARNING";
+
+        var missionText =
+            !string.IsNullOrWhiteSpace(mission.Key)
+                ? $" • MISSION {mission.SuccessRounds}/{mission.TrackedRounds} • streak {mission.CurrentStreak}"
                 : "";
 
         string trend =
             kr >= 1.0
                 ? "Impact high."
                 : kr >= 0.7
-                    ? "Solid • look for one more safe trade."
-                    : "Reduce early deaths • stay closer to trade distance.";
+                    ? "Solid impact."
+                    : "Reduce early deaths.";
 
         return
             $"LAST {sample.Count} • {kr:0.00} K/R • {zero} zero-kill • " +
-            $"{multi} multi • {survival:0}% survival • {trend}{memory}";
+            $"{multi} multi • {survival:0}% survival • {trend}" +
+            twinText +
+            missionText +
+            memory;
     }
 
     private async Task CheckForUpdatesSilentAsync()
@@ -2600,6 +2694,27 @@ public sealed class MainForm : Form
                         completedRound,
                         completedRoute);
 
+                    if (completedPlan != null)
+                    {
+                        DigitalTwinStore.RecordOutcome(
+                            _previous.Map,
+                            completedRound,
+                            completedPlan,
+                            completedPlan.SpawnBias,
+                            completedPlan.RoundType);
+
+                        RecommendationTraceStore.RecordRound(
+                            _sessionStartedUtc,
+                            FaceitSettingsStore.LoadNickname() ?? _profile.Nickname,
+                            _previous.Map,
+                            completedRound,
+                            completedPlan);
+                    }
+
+                    TrainingMissionStore.Update(
+                        _previous.Map,
+                        completedRound);
+
                     foreach (var oldPlanRound in _v6Plans.Keys
                                  .Where(x => x <= pr - 2)
                                  .ToList())
@@ -2645,7 +2760,7 @@ public sealed class MainForm : Form
             if (requestAi)
             {
                 _lastAiRound = s.Round;
-                _lastAiMap = s.Map;
+                _lastAiMap = s.Map ?? "";
 
                 // Always regenerate the deterministic round plan so POSITION,
                 // EXPECT, BUY, DO and ADAPT advance every round. Auto AI only
