@@ -1093,6 +1093,7 @@ public sealed class MainForm : Form
             "• Progress / session statistiko\n" +
             "• lokalni FACEIT history cache\n" +
             "• demo / heatmap history\n" +
+            "• Personal Playbook + Opponent Scout intel\n" +
             "• trenutno lokalno rundno zgodovino\n\n" +
             "NE bo pobrisalo profila, FACEIT/OpenAI ključev ali nastavitev.\n" +
             "Tvoj dejanski FACEIT račun se s tem ne spremeni.\n\n" +
@@ -1110,6 +1111,7 @@ public sealed class MainForm : Form
         HeatMapStore.Clear();
         AdaptivePlaybookStore.Clear();
         OpponentScoutStore.Clear();
+        OpponentDemoIntelStore.Clear();
 
         _rounds.Clear();
         _roundIntents.Clear();
