@@ -289,6 +289,193 @@ public static class MapKnowledgeGraphV7
             95);
     }
 
+    public static IReadOnlyList<MapGraphNodeV7> ShortestPath(
+        string map,
+        string fromNodeId,
+        string toNodeId)
+    {
+        var graph = Get(map);
+
+        if (graph == null ||
+            string.IsNullOrWhiteSpace(fromNodeId) ||
+            string.IsNullOrWhiteSpace(toNodeId) ||
+            !graph.Nodes.ContainsKey(fromNodeId) ||
+            !graph.Nodes.ContainsKey(toNodeId))
+            return Array.Empty<MapGraphNodeV7>();
+
+        if (fromNodeId.Equals(
+                toNodeId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                graph.Nodes[fromNodeId]
+            };
+        }
+
+        var queue =
+            new Queue<string>();
+
+        var visited =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        var previous =
+            new Dictionary<string,string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        queue.Enqueue(fromNodeId);
+        visited.Add(fromNodeId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+
+            var neighbors =
+                graph.Edges
+                    .Where(edge =>
+                        edge.From.Equals(
+                            current,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        edge.To.Equals(
+                            current,
+                            StringComparison.OrdinalIgnoreCase))
+                    .Select(edge =>
+                        edge.From.Equals(
+                            current,
+                            StringComparison.OrdinalIgnoreCase)
+                            ? edge.To
+                            : edge.From)
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase);
+
+            foreach (var next in neighbors)
+            {
+                if (!visited.Add(next))
+                    continue;
+
+                previous[next] = current;
+
+                if (next.Equals(
+                        toNodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    var ids =
+                        new List<string>
+                        {
+                            next
+                        };
+
+                    var cursor = next;
+
+                    while (previous.TryGetValue(
+                               cursor,
+                               out var prior))
+                    {
+                        ids.Add(prior);
+
+                        if (prior.Equals(
+                                fromNodeId,
+                                StringComparison.OrdinalIgnoreCase))
+                            break;
+
+                        cursor = prior;
+                    }
+
+                    ids.Reverse();
+
+                    return ids
+                        .Where(graph.Nodes.ContainsKey)
+                        .Select(id =>
+                            graph.Nodes[id])
+                        .ToList();
+                }
+
+                queue.Enqueue(next);
+            }
+        }
+
+        return Array.Empty<MapGraphNodeV7>();
+    }
+
+    public static string BuildFallbackBridge(
+        string map,
+        string primaryRoute,
+        string alternateRoute)
+    {
+        var primary =
+            ResolveRoute(
+                map,
+                primaryRoute);
+
+        var alternate =
+            ResolveRoute(
+                map,
+                alternateRoute);
+
+        if (primary.Count == 0 ||
+            alternate.Count == 0)
+            return "";
+
+        var from =
+            primary[^1];
+
+        var to =
+            alternate[0];
+
+        var path =
+            ShortestPath(
+                map,
+                from.Id,
+                to.Id);
+
+        if (path.Count == 0)
+        {
+            // If the direct end→start bridge is unknown, try every known pair
+            // and use the shortest graph-supported connection.
+            IReadOnlyList<MapGraphNodeV7> best =
+                Array.Empty<MapGraphNodeV7>();
+
+            foreach (var a in primary)
+            foreach (var b in alternate)
+            {
+                var candidate =
+                    ShortestPath(
+                        map,
+                        a.Id,
+                        b.Id);
+
+                if (candidate.Count == 0)
+                    continue;
+
+                if (best.Count == 0 ||
+                    candidate.Count < best.Count)
+                {
+                    best = candidate;
+                }
+            }
+
+            path = best;
+        }
+
+        if (path.Count < 2)
+            return "";
+
+        var labels =
+            path
+                .Select(x => x.Label)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToList();
+
+        return labels.Count >= 2
+            ? string.Join(
+                " → ",
+                labels)
+            : "";
+    }
+
     public static string RouteEvidence(
         string map,
         string route,
