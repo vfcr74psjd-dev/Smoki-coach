@@ -335,6 +335,13 @@ public sealed class MainForm : Form
             using var playbook = new TacticalMemoryForm(_current.Map);
             playbook.ShowDialog(this);
         }));
+        nav.Controls.Add(MakeNavButton("◉  DIGITAL TWIN", false, (_,__) =>
+        {
+            using var twin = new DigitalTwinForm(
+                _current.Map,
+                _current.Team);
+            twin.ShowDialog(this);
+        }));
         nav.Controls.Add(MakeNavButton("⚙  TOOLS", false, (_,__) => ShowToolsHub()));
         sidebar.Controls.Add(nav, 0, 3);
 
