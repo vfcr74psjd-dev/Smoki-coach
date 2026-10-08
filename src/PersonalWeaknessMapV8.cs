@@ -277,4 +277,104 @@ public static class PersonalWeaknessMapV8
 
         return "Vary the first contact and preserve a safe second option.";
     }
+
+    public static double ScorePlan(
+        PersonalWeaknessMapV8Report report,
+        string side,
+        string route,
+        int variant,
+        int variantCount)
+    {
+        if (report.Samples < 4)
+            return 50;
+
+        var sameSide =
+            report.Side.Equals(
+                side,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!sameSide)
+            return 52;
+
+        var score = 55.0;
+
+        var exactWeakRoute =
+            !string.IsNullOrWhiteSpace(
+                report.Route) &&
+            report.Route != "—" &&
+            report.Route.Equals(
+                route,
+                StringComparison.OrdinalIgnoreCase);
+
+        var confidencePenalty =
+            report.Confidence switch
+            {
+                "HIGH" => 24,
+                "MEDIUM" => 17,
+                _ => 10
+            };
+
+        if (exactWeakRoute)
+            score -= confidencePenalty;
+
+        var direct =
+            IsDirectRoute(route);
+
+        if (report.Leak.Contains(
+                "OPENING",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            if (direct || variant == 0)
+                score -= 12;
+
+            if (variant ==
+                Math.Max(
+                    0,
+                    variantCount - 1))
+                score += 10;
+        }
+        else if (report.Leak.Contains(
+                     "POST-KILL",
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            if (variant == 0)
+                score -= 8;
+
+            if (variant ==
+                Math.Max(
+                    0,
+                    variantCount - 1))
+                score += 10;
+        }
+        else if (report.Leak.Contains(
+                     "ROUTE",
+                     StringComparison.OrdinalIgnoreCase) &&
+                 exactWeakRoute)
+        {
+            score -= 6;
+        }
+
+        return Math.Clamp(
+            score,
+            10,
+            95);
+    }
+
+    private static bool IsDirectRoute(
+        string route)
+    {
+        var r =
+            (route ?? "")
+                .ToLowerInvariant();
+
+        return r.Contains("first contact") ||
+               r.Contains("drugi kontakt") ||
+               r.Contains("opening") ||
+               r.Contains("long") ||
+               r.Contains("ramp") ||
+               r.Contains("banana") ||
+               r.Contains("main") ||
+               r.Contains("tunnel");
+    }
+
 }

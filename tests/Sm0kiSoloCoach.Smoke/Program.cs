@@ -13,6 +13,7 @@ internal static class Program
             TestOpponentDna();
             TestDecisionMode();
             TestWeaknessMap();
+            TestWeaknessPlanPenalty();
 
             if (args.Length != 1 ||
                 string.IsNullOrWhiteSpace(args[0]))
@@ -301,6 +302,40 @@ internal static class Program
         Require(
             weakness.Leak == "OPENING DUEL",
             "Verified Ground Truth diagnosis should drive the leak label.");
+    }
+
+    private static void TestWeaknessPlanPenalty()
+    {
+        var weakness =
+            new PersonalWeaknessMapV8Report(
+                "de_mirage",
+                "CT",
+                "ticket • A ramp line + escape",
+                "OPENING DUEL",
+                "8 route samples • 3 verified opening duel events",
+                "Use a safer second-contact hold.",
+                11,
+                "HIGH");
+
+        var weakDirect =
+            PersonalWeaknessMapV8.ScorePlan(
+                weakness,
+                "CT",
+                "ticket • A ramp line + escape",
+                0,
+                3);
+
+        var saferAlt =
+            PersonalWeaknessMapV8.ScorePlan(
+                weakness,
+                "CT",
+                "jungle • connector trade angle",
+                2,
+                3);
+
+        Require(
+            saferAlt > weakDirect,
+            "Predictive planner should de-weight a verified personal weakness route.");
     }
 
     private static async Task TestRealDemoFormatsAsync(

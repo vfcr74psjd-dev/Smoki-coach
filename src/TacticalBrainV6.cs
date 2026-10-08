@@ -138,6 +138,9 @@ public static class TacticalBrainV6
                 demoIntel);
         var halftime = HalftimeBrainV6.Analyze(snapshot.Team, rounds);
         var recurring = MistakeLibraryStore.TopRecurring(snapshot.Map, 10);
+        var weakness =
+            PersonalWeaknessMapV8.Analyze(
+                snapshot.Map);
         var twin = DigitalTwinStore.Analyze(snapshot.Map, sideMode);
         var mission = TrainingMissionStore.Current(snapshot.Map);
         var roundType = CoachEngine.ClassifyRound(snapshot);
@@ -519,6 +522,16 @@ public static class TacticalBrainV6
 
         if (recurring.Matches >= 3)
             whyParts.Add($"memory {recurring.Label}");
+
+        if (weakness.Samples >= 4 &&
+            weakness.Side.Equals(
+                sideMode,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            whyParts.Add(
+                "self-risk " +
+                weakness.Leak);
+        }
 
         if (twin.Samples >= 4)
             whyParts.Add($"twin {twin.Archetype} • {twin.Samples}R");

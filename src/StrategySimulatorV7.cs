@@ -9,6 +9,7 @@ public sealed record StrategyCandidateV7(
     double GroundTruthFit,
     double EnemyFit,
     double OpponentDnaFit,
+    double PersonalRiskFit,
     double CurrentMatchFit,
     double MapGraphFit,
     double EconomyFit,
@@ -72,6 +73,10 @@ public static class StrategySimulatorV7
                 snapshot.Map,
                 scout,
                 demoIntel);
+
+        var weakness =
+            PersonalWeaknessMapV8.Analyze(
+                snapshot.Map);
 
         var autoIntent =
             CoachEngine.AutoRoundIntent(
@@ -168,6 +173,14 @@ public static class StrategySimulatorV7
                         intent,
                         route);
 
+                var personalRiskFit =
+                    PersonalWeaknessMapV8.ScorePlan(
+                        weakness,
+                        side,
+                        route,
+                        i,
+                        options.Length);
+
                 var currentFit =
                     ScoreCurrentMatch(
                         side,
@@ -200,23 +213,25 @@ public static class StrategySimulatorV7
                 // T weights spawn/route conversion and entry-trade opportunity more.
                 var score =
                     side == "CT"
-                        ? spawnFit * 0.10 +
-                          twinFit * 0.18 +
-                          groundFit * 0.18 +
-                          enemyFit * 0.10 +
-                          dnaFit * 0.14 +
-                          currentFit * 0.16 +
-                          mapGraphFit * 0.07 +
-                          economyFit * 0.03 +
-                          disciplineFit * 0.04
-                        : spawnFit * 0.20 +
-                          twinFit * 0.17 +
+                        ? spawnFit * 0.09 +
+                          twinFit * 0.16 +
                           groundFit * 0.17 +
-                          enemyFit * 0.10 +
+                          enemyFit * 0.09 +
                           dnaFit * 0.12 +
-                          currentFit * 0.11 +
-                          mapGraphFit * 0.07 +
-                          economyFit * 0.03 +
+                          personalRiskFit * 0.12 +
+                          currentFit * 0.14 +
+                          mapGraphFit * 0.06 +
+                          economyFit * 0.02 +
+                          disciplineFit * 0.03
+                        : spawnFit * 0.18 +
+                          twinFit * 0.15 +
+                          groundFit * 0.16 +
+                          enemyFit * 0.09 +
+                          dnaFit * 0.11 +
+                          personalRiskFit * 0.10 +
+                          currentFit * 0.10 +
+                          mapGraphFit * 0.06 +
+                          economyFit * 0.02 +
                           disciplineFit * 0.03;
 
                 if (!manualIntent &&
@@ -237,9 +252,11 @@ public static class StrategySimulatorV7
                         gt,
                         demoIntel,
                         opponentDna,
+                        weakness,
                         side,
                         intent,
                         dnaFit,
+                        personalRiskFit,
                         currentFit,
                         mapGraphFit);
 
@@ -253,6 +270,7 @@ public static class StrategySimulatorV7
                         groundFit,
                         enemyFit,
                         dnaFit,
+                        personalRiskFit,
                         currentFit,
                         mapGraphFit,
                         economyFit,
@@ -274,6 +292,7 @@ public static class StrategySimulatorV7
                         : autoIntent,
                     "safe tradeable opening",
                     0,
+                    50,
                     50,
                     50,
                     50,
@@ -678,9 +697,11 @@ public static class StrategySimulatorV7
         PlanGroundTruthStats gt,
         OpponentDemoIntelReport? demo,
         OpponentDnaProfile opponentDna,
+        PersonalWeaknessMapV8Report weakness,
         string side,
         string intent,
         double dnaFit,
+        double personalRiskFit,
         double currentFit,
         double mapGraphFit)
     {
@@ -735,6 +756,21 @@ public static class StrategySimulatorV7
             parts.Add(
                 "enemy " +
                 opponentDna.Archetype);
+        }
+
+        if (personalRiskFit <= 40)
+            parts.Add("self-risk -");
+        else if (personalRiskFit >= 65)
+            parts.Add("self-fit +");
+
+        if (weakness.Samples >= 4 &&
+            weakness.Side.Equals(
+                side,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add(
+                "weakness " +
+                weakness.Leak);
         }
 
         if (currentFit >= 65)
