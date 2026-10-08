@@ -175,20 +175,33 @@ public static class StrategySimulatorV7
 
                 var disciplineFit =
                     ScoreDiscipline(
+                        side,
                         brain,
                         mission,
                         i,
                         options.Length);
 
+                // v8 Predictive Match Engine: CT and T are not the same job.
+                // CT weights verified hold/survival/enemy-pressure evidence more;
+                // T weights spawn/route conversion and entry-trade opportunity more.
                 var score =
-                    spawnFit * 0.20 +
-                    twinFit * 0.18 +
-                    groundFit * 0.17 +
-                    enemyFit * 0.14 +
-                    currentFit * 0.13 +
-                    mapGraphFit * 0.10 +
-                    economyFit * 0.04 +
-                    disciplineFit * 0.04;
+                    side == "CT"
+                        ? spawnFit * 0.12 +
+                          twinFit * 0.20 +
+                          groundFit * 0.20 +
+                          enemyFit * 0.18 +
+                          currentFit * 0.16 +
+                          mapGraphFit * 0.07 +
+                          economyFit * 0.03 +
+                          disciplineFit * 0.04
+                        : spawnFit * 0.22 +
+                          twinFit * 0.18 +
+                          groundFit * 0.18 +
+                          enemyFit * 0.13 +
+                          currentFit * 0.12 +
+                          mapGraphFit * 0.09 +
+                          economyFit * 0.04 +
+                          disciplineFit * 0.04;
 
                 if (!manualIntent &&
                     intent.Equals(
@@ -503,18 +516,61 @@ public static class StrategySimulatorV7
                 x.DeathsRound > 0 &&
                 x.KillsRound == 0);
 
-        var score =
-            40 +
-            25.0 * wins / recent.Count +
-            12.0 * survived / recent.Count +
-            12.0 *
+        var plants =
+            recent.Count(x =>
+                x.BombPlanted);
+
+        var winRate =
+            (double)wins /
+            recent.Count;
+
+        var survivalRate =
+            (double)survived /
+            recent.Count;
+
+        var killRate =
             Math.Clamp(
                 (double)kills /
-                Math.Max(1, recent.Count),
+                Math.Max(1, recent.Count) /
+                1.5,
                 0,
-                1.5) /
-            1.5 -
-            18.0 * zeroDeaths / recent.Count;
+                1);
+
+        var zeroRate =
+            (double)zeroDeaths /
+            recent.Count;
+
+        double score;
+
+        if (side.Equals(
+                "CT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            // CT: the best starting position must primarily convert rounds
+            // while keeping the player alive for the second contact/rotate.
+            score =
+                34 +
+                winRate * 30 +
+                survivalRate * 22 +
+                killRate * 10 -
+                zeroRate * 18;
+        }
+        else
+        {
+            // T: prioritize conversion + useful impact. A plant is a positive
+            // route signal even when the round itself is eventually lost.
+            var plantRate =
+                (double)plants /
+                recent.Count;
+
+            score =
+                32 +
+                winRate * 30 +
+                killRate * 18 +
+                survivalRate * 8 +
+                plantRate * 8 -
+                zeroRate * 16;
+        }
 
         return Math.Clamp(
             score,
@@ -555,6 +611,7 @@ public static class StrategySimulatorV7
     }
 
     private static double ScoreDiscipline(
+        string side,
         SmartMatchBrainReport brain,
         TrainingMissionState mission,
         int variant,
@@ -566,28 +623,33 @@ public static class StrategySimulatorV7
                 ? mission.Key
                 : brain.MistakeKey;
 
+        var ct =
+            side.Equals(
+                "CT",
+                StringComparison.OrdinalIgnoreCase);
+
         if (key is
             "discipline" or
             "post_impact")
         {
             if (variant == 0)
-                return 38;
+                return ct ? 32 : 40;
 
             if (variant ==
                 count - 1)
-                return 88;
+                return ct ? 92 : 84;
 
-            return 72;
+            return ct ? 78 : 70;
         }
 
         if (key == "impact")
         {
             return variant == 0
-                ? 82
-                : 60;
+                ? ct ? 74 : 86
+                : ct ? 66 : 58;
         }
 
-        return 65;
+        return ct ? 68 : 64;
     }
 
     private static string BuildEvidence(
@@ -647,11 +709,15 @@ public static class StrategySimulatorV7
         else if (mapGraphFit <= 45)
             parts.Add("graph ?");
 
-        return parts.Count == 0
-            ? "limited evidence"
-            : string.Join(
-                " • ",
-                parts.Take(4));
+        parts.Insert(
+            0,
+            side == "CT"
+                ? "CT hold model"
+                : "T conversion model");
+
+        return string.Join(
+            " • ",
+            parts.Take(4));
     }
 
     private static string RouteZone(
