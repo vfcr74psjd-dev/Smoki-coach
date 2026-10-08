@@ -22,6 +22,13 @@ public sealed record TacticalPlanV6(
     public string RunnerUpRoute { get; init; } = "";
     public double RunnerUpScore { get; init; }
 
+    public string DecisionMode =>
+        SimulationConfidence == "LOW"
+            ? "LOW EVIDENCE"
+            : SimulationMargin >= 6
+                ? "PREDICTIVE"
+                : "CLOSE CALL";
+
     public string PlanKey =>
         $"{SideMode}|{Intent}|{Route}|{FirstMove}|{Fallback}|{Focus}";
 
@@ -124,8 +131,16 @@ public static class TacticalBrainV6
 
         var brain = SmartMatchBrainEngine.Analyze(rounds);
         var scout = OpponentScoutStore.LoadLatest(snapshot.Map);
+        var opponentDna =
+            OpponentDnaEngine.Build(
+                snapshot.Map,
+                scout,
+                demoIntel);
         var halftime = HalftimeBrainV6.Analyze(snapshot.Team, rounds);
         var recurring = MistakeLibraryStore.TopRecurring(snapshot.Map, 10);
+        var weakness =
+            PersonalWeaknessMapV8.Analyze(
+                snapshot.Map);
         var twin = DigitalTwinStore.Analyze(snapshot.Map, sideMode);
         var mission = TrainingMissionStore.Current(snapshot.Map);
         var roundType = CoachEngine.ClassifyRound(snapshot);
@@ -492,6 +507,13 @@ public static class TacticalBrainV6
             whyParts.Add(demoSignal);
         }
 
+        if (opponentDna.Confidence != "LOW")
+        {
+            whyParts.Add(
+                "DNA " +
+                opponentDna.Archetype);
+        }
+
         if (manualIntent)
             whyParts.Add("manual " + effectiveIntent);
 
@@ -500,6 +522,16 @@ public static class TacticalBrainV6
 
         if (recurring.Matches >= 3)
             whyParts.Add($"memory {recurring.Label}");
+
+        if (weakness.Samples >= 4 &&
+            weakness.Side.Equals(
+                sideMode,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            whyParts.Add(
+                "self-risk " +
+                weakness.Leak);
+        }
 
         if (twin.Samples >= 4)
             whyParts.Add($"twin {twin.Archetype} • {twin.Samples}R");
