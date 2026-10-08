@@ -187,11 +187,14 @@ public sealed class MatchReviewForm : Form
                 10);
         var routeReview =
             BuildRouteReview(rounds);
+        var weakness =
+            PersonalWeaknessMapV8.Analyze(
+                map);
 
         Text = "Sm0ki Tactical OS • Match Lab";
         Width = 1020;
-        Height = 760;
-        MinimumSize = new Size(860, 660);
+        Height = 840;
+        MinimumSize = new Size(860, 720);
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Bg;
@@ -323,7 +326,7 @@ public sealed class MatchReviewForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 2,
+            RowCount = 3,
             Margin = Padding.Empty
         };
         insights.ColumnStyles.Add(
@@ -337,11 +340,15 @@ public sealed class MatchReviewForm : Form
         insights.RowStyles.Add(
             new RowStyle(
                 SizeType.Percent,
-                50));
+                33.33f));
         insights.RowStyles.Add(
             new RowStyle(
                 SizeType.Percent,
-                50));
+                33.33f));
+        insights.RowStyles.Add(
+            new RowStyle(
+                SizeType.Percent,
+                33.34f));
 
         insights.Controls.Add(
             InsightCard(
@@ -373,6 +380,17 @@ public sealed class MatchReviewForm : Form
             0,
             1);
 
+        insights.Controls.Add(
+            InsightCard(
+                "WEAKNESS MAP • " +
+                weakness.Leak,
+                weakness.Samples > 0
+                    ? $"{weakness.Side} • {weakness.Route} • {weakness.Evidence} • {weakness.Confidence}"
+                    : weakness.Evidence,
+                Red),
+            1,
+            1);
+
         var protocolDetail =
             recurring.Matches >= 3
                 ? recurring.CoachingFocus +
@@ -382,13 +400,28 @@ public sealed class MatchReviewForm : Form
         insights.Controls.Add(
             InsightCard(
                 "NEXT MATCH PROTOCOL",
-                protocolDetail,
+                weakness.Samples >= 4
+                    ? weakness.Focus
+                    : protocolDetail,
                 Color.FromArgb(
                     142,
                     183,
                     255)),
+            0,
+            2);
+
+        insights.Controls.Add(
+            InsightCard(
+                "PREDICTIVE NOTE",
+                weakness.Samples >= 4
+                    ? "The 8.0 round planner will de-weight contexts that repeatedly reproduce this leak."
+                    : "More verified rounds will make the predictive model more personal.",
+                Color.FromArgb(
+                    117,
+                    199,
+                    255)),
             1,
-            1);
+            2);
 
         root.Controls.Add(insights, 0, 3);
 

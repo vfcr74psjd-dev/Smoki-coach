@@ -12,6 +12,7 @@ internal static class Program
             TestFallbackBridge();
             TestOpponentDna();
             TestDecisionMode();
+            TestWeaknessMap();
 
             if (args.Length != 1 ||
                 string.IsNullOrWhiteSpace(args[0]))
@@ -226,6 +227,80 @@ internal static class Program
         Require(
             strong.DecisionMode == "PREDICTIVE",
             "High confidence with a clear margin should be predictive.");
+    }
+
+    private static void TestWeaknessMap()
+    {
+        var routes =
+            new List<DigitalTwinRouteNode>
+            {
+                new()
+                {
+                    Map = "de_mirage",
+                    Side = "CT",
+                    Route = "ticket • A ramp line + escape",
+                    Attempts = 8,
+                    Wins = 2,
+                    Survived = 2,
+                    ZeroImpactDeaths = 4,
+                    OutcomeScoreSum = 2.8
+                },
+                new()
+                {
+                    Map = "de_mirage",
+                    Side = "T",
+                    Route = "B Apps → B Site",
+                    Attempts = 8,
+                    Wins = 6,
+                    Survived = 5,
+                    ZeroImpactDeaths = 1,
+                    OutcomeScoreSum = 5.8
+                }
+            };
+
+        var report =
+            new GroundTruthMatchReport
+            {
+                Map = "de_mirage",
+                Rounds =
+                    new List<GroundTruthRoundVerdict>
+                    {
+                        new()
+                        {
+                            Side = "CT",
+                            RecommendedRoute = "ticket • A ramp line + escape",
+                            GroundTruthEligible = true,
+                            Diagnosis = "OPENING_DUEL_LOSS"
+                        },
+                        new()
+                        {
+                            Side = "CT",
+                            RecommendedRoute = "ticket • A ramp line + escape",
+                            GroundTruthEligible = true,
+                            Diagnosis = "OPENING_DUEL_LOSS"
+                        }
+                    }
+            };
+
+        var weakness =
+            PersonalWeaknessMapV8.Build(
+                "de_mirage",
+                routes,
+                new[] { report });
+
+        Require(
+            weakness.Side == "CT",
+            "Weakness map should identify the weaker CT route.");
+
+        Require(
+            weakness.Route.Contains(
+                "ticket",
+                StringComparison.OrdinalIgnoreCase),
+            "Weakness map should surface the weak route.");
+
+        Require(
+            weakness.Leak == "OPENING DUEL",
+            "Verified Ground Truth diagnosis should drive the leak label.");
     }
 
     private static async Task TestRealDemoFormatsAsync(
