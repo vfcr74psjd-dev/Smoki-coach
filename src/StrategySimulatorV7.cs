@@ -8,6 +8,7 @@ public sealed record StrategyCandidateV7(
     double TwinFit,
     double GroundTruthFit,
     double EnemyFit,
+    double OpponentDnaFit,
     double CurrentMatchFit,
     double MapGraphFit,
     double EconomyFit,
@@ -65,6 +66,12 @@ public static class StrategySimulatorV7
         var scout =
             OpponentScoutStore.LoadLatest(
                 snapshot.Map);
+
+        var opponentDna =
+            OpponentDnaEngine.Build(
+                snapshot.Map,
+                scout,
+                demoIntel);
 
         var autoIntent =
             CoachEngine.AutoRoundIntent(
@@ -154,6 +161,13 @@ public static class StrategySimulatorV7
                         demoIntel,
                         scout);
 
+                var dnaFit =
+                    OpponentDnaEngine.ScorePlan(
+                        opponentDna,
+                        side,
+                        intent,
+                        route);
+
                 var currentFit =
                     ScoreCurrentMatch(
                         side,
@@ -186,22 +200,24 @@ public static class StrategySimulatorV7
                 // T weights spawn/route conversion and entry-trade opportunity more.
                 var score =
                     side == "CT"
-                        ? spawnFit * 0.12 +
-                          twinFit * 0.20 +
-                          groundFit * 0.20 +
-                          enemyFit * 0.18 +
+                        ? spawnFit * 0.10 +
+                          twinFit * 0.18 +
+                          groundFit * 0.18 +
+                          enemyFit * 0.10 +
+                          dnaFit * 0.14 +
                           currentFit * 0.16 +
                           mapGraphFit * 0.07 +
                           economyFit * 0.03 +
                           disciplineFit * 0.04
-                        : spawnFit * 0.22 +
-                          twinFit * 0.18 +
-                          groundFit * 0.18 +
-                          enemyFit * 0.13 +
-                          currentFit * 0.12 +
-                          mapGraphFit * 0.09 +
-                          economyFit * 0.04 +
-                          disciplineFit * 0.04;
+                        : spawnFit * 0.20 +
+                          twinFit * 0.17 +
+                          groundFit * 0.17 +
+                          enemyFit * 0.10 +
+                          dnaFit * 0.12 +
+                          currentFit * 0.11 +
+                          mapGraphFit * 0.07 +
+                          economyFit * 0.03 +
+                          disciplineFit * 0.03;
 
                 if (!manualIntent &&
                     intent.Equals(
@@ -220,8 +236,10 @@ public static class StrategySimulatorV7
                         twinAdj,
                         gt,
                         demoIntel,
+                        opponentDna,
                         side,
                         intent,
+                        dnaFit,
                         currentFit,
                         mapGraphFit);
 
@@ -234,6 +252,7 @@ public static class StrategySimulatorV7
                         twinFit,
                         groundFit,
                         enemyFit,
+                        dnaFit,
                         currentFit,
                         mapGraphFit,
                         economyFit,
@@ -255,6 +274,7 @@ public static class StrategySimulatorV7
                         : autoIntent,
                     "safe tradeable opening",
                     0,
+                    50,
                     50,
                     50,
                     50,
@@ -657,8 +677,10 @@ public static class StrategySimulatorV7
         double twinAdjustment,
         PlanGroundTruthStats gt,
         OpponentDemoIntelReport? demo,
+        OpponentDnaProfile opponentDna,
         string side,
         string intent,
+        double dnaFit,
         double currentFit,
         double mapGraphFit)
     {
@@ -697,6 +719,22 @@ public static class StrategySimulatorV7
                 parts.Add(
                     $"enemy {zone}");
             }
+        }
+
+        if (dnaFit >= 65)
+            parts.Add(
+                "DNA +");
+        else if (dnaFit <= 40)
+            parts.Add(
+                "DNA -");
+
+        if (opponentDna.Confidence != "LOW" &&
+            !string.IsNullOrWhiteSpace(
+                opponentDna.Archetype))
+        {
+            parts.Add(
+                "enemy " +
+                opponentDna.Archetype);
         }
 
         if (currentFit >= 65)

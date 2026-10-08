@@ -50,6 +50,7 @@ public sealed class PhoneDashboardServer : IDisposable
         public string action { get; init; } = "—";
         public string adapt { get; init; } = "—";
         public string planWhy { get; init; } = "";
+        public string enemyRead { get; init; } = "Collecting opponent evidence";
         public string planConfidence { get; init; } = "LOW";
         public int decisionScore { get; init; }
         public bool halftimeActive { get; init; }
@@ -327,6 +328,9 @@ public sealed class PhoneDashboardServer : IDisposable
             focus,
             rounds,
             intent);
+        var opponentDna =
+            OpponentDnaEngine.Analyze(
+                snapshot.Map);
         var halftime = HalftimeBrainV6.Analyze(
             snapshot.Team,
             rounds);
@@ -426,6 +430,7 @@ public sealed class PhoneDashboardServer : IDisposable
             action = action,
             adapt = adapt,
             planWhy = tactical.Why,
+            enemyRead = opponentDna.Compact,
             planConfidence = tactical.Confidence,
             decisionScore = tactical.DecisionScore,
             halftimeActive = halftime.Active,
@@ -616,6 +621,12 @@ button{font:inherit}
 .row:last-child{border-bottom:0}
 .row.position{background:linear-gradient(180deg,#18130e,#111315)}
 .row.do{background:#15181a}
+.enemyRead{
+  margin-top:8px;padding:9px 11px;border:1px solid #293238;border-radius:12px;
+  background:#0f1417
+}
+.enemyRead .label{color:#75c7ff}
+.enemyRead .value{font-size:11px;color:#b8c9d5}
 .value{margin-top:5px;font-size:15px;line-height:1.24;font-weight:850}
 .row.position .value{font-size:20px;line-height:1.13;font-weight:950;letter-spacing:-.02em}
 .row.do .value{font-size:18px;line-height:1.18;font-weight:950}
@@ -716,6 +727,11 @@ button{font:inherit}
   <section class="buy">
     <div class="label">BUY</div>
     <div id="buyAdvice" class="buyText">{{Html(state.buyAdvice)}}</div>
+  </section>
+
+  <section class="enemyRead">
+    <div class="label">ENEMY READ</div>
+    <div id="enemyRead" class="value">{{Html(state.enemyRead)}}</div>
   </section>
 
   <section id="tactic" class="tactic">
@@ -844,6 +860,7 @@ function applyPlan(x,flash){
     'BEST PLAN • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
   );
   setText('buyAdvice',x.buyAdvice);
+  setText('enemyRead',x.enemyRead);
   setText('routeLabel',x.routeLabel);
   setText('position',x.position);
   setText('expect',x.expect);

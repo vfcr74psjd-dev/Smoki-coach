@@ -124,6 +124,11 @@ public static class TacticalBrainV6
 
         var brain = SmartMatchBrainEngine.Analyze(rounds);
         var scout = OpponentScoutStore.LoadLatest(snapshot.Map);
+        var opponentDna =
+            OpponentDnaEngine.Build(
+                snapshot.Map,
+                scout,
+                demoIntel);
         var halftime = HalftimeBrainV6.Analyze(snapshot.Team, rounds);
         var recurring = MistakeLibraryStore.TopRecurring(snapshot.Map, 10);
         var twin = DigitalTwinStore.Analyze(snapshot.Map, sideMode);
@@ -490,6 +495,13 @@ public static class TacticalBrainV6
                 : $"demo CT-open {demoIntel.TopCtOpeningZone} {demoIntel.CtTopZoneShare * 100:0}%";
 
             whyParts.Add(demoSignal);
+        }
+
+        if (opponentDna.Confidence != "LOW")
+        {
+            whyParts.Add(
+                "DNA " +
+                opponentDna.Archetype);
         }
 
         if (manualIntent)

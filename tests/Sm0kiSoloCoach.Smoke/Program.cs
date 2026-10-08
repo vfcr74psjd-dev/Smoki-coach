@@ -10,6 +10,7 @@ internal static class Program
             TestOrderedRouteSupport();
             TestWrongSiteContradiction();
             TestFallbackBridge();
+            TestOpponentDna();
 
             if (args.Length != 1 ||
                 string.IsNullOrWhiteSpace(args[0]))
@@ -95,6 +96,99 @@ internal static class Program
         Require(
             !string.IsNullOrWhiteSpace(bridge),
             "Map graph should produce a fallback bridge.");
+    }
+
+    private static void TestOpponentDna()
+    {
+        var scout =
+            new OpponentScoutReport
+            {
+                Map = "de_mirage",
+                TeamMapWinRate = 63,
+                TeamRecentKd = 1.16,
+                BiggestThreat = "enemy_star",
+                Confidence = "HIGH"
+            };
+
+        var demo =
+            new OpponentDemoIntelReport
+            {
+                Map = "de_mirage",
+                OpeningSamples = 14,
+                TopTOpeningZone = "A",
+                TopCtOpeningZone = "MID",
+                TOpeningKills = 7,
+                TOpeningDeaths = 3,
+                CtOpeningKills = 6,
+                CtOpeningDeaths = 4,
+                Confidence = "HIGH",
+                TContactZones =
+                    new Dictionary<string,int>(
+                        StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["A"] = 8,
+                        ["B"] = 2,
+                        ["MID"] = 2
+                    },
+                CtContactZones =
+                    new Dictionary<string,int>(
+                        StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["MID"] = 7,
+                        ["A"] = 2,
+                        ["B"] = 2
+                    },
+                OpeningKillsByPlayer =
+                    new Dictionary<string,int>(
+                        StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["enemy_star"] = 5
+                    }
+            };
+
+        var dna =
+            OpponentDnaEngine.Build(
+                "de_mirage",
+                scout,
+                demo);
+
+        Require(
+            dna.Confidence == "HIGH",
+            "Opponent DNA should be high confidence.");
+
+        Require(
+            dna.TPressureZone == "A" &&
+            dna.TPressureShare > 0.60,
+            "Opponent DNA should detect T-side A pressure.");
+
+        var ctA =
+            OpponentDnaEngine.ScorePlan(
+                dna,
+                "CT",
+                "A",
+                "ticket • A ramp line + escape");
+
+        var ctB =
+            OpponentDnaEngine.ScorePlan(
+                dna,
+                "CT",
+                "B",
+                "B apps • bench/van off-angle");
+
+        Require(
+            ctA > ctB,
+            "CT predictive model should reinforce the observed T pressure site.");
+
+        var tMid =
+            OpponentDnaEngine.ScorePlan(
+                dna,
+                "T",
+                "A",
+                "Mid → Connector → A Site");
+
+        Require(
+            tMid < 50,
+            "T predictive model should de-weight a strong CT opening-control zone.");
     }
 
     private static async Task TestRealDemoFormatsAsync(
