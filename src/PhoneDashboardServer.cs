@@ -720,7 +720,10 @@ button{font:inherit}
 
   <section id="tactic" class="tactic">
     <div class="tacticHead">
-      <div class="tacticTitle">TACTIC</div>
+      <div>
+        <div id="tacticTitle" class="tacticTitle">PRE-ROUND WIN PLAN</div>
+        <div id="planScore" class="lock">BEST PLAN • {{state.decisionScore}}/100 • {{Html(state.planConfidence)}}</div>
+      </div>
       <div id="planLock" class="lock">refreshes between rounds</div>
     </div>
 
@@ -834,6 +837,12 @@ function updateConnection(x){
 }
 
 function applyPlan(x,flash){
+  const live=isLivePhase(x.roundPhase);
+  setText('tacticTitle',live?'ROUND PLAN':'PRE-ROUND WIN PLAN');
+  setText(
+    'planScore',
+    'BEST PLAN • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
+  );
   setText('buyAdvice',x.buyAdvice);
   setText('routeLabel',x.routeLabel);
   setText('position',x.position);
@@ -999,6 +1008,14 @@ async function refreshLive(){
     setText('side',x.side);
     setText('round',x.round);
     updateConnection(x);
+
+    if(!isLivePhase(x.roundPhase)){
+      setText('tacticTitle','PRE-ROUND WIN PLAN');
+      setText(
+        'planScore',
+        'BEST PLAN • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
+      );
+    }
 
     const roundChanged=!!lastRoundKey&&!!x.roundKey&&x.roundKey!==lastRoundKey;
     const planChanged=!!lastPlanKey&&!!x.planKey&&x.planKey!==lastPlanKey;
