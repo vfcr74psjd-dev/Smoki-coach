@@ -530,6 +530,14 @@ html,body{
 }
 body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 button{font:inherit}
+.wakeState{
+  margin:7px 0 10px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:10px;background:#0f1215;color:var(--muted);
+  font-size:11px;font-weight:800;letter-spacing:.05em;text-align:center
+}
+.wakeState.ok{color:var(--green);border-color:#28523a;background:#0f1c16}
+.wakeState.warn{color:#ffcc7a;border-color:#59431f;background:#1b160d}
+.wakeState.bad{color:var(--red);border-color:#5b2c28;background:#1d1110}
 .app{max-width:680px;margin:auto;padding:0 10px 22px}
 .top{
   position:sticky;top:0;z-index:20;margin:0 -10px;
@@ -698,6 +706,7 @@ button{font:inherit}
   <div id="offline" class="offline">PC/CS2 telemetry ni svež. Coach čaka na povezavo.</div>
 
   <button id="activate" class="activate" type="button">START MATCH MODE</button>
+  <div id="wakeState" class="wakeState">SCREEN AWAKE • tap START MATCH MODE</div>
 
   <div id="halftime" class="halftime {{(state.halftimeActive ? "show" : "")}}">
     <span class="label">HALFTIME RESET</span>
@@ -767,7 +776,7 @@ button{font:inherit}
     </div>
 
     <div class="setting">
-      <div><b>Keep screen awake</b><small>Phone stays visible next to monitor</small></div>
+      <div><b>Keep screen awake</b><small>Native wake lock + LAN fallback while Match Mode is active</small></div>
       <button id="wakeToggle" class="toggle" type="button">ON</button>
     </div>
 
@@ -791,7 +800,10 @@ let lastPlanKey={{JsonSerializer.Serialize(state.planKey)}};
 let lastSuccess=Date.now();
 let matchMode=false;
 let wakeLock=null;
+let noSleepVideo=null;
+let wakeStrategy='OFF';
 let forcePlan=true;
+const noSleepMp4="data:video/mp4;base64,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";
 
 const prefs={
   vibration:localStorage.getItem('smoki_vibration')!=='0',
@@ -857,11 +869,99 @@ function beep(){
   }catch{}
 }
 
-async function ensureWake(){
-  if(!matchMode||!prefs.wake||!navigator.wakeLock)return;
+function setWakeState(text,kind){
+  const e=$('wakeState');
+  if(!e)return;
+  e.textContent=text;
+  e.className='wakeState '+(kind||'');
+}
+
+function ensureNoSleepVideo(){
+  if(noSleepVideo)return noSleepVideo;
+
+  const video=document.createElement('video');
+  video.setAttribute('title','Sm0ki screen awake fallback');
+  video.setAttribute('playsinline','');
+  video.setAttribute('webkit-playsinline','');
+  video.setAttribute('loop','');
+  video.setAttribute('disablepictureinpicture','');
+  video.preload='auto';
+  video.src=noSleepMp4;
+  video.style.position='fixed';
+  video.style.width='1px';
+  video.style.height='1px';
+  video.style.opacity='0.001';
+  video.style.pointerEvents='none';
+  video.style.left='-10px';
+  video.style.bottom='0';
+  document.body.appendChild(video);
+  noSleepVideo=video;
+  return video;
+}
+
+async function activateFallbackWake(){
+  if(!matchMode||!prefs.wake)return false;
+
   try{
-    if(!wakeLock)wakeLock=await navigator.wakeLock.request('screen');
+    const video=ensureNoSleepVideo();
+    await video.play();
+    wakeStrategy='VIDEO';
+    setWakeState('SCREEN AWAKE ✓ • LAN FALLBACK','ok');
+    return true;
+  }catch{
+    wakeStrategy='FAILED';
+    setWakeState('SCREEN AWAKE FAILED • tap MATCH MODE again','bad');
+    return false;
+  }
+}
+
+async function ensureWake(){
+  if(!matchMode||!prefs.wake){
+    setWakeState(
+      matchMode?'SCREEN AWAKE • disabled in settings':'SCREEN AWAKE • tap START MATCH MODE',
+      'warn');
+    return false;
+  }
+
+  if(wakeLock&&!wakeLock.released){
+    wakeStrategy='NATIVE';
+    setWakeState('SCREEN AWAKE ✓ • NATIVE','ok');
+    return true;
+  }
+
+  if(window.isSecureContext&&navigator.wakeLock){
+    try{
+      wakeLock=await navigator.wakeLock.request('screen');
+      wakeStrategy='NATIVE';
+      setWakeState('SCREEN AWAKE ✓ • NATIVE','ok');
+
+      wakeLock.addEventListener('release',()=>{
+        wakeLock=null;
+        if(matchMode&&prefs.wake&&document.visibilityState==='visible'){
+          activateFallbackWake();
+        }
+      });
+
+      return true;
+    }catch{}
+  }
+
+  return await activateFallbackWake();
+}
+
+async function disableWake(){
+  try{await wakeLock?.release()}catch{}
+  wakeLock=null;
+
+  try{
+    noSleepVideo?.pause();
+    if(noSleepVideo)noSleepVideo.currentTime=0;
   }catch{}
+
+  wakeStrategy='OFF';
+  setWakeState(
+    matchMode?'SCREEN AWAKE • disabled in settings':'SCREEN AWAKE • tap START MATCH MODE',
+    'warn');
 }
 
 async function setMatchMode(on){
@@ -878,8 +978,7 @@ async function setMatchMode(on){
       try{await document.documentElement.requestFullscreen?.()}catch{}
     }
   }else{
-    try{await wakeLock?.release()}catch{}
-    wakeLock=null;
+    await disableWake();
   }
 }
 
@@ -963,7 +1062,7 @@ $('wakeToggle')?.addEventListener('click',async()=>{
   localStorage.setItem('smoki_wake',prefs.wake?'1':'0');
   setToggle('wakeToggle',prefs.wake);
   if(prefs.wake)await ensureWake();
-  else{try{await wakeLock?.release()}catch{}wakeLock=null;}
+  else await disableWake();
 });
 $('fullscreenToggle')?.addEventListener('click',()=>{
   prefs.fullscreen=!prefs.fullscreen;
@@ -979,8 +1078,8 @@ $('reconnect')?.addEventListener('click',()=>{
 
 document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible'){
-    wakeLock=null;
-    await ensureWake();
+    if(wakeLock?.released)wakeLock=null;
+    if(matchMode&&prefs.wake)await ensureWake();
     refreshLive();
   }
 });
@@ -989,6 +1088,7 @@ setToggle('vibrationToggle',prefs.vibration);
 setToggle('soundToggle',prefs.sound);
 setToggle('wakeToggle',prefs.wake);
 setToggle('fullscreenToggle',prefs.fullscreen);
+setWakeState('SCREEN AWAKE • tap START MATCH MODE','warn');
 
 refreshLive();
 setInterval(refreshLive,800);
