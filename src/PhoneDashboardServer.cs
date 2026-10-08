@@ -52,6 +52,9 @@ public sealed class PhoneDashboardServer : IDisposable
         public string planWhy { get; init; } = "";
         public string enemyRead { get; init; } = "Collecting opponent evidence";
         public string planConfidence { get; init; } = "LOW";
+        public string planMode { get; init; } = "LOW EVIDENCE";
+        public string alternatePlan { get; init; } = "";
+        public int alternateScore { get; init; }
         public int decisionScore { get; init; }
         public bool halftimeActive { get; init; }
         public string halftimeText { get; init; } = "";
@@ -432,6 +435,11 @@ public sealed class PhoneDashboardServer : IDisposable
             planWhy = tactical.Why,
             enemyRead = opponentDna.Compact,
             planConfidence = tactical.Confidence,
+            planMode = tactical.DecisionMode,
+            alternatePlan = tactical.RunnerUpRoute,
+            alternateScore =
+                (int)Math.Round(
+                    tactical.RunnerUpScore),
             decisionScore = tactical.DecisionScore,
             halftimeActive = halftime.Active,
             halftimeText = halftime.Active
@@ -617,6 +625,10 @@ button{font:inherit}
 }
 .tacticTitle{font-size:9px;font-weight:950;letter-spacing:.14em}
 .lock{font-size:8px;color:#727b86;font-weight:850}
+.altPlan{
+  margin-top:3px;font-size:8px;color:#8e99a5;font-weight:800;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
 .row{padding:11px 13px;border-bottom:1px solid #22262a}
 .row:last-child{border-bottom:0}
 .row.position{background:linear-gradient(180deg,#18130e,#111315)}
@@ -738,7 +750,8 @@ button{font:inherit}
     <div class="tacticHead">
       <div>
         <div id="tacticTitle" class="tacticTitle">PRE-ROUND WIN PLAN</div>
-        <div id="planScore" class="lock">BEST PLAN • {{state.decisionScore}}/100 • {{Html(state.planConfidence)}}</div>
+        <div id="planScore" class="lock">{{Html(state.planMode)}} • {{state.decisionScore}}/100 • {{Html(state.planConfidence)}}</div>
+        <div id="altPlan" class="altPlan">{{(string.IsNullOrWhiteSpace(state.alternatePlan) ? "" : "ALT • " + state.alternateScore + "/100 • " + Html(state.alternatePlan))}}</div>
       </div>
       <div id="planLock" class="lock">refreshes between rounds</div>
     </div>
@@ -857,7 +870,13 @@ function applyPlan(x,flash){
   setText('tacticTitle',live?'ROUND PLAN':'PRE-ROUND WIN PLAN');
   setText(
     'planScore',
-    'BEST PLAN • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
+    (x.planMode||'LOW EVIDENCE')+' • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
+  );
+  setText(
+    'altPlan',
+    x.alternatePlan
+      ? 'ALT • '+(x.alternateScore??0)+'/100 • '+x.alternatePlan
+      : ''
   );
   setText('buyAdvice',x.buyAdvice);
   setText('enemyRead',x.enemyRead);
@@ -1030,7 +1049,13 @@ async function refreshLive(){
       setText('tacticTitle','PRE-ROUND WIN PLAN');
       setText(
         'planScore',
-        'BEST PLAN • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
+        (x.planMode||'LOW EVIDENCE')+' • '+(x.decisionScore??0)+'/100 • '+(x.planConfidence||'LOW')
+      );
+      setText(
+        'altPlan',
+        x.alternatePlan
+          ? 'ALT • '+(x.alternateScore??0)+'/100 • '+x.alternatePlan
+          : ''
       );
     }
 

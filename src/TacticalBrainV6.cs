@@ -22,6 +22,13 @@ public sealed record TacticalPlanV6(
     public string RunnerUpRoute { get; init; } = "";
     public double RunnerUpScore { get; init; }
 
+    public string DecisionMode =>
+        SimulationConfidence == "LOW"
+            ? "LOW EVIDENCE"
+            : SimulationMargin >= 6
+                ? "PREDICTIVE"
+                : "CLOSE CALL";
+
     public string PlanKey =>
         $"{SideMode}|{Intent}|{Route}|{FirstMove}|{Fallback}|{Focus}";
 

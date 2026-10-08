@@ -11,6 +11,7 @@ internal static class Program
             TestWrongSiteContradiction();
             TestFallbackBridge();
             TestOpponentDna();
+            TestDecisionMode();
 
             if (args.Length != 1 ||
                 string.IsNullOrWhiteSpace(args[0]))
@@ -189,6 +190,42 @@ internal static class Program
         Require(
             tMid < 50,
             "T predictive model should de-weight a strong CT opening-control zone.");
+    }
+
+    private static void TestDecisionMode()
+    {
+        var low =
+            new TacticalPlanV6(
+                "T",
+                "A",
+                "buy",
+                "route",
+                "first",
+                "expect",
+                "fallback",
+                "focus",
+                "why",
+                "LOW",
+                55)
+            {
+                SimulationConfidence = "LOW",
+                SimulationMargin = 2
+            };
+
+        Require(
+            low.DecisionMode == "LOW EVIDENCE",
+            "Low simulation confidence must be visible to the phone.");
+
+        var strong =
+            low with
+            {
+                SimulationConfidence = "HIGH",
+                SimulationMargin = 8
+            };
+
+        Require(
+            strong.DecisionMode == "PREDICTIVE",
+            "High confidence with a clear margin should be predictive.");
     }
 
     private static async Task TestRealDemoFormatsAsync(
