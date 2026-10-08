@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using Sm0kiSoloCoach;
+using System.Text.Json;
 
 internal static class Program
 {
@@ -14,6 +15,7 @@ internal static class Program
             TestDecisionMode();
             TestWeaknessMap();
             TestWeaknessPlanPenalty();
+            await TestPhoneDashboardAsync();
 
             if (args.Length != 1 ||
                 string.IsNullOrWhiteSpace(args[0]))
@@ -336,6 +338,158 @@ internal static class Program
         Require(
             saferAlt > weakDirect,
             "Predictive planner should de-weight a verified personal weakness route.");
+    }
+
+    private static async Task TestPhoneDashboardAsync()
+    {
+        var snapshot =
+            new GameSnapshot
+            {
+                PlayerName = "Sm0ki",
+                Team = "CT",
+                Map = "de_mirage",
+                MapPhase = "live",
+                Round = 4,
+                RoundPhase = "freezetime",
+                CtScore = 2,
+                TScore = 2,
+                Health = 100,
+                Armor = 100,
+                Helmet = true,
+                Money = 4800,
+                Kills = 5,
+                Deaths = 3,
+                Assists = 1,
+                Weapon = "m4a1_silencer",
+                PrimaryWeapon = "m4a1_silencer",
+                Timestamp = DateTime.UtcNow
+            };
+
+        using var server =
+            new PhoneDashboardServer(
+                () => snapshot,
+                () => "Balanced",
+                () => "Flex",
+                () => "More kills",
+                () => "Sm0ki",
+                () => false,
+                () => "",
+                () => Array.Empty<RoundRecord>(),
+                _ => "",
+                (_, _, _, _) => { });
+
+        server.Start();
+
+        var publicUrl =
+            new Uri(
+                server.GetLocalUrl());
+
+        var localPage =
+            new UriBuilder(
+                publicUrl)
+            {
+                Host = "127.0.0.1"
+            }.Uri;
+
+        using var http =
+            new HttpClient
+            {
+                Timeout =
+                    TimeSpan.FromSeconds(
+                        8)
+            };
+
+        var html =
+            await http.GetStringAsync(
+                localPage);
+
+        Require(
+            html.Contains(
+                "PRE-ROUND WIN PLAN",
+                StringComparison.Ordinal),
+            "Phone dashboard must render the pre-round win plan.");
+
+        Require(
+            html.Contains(
+                "ENEMY READ",
+                StringComparison.Ordinal),
+            "Phone dashboard must render opponent DNA.");
+
+        Require(
+            html.Contains(
+                "LAN FALLBACK",
+                StringComparison.Ordinal),
+            "Phone dashboard must contain the HTTP wake-lock fallback.");
+
+        var token =
+            publicUrl.Query
+                .TrimStart('?')
+                .Split(
+                    '&',
+                    StringSplitOptions.RemoveEmptyEntries)
+                .Select(x =>
+                    x.Split(
+                        '=',
+                        2))
+                .Where(x =>
+                    x.Length == 2 &&
+                    x[0] == "token")
+                .Select(x =>
+                    Uri.UnescapeDataString(
+                        x[1]))
+                .FirstOrDefault();
+
+        Require(
+            !string.IsNullOrWhiteSpace(
+                token),
+            "Phone dashboard URL must contain an access token.");
+
+        var stateUrl =
+            $"http://127.0.0.1:{server.Port}/api/state?token={Uri.EscapeDataString(token!)}";
+
+        var stateJson =
+            await http.GetStringAsync(
+                stateUrl);
+
+        using var doc =
+            JsonDocument.Parse(
+                stateJson);
+
+        var root =
+            doc.RootElement;
+
+        Require(
+            root.GetProperty("side").GetString() == "CT",
+            "Phone API must expose the current side.");
+
+        Require(
+            root.GetProperty("round").GetString() == "R5",
+            "Phone API must expose the next human-readable round.");
+
+        Require(
+            root.GetProperty("routeLabel").GetString() == "START POSITION",
+            "CT phone plan must use START POSITION.");
+
+        Require(
+            !string.IsNullOrWhiteSpace(
+                root.GetProperty("position").GetString()),
+            "Phone API must expose a predictive position.");
+
+        Require(
+            root.TryGetProperty(
+                "enemyRead",
+                out var enemyRead) &&
+            !string.IsNullOrWhiteSpace(
+                enemyRead.GetString()),
+            "Phone API must expose ENEMY READ.");
+
+        Require(
+            root.TryGetProperty(
+                "planMode",
+                out var planMode) &&
+            !string.IsNullOrWhiteSpace(
+                planMode.GetString()),
+            "Phone API must expose confidence-aware plan mode.");
     }
 
     private static async Task TestRealDemoFormatsAsync(
